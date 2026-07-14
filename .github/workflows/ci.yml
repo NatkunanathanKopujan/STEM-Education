@@ -17,7 +17,7 @@ jobs:
       - name: Use Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
           cache-dependency-path: package-lock.json
 
@@ -27,8 +27,11 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Test with coverage
-        run: npm run test:coverage
+      - name: Test frontend with coverage
+        run: npm run test:coverage --workspace frontend
+
+      - name: Test backend with coverage
+        run: npm run test:coverage --workspace backend
 
       - name: Build frontend
         run: npm run build:frontend
