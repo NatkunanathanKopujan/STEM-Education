@@ -19,26 +19,21 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: lms/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        working-directory: lms
         run: npm ci
 
       - name: Lint
-        working-directory: lms
         run: npm run lint
 
       - name: Test with coverage
-        working-directory: lms
         run: npm run test:coverage
 
       - name: Build frontend
-        working-directory: lms
         run: npm run build:frontend
 
       - name: Build Docker images
-        working-directory: lms
         run: |
           docker build -f backend/Dockerfile -t dbitlms-backend:${{ github.sha }} .
           docker build -f frontend/Dockerfile -t dbitlms-frontend:${{ github.sha }} .
@@ -48,8 +43,8 @@ jobs:
         with:
           name: coverage
           path: |
-            lms/backend/coverage
-            lms/frontend/coverage
+            backend/coverage
+            frontend/coverage
           if-no-files-found: ignore
 
   deployment-approval:

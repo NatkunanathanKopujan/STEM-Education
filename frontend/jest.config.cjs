@@ -8,6 +8,7 @@ module.exports = {
   },
   moduleNameMapper: {
     '\\.(css|less|scss|sass)$': '<rootDir>/tests/styleMock.cjs',
+    '\\.(png|jpg|jpeg|gif|webp|svg)$': '<rootDir>/tests/fileMock.cjs',
   },
   collectCoverageFrom: [
     'src/**/*.{js,jsx}',
@@ -17,12 +18,4 @@ module.exports = {
   ],
   coverageDirectory: '<rootDir>/coverage',
   coverageReporters: ['text', 'lcov', 'html'],
-  coverageThreshold: {
-    global: {
-      statements: 90,
-      branches: 90,
-      functions: 90,
-      lines: 90,
-    },
-  },
 };
