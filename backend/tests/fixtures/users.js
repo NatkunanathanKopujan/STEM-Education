@@ -1,0 +1,38 @@
+export const testUsers = {
+  superAdmin: {
+    id: 1,
+    uuid: 'super-admin-uuid',
+    fullName: 'Super Admin',
+    username: 'superadmin',
+    email: 'superadmin@example.com',
+    role: 'super-admin',
+    status: 'active',
+  },
+  admin: {
+    id: 2,
+    uuid: 'admin-uuid',
+    fullName: 'Admin User',
+    username: 'admin',
+    email: 'admin@example.com',
+    role: 'admin',
+    status: 'active',
+  },
+  teacher: {
+    id: 3,
+    uuid: 'teacher-uuid',
+    fullName: 'Teacher User',
+    username: 'teacher',
+    email: 'teacher@example.com',
+    role: 'teacher',
+    status: 'active',
+  },
+  student: {
+    id: 4,
+    uuid: 'student-uuid',
+    fullName: 'Student User',
+    username: 'student',
+    email: 'student@example.com',
+    role: 'student',
+    status: 'active',
+  },
+};

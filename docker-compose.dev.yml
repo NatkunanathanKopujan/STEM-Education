@@ -1,0 +1,59 @@
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:-ai_smart_lms}
+      MYSQL_USER: ${DB_USER:-lms}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-lms_password}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root_password}
+    volumes:
+      - mysql-dev-data:/var/lib/mysql
+      - ./backend/database/schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
+    ports:
+      - "3306:3306"
+    networks:
+      - lms-dev
+
+  backend:
+    image: node:20-bookworm-slim
+    working_dir: /app
+    command: sh -c "npm ci && npm run dev:backend"
+    env_file:
+      - .env.development
+    environment:
+      DB_HOST: mysql
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/backend/node_modules
+    ports:
+      - "5000:5000"
+    depends_on:
+      - mysql
+    networks:
+      - lms-dev
+
+  frontend:
+    image: node:20-bookworm-slim
+    working_dir: /app
+    command: sh -c "npm ci && npm run dev:frontend -- --host 0.0.0.0"
+    env_file:
+      - .env.development
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/frontend/node_modules
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    networks:
+      - lms-dev
+
+volumes:
+  mysql-dev-data:
+
+networks:
+  lms-dev:
+    driver: bridge

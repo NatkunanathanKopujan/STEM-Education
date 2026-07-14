@@ -1,0 +1,427 @@
+openapi: 3.0.3
+info:
+  title: AI Smart LMS API
+  version: 1.0.0
+  description: REST API documentation for the AI Smart Learning Management System.
+servers:
+  - url: http://localhost:5000
+    description: Local backend
+security:
+  - bearerAuth: []
+tags:
+  - name: Auth
+  - name: Users
+  - name: Curriculum
+  - name: Materials
+  - name: Files
+  - name: AI
+  - name: Quiz
+  - name: Reports
+  - name: Notifications
+  - name: Profile
+  - name: Search
+  - name: Security
+  - name: Performance
+  - name: Health
+paths:
+  /health:
+    get:
+      tags: [Health]
+      security: []
+      summary: Overall liveness and health status.
+      responses:
+        "200":
+          description: Health status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+  /health/database:
+    get:
+      tags: [Health]
+      security: []
+      summary: Database health check.
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /health/storage:
+    get:
+      tags: [Health]
+      security: []
+      summary: Storage health check.
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /health/ai:
+    get:
+      tags: [Health]
+      security: []
+      summary: AI provider configuration health check.
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /health/system:
+    get:
+      tags: [Health]
+      security: []
+      summary: Runtime system health check.
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Authenticate a user and return a JWT.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                identifier: { type: string, minLength: 3, maxLength: 160 }
+                email: { type: string, format: email }
+                username: { type: string }
+                password: { type: string, minLength: 8 }
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Log out the current session.
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      summary: Fetch authenticated user profile.
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/auth/verify:
+    get:
+      tags: [Auth]
+      summary: Verify current JWT.
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/auth/change-password:
+    put:
+      tags: [Auth]
+      summary: Change authenticated user's password.
+      requestBody:
+        $ref: "#/components/requestBodies/ChangePassword"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/auth/forgot-password:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Request password reset instructions.
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/auth/reset-password:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Future-ready password reset endpoint.
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/{module}:
+    get:
+      tags: [Users, Curriculum, Materials]
+      summary: List records for CRUD modules.
+      parameters:
+        - $ref: "#/components/parameters/Module"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Search"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Users, Curriculum, Materials]
+      summary: Create a record for CRUD modules.
+      parameters:
+        - $ref: "#/components/parameters/Module"
+      responses:
+        "201": { $ref: "#/components/responses/Success" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/{module}/{id}:
+    get:
+      tags: [Users, Curriculum, Materials]
+      summary: Fetch a record by ID.
+      parameters:
+        - $ref: "#/components/parameters/Module"
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [Users, Curriculum, Materials]
+      summary: Update a record by ID.
+      parameters:
+        - $ref: "#/components/parameters/Module"
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      tags: [Users, Curriculum, Materials]
+      summary: Delete a record by ID.
+      parameters:
+        - $ref: "#/components/parameters/Module"
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/files/upload:
+    post:
+      tags: [Files]
+      summary: Upload a file.
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "201": { $ref: "#/components/responses/Success" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/files:
+    get:
+      tags: [Files]
+      summary: List files.
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /api/files/download/{id}:
+    get:
+      tags: [Files]
+      summary: Download a file.
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200": { description: File stream. }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/ai/generate:
+    post:
+      tags: [AI]
+      summary: Generate AI questions.
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /api/ai/generate-batch:
+    post:
+      tags: [AI]
+      summary: Generate AI questions in batch.
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /api/ai/questions:
+    get:
+      tags: [AI]
+      summary: Search AI question bank.
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /api/student/quiz/start:
+    post:
+      tags: [Quiz]
+      summary: Start a student quiz.
+      responses:
+        "201": { $ref: "#/components/responses/Success" }
+  /api/student/quiz/submit:
+    post:
+      tags: [Quiz]
+      summary: Submit a student quiz.
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /api/reports/dashboard:
+    get:
+      tags: [Reports]
+      summary: Fetch reports dashboard.
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /api/reports/export:
+    get:
+      tags: [Reports]
+      summary: Export report data.
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /api/notifications:
+    get:
+      tags: [Notifications]
+      summary: List notifications.
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /api/announcements:
+    get:
+      tags: [Notifications]
+      summary: List announcements.
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+    post:
+      tags: [Notifications]
+      summary: Create announcement.
+      responses:
+        "201": { $ref: "#/components/responses/Success" }
+  /api/profile:
+    get:
+      tags: [Profile]
+      summary: Get authenticated profile.
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+    put:
+      tags: [Profile]
+      summary: Update authenticated profile.
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /api/search:
+    get:
+      tags: [Search]
+      summary: Run global search.
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /api/security/dashboard:
+    get:
+      tags: [Security]
+      summary: Fetch security dashboard.
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /api/security/audit-logs:
+    get:
+      tags: [Security]
+      summary: List audit logs.
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Search"
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /api/security/backup:
+    post:
+      tags: [Security]
+      summary: Run manual backup metadata operation.
+      responses:
+        "201": { $ref: "#/components/responses/Success" }
+  /api/security/restore:
+    post:
+      tags: [Security]
+      summary: Validate and record restore operation.
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+  /api/performance/dashboard:
+    get:
+      tags: [Performance]
+      summary: Fetch performance dashboard.
+      responses:
+        "200": { $ref: "#/components/responses/Success" }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer, minimum: 1 }
+    Module:
+      name: module
+      in: path
+      required: true
+      schema:
+        type: string
+        enum: [super-admin, admin, teacher, student, curriculum, materials]
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+    Search:
+      name: search
+      in: query
+      schema: { type: string, maxLength: 255 }
+  requestBodies:
+    ChangePassword:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [currentPassword, newPassword, confirmPassword]
+            properties:
+              currentPassword: { type: string }
+              newPassword: { type: string, minLength: 8 }
+              confirmPassword: { type: string, minLength: 8 }
+  responses:
+    Success:
+      description: Standard success response.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiResponse"
+    Unauthorized:
+      description: Missing, invalid, or expired token.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: Authenticated user lacks role or permission.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ValidationError:
+      description: Validation failed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ServiceUnavailable:
+      description: Health dependency is unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  schemas:
+    ApiResponse:
+      type: object
+      required: [success, message, timestamp, statusCode]
+      properties:
+        success: { type: boolean }
+        message: { type: string }
+        data: { type: object, nullable: true }
+        errors:
+          type: array
+          items: { type: object }
+        timestamp: { type: string, format: date-time }
+        statusCode: { type: integer }
+    ErrorResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiResponse"

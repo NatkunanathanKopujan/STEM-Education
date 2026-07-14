@@ -1,0 +1,13 @@
+node_modules
+frontend/dist
+backend/coverage
+frontend/coverage
+playwright-report
+test-results
+*.log
+*.err
+.env
+backend/.env
+frontend/.env
+.git
+.github

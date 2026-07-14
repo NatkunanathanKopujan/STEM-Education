@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+!.env.development.example
+!.env.staging.example
+!.env.production.example
+!**/.env.example
+
+# Build output and generated assets
+dist/
+**/dist/
+build/
+**/build/
+coverage/
+**/coverage/
+playwright-report/
+test-results/
+.cache/
+**/.cache/
+
+# Runtime files
+*.log
+*.err
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+logs/**
+backend/logs/**
+uploads/**
+backend/uploads/**
+!uploads/.gitkeep
+!backend/uploads/**/.gitkeep
+!backend/logs/.gitkeep
+
+# Local/generated documentation evidence
+docs/testing-procedures/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/

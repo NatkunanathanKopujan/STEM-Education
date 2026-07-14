@@ -1,0 +1,62 @@
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:-ai_smart_lms}
+      MYSQL_USER: ${DB_USER:-lms}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-lms_password}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root_password}
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./backend/database/schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} --silent"]
+      interval: 20s
+      timeout: 5s
+      retries: 10
+    networks:
+      - lms-net
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      DB_HOST: mysql
+      STORAGE_LOCAL_BASE_URL: http://localhost:5000
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - uploads-data:/app/backend/uploads
+      - backend-logs:/app/backend/logs
+    ports:
+      - "5000:5000"
+    networks:
+      - lms-net
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+    networks:
+      - lms-net
+
+volumes:
+  mysql-data:
+  uploads-data:
+  backend-logs:
+
+networks:
+  lms-net:
+    driver: bridge

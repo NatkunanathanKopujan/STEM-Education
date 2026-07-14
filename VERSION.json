@@ -1,0 +1,9 @@
+{
+  "name": "AI Smart Learning Management System",
+  "version": "1.0.0",
+  "releaseDate": "2026-07-06",
+  "releaseStage": "production",
+  "codename": "Enterprise Release",
+  "buildProfile": "frontend-vite backend-node-express mysql",
+  "documentation": "docs/RELEASE_NOTES_1.0.0.md"
+}

@@ -1,0 +1,63 @@
+name: DBITLMS CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: lms/package-lock.json
+
+      - name: Install dependencies
+        working-directory: lms
+        run: npm ci
+
+      - name: Lint
+        working-directory: lms
+        run: npm run lint
+
+      - name: Test with coverage
+        working-directory: lms
+        run: npm run test:coverage
+
+      - name: Build frontend
+        working-directory: lms
+        run: npm run build:frontend
+
+      - name: Build Docker images
+        working-directory: lms
+        run: |
+          docker build -f backend/Dockerfile -t dbitlms-backend:${{ github.sha }} .
+          docker build -f frontend/Dockerfile -t dbitlms-frontend:${{ github.sha }} .
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: |
+            lms/backend/coverage
+            lms/frontend/coverage
+          if-no-files-found: ignore
+
+  deployment-approval:
+    needs: verify
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    steps:
+      - name: Deployment gate
+        run: echo "Manual approval completed. Add provider-specific deployment steps here."

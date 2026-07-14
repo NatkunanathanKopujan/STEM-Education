@@ -1,0 +1,75 @@
+services:
+  mysql:
+    image: mysql:8.4
+    restart: always
+    env_file:
+      - .env.production
+    environment:
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    volumes:
+      - mysql-prod-data:/var/lib/mysql
+      - ./backend/database/schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
+      - ./deploy/backups:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} --silent"]
+      interval: 20s
+      timeout: 5s
+      retries: 10
+    networks:
+      - lms-prod
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: always
+    env_file:
+      - .env.production
+    environment:
+      DB_HOST: mysql
+      NODE_ENV: production
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - uploads-prod-data:/app/backend/uploads
+      - backend-prod-logs:/app/backend/logs
+    expose:
+      - "5000"
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          memory: 768M
+    networks:
+      - lms-prod
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: always
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/lms.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./frontend/dist:/usr/share/nginx/html:ro
+      - ./deploy/certs:/etc/nginx/certs:ro
+      - nginx-prod-logs:/var/log/nginx
+    networks:
+      - lms-prod
+
+volumes:
+  mysql-prod-data:
+  uploads-prod-data:
+  backend-prod-logs:
+  nginx-prod-logs:
+
+networks:
+  lms-prod:
+    driver: bridge
