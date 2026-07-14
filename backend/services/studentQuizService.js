@@ -1,4 +1,4 @@
-import { AppError } from '../utils/AppError.js';
+import { AppError } from '../utils/appError.js';
 import { parseJson, randomizeQuestionOptions, shuffle } from '../utils/quizRandomizer.js';
 import {
   createAttempt,
