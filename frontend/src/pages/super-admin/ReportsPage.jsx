@@ -25,6 +25,22 @@ import { reportsService } from '../../services/reportsService';
 
 const colors = ['#F97316', '#2563EB', '#16A34A', '#EF4444'];
 
+function downloadExport(data) {
+  const content =
+    data.encoding === 'base64'
+      ? Uint8Array.from(atob(data.content), (character) => character.charCodeAt(0))
+      : data.content;
+  const blob = new Blob([content], { type: data.mimeType || 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = data.fileName || `report.${data.format || 'csv'}`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 function ReportCard({ title, value, icon: Icon }) {
   return (
     <Card className="p-5">
@@ -75,11 +91,17 @@ export function ReportsPage() {
   }, []);
 
   const handleExport = async (format) => {
-    const data = await reportsService.exportReport(format, {
-      reportType: 'dashboard',
-      scope: 'complete_report',
-    });
-    setExportMessage(`${data.fileName} generated successfully.`);
+    try {
+      setExportMessage('');
+      const data = await reportsService.exportReport(format, {
+        reportType: 'dashboard',
+        scope: 'complete_report',
+      });
+      downloadExport(data);
+      setExportMessage(`${data.fileName} downloaded successfully.`);
+    } catch (apiError) {
+      setExportMessage(apiError.response?.data?.message || 'Unable to export report.');
+    }
   };
 
   if (isLoading) {

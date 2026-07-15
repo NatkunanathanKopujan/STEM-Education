@@ -9,7 +9,25 @@ import { withRetry } from './retryService.js';
 
 const estimateTokens = (value) => Math.ceil(String(value || '').length / 4);
 
-const estimateCost = () => 0;
+const costRateKeys = {
+  openai: ['openaiInput', 'openaiOutput'],
+  gemini: ['geminiInput', 'geminiOutput'],
+  ollama: ['ollamaInput', 'ollamaOutput'],
+};
+
+function estimateCost(providerName, usage = {}) {
+  if (providerName === 'local') {
+    return 0;
+  }
+
+  const [inputKey, outputKey] = costRateKeys[providerName] || [];
+  const inputRate = Number(env.ai.costPer1kTokens[inputKey] || 0);
+  const outputRate = Number(env.ai.costPer1kTokens[outputKey] || 0);
+  const promptTokens = Number(usage.promptTokens || 0);
+  const completionTokens = Number(usage.completionTokens || 0);
+
+  return Number(((promptTokens / 1000) * inputRate + (completionTokens / 1000) * outputRate).toFixed(6));
+}
 
 function countQuestions(difficultyConfig) {
   return Object.values(difficultyConfig).reduce((total, count) => total + Number(count || 0), 0);

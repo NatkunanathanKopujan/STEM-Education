@@ -65,6 +65,9 @@ export function AIMonitoringPage() {
   }
 
   const totals = data.costs.totals || {};
+  const providers = data.providers.providers || [];
+  const providerUsage = data.costs.providers || [];
+  const logs = Array.isArray(data.logs) ? data.logs : [];
 
   return (
     <div className="space-y-6">
@@ -82,7 +85,7 @@ export function AIMonitoringPage() {
         <Card className="p-5">
           <h2 className="text-lg font-bold text-ink">Providers</h2>
           <div className="mt-5 space-y-3">
-            {data.providers.providers.map((provider) => (
+            {providers.map((provider) => (
               <div key={provider.name} className="flex items-center justify-between rounded-xl border border-line p-4">
                 <div>
                   <p className="font-semibold capitalize text-ink">{provider.name}</p>
@@ -91,12 +94,15 @@ export function AIMonitoringPage() {
                 <StatusBadge status={provider.active ? 'Success' : 'Inactive'} />
               </div>
             ))}
+            {!providers.length ? (
+              <EmptyState title="No AI providers" description="Configured AI providers will appear here." />
+            ) : null}
           </div>
         </Card>
         <Card className="p-5">
           <h2 className="text-lg font-bold text-ink">Provider Usage</h2>
           <div className="mt-5 space-y-3">
-            {data.costs.providers.map((provider) => (
+            {providerUsage.map((provider) => (
               <div key={provider.provider} className="rounded-xl bg-page p-4 text-sm">
                 <div className="flex justify-between">
                   <span className="font-semibold capitalize text-ink">{provider.provider}</span>
@@ -107,6 +113,9 @@ export function AIMonitoringPage() {
                 </p>
               </div>
             ))}
+            {!providerUsage.length ? (
+              <EmptyState title="No provider usage" description="AI usage will appear after questions are generated." />
+            ) : null}
           </div>
         </Card>
       </div>
@@ -124,7 +133,7 @@ export function AIMonitoringPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-line bg-white">
-              {data.logs.map((log) => (
+              {logs.map((log) => (
                 <tr key={log.id}>
                   <td className="px-4 py-3 capitalize">{log.provider}</td>
                   <td className="px-4 py-3 text-muted">{log.model}</td>
@@ -141,6 +150,11 @@ export function AIMonitoringPage() {
             </tbody>
           </table>
         </div>
+        {!logs.length ? (
+          <div className="p-5">
+            <EmptyState title="No AI logs" description="Recent AI generation logs will appear here after AI activity." />
+          </div>
+        ) : null}
       </Card>
     </div>
   );

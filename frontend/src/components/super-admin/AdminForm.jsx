@@ -76,35 +76,39 @@ export function AdminForm({ admin, onSubmit, onCancel, generateUsername }) {
         })}
       />
       <Input label="Phone Number" {...register('phone')} />
-      <div className="flex items-end gap-2">
-        <PasswordInput
-          label="Password"
-          className="flex-1"
-          error={errors.password?.message}
-          {...register('password', {
-            required: admin ? false : 'Password is required',
-            minLength: { value: 8, message: 'Password must be at least 8 characters' },
-          })}
-        />
-        <SecondaryButton
-          className="px-3"
-          onClick={() => {
-            const generated = generateStrongPassword();
-            setValue('password', generated);
-            setValue('confirmPassword', generated);
-          }}
-          aria-label="Generate strong password"
-        >
-          <FiZap className="size-4" />
-        </SecondaryButton>
-      </div>
-      <PasswordInput
-        label="Confirm Password"
-        error={errors.confirmPassword?.message}
-        {...register('confirmPassword', {
-          validate: (value) => value === password || 'Passwords do not match',
-        })}
-      />
+      {!admin ? (
+        <>
+          <div className="flex items-end gap-2">
+            <PasswordInput
+              label="Password"
+              className="flex-1"
+              error={errors.password?.message}
+              {...register('password', {
+                required: 'Password is required',
+                minLength: { value: 8, message: 'Password must be at least 8 characters' },
+              })}
+            />
+            <SecondaryButton
+              className="px-3"
+              onClick={() => {
+                const generated = generateStrongPassword();
+                setValue('password', generated);
+                setValue('confirmPassword', generated);
+              }}
+              aria-label="Generate strong password"
+            >
+              <FiZap className="size-4" />
+            </SecondaryButton>
+          </div>
+          <PasswordInput
+            label="Confirm Password"
+            error={errors.confirmPassword?.message}
+            {...register('confirmPassword', {
+              validate: (value) => value === password || 'Passwords do not match',
+            })}
+          />
+        </>
+      ) : null}
       <Input label="Department" {...register('department', { required: 'Department is required' })} />
       <SelectBox
         label="Role"

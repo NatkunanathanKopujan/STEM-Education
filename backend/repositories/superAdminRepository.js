@@ -125,7 +125,6 @@ export async function updateAdminRecord(id, payload) {
     await connection.query(
       `UPDATE users
        SET full_name = ?, username = ?, email = ?, phone = ?, status = ?, is_active = ?
-       ${payload.passwordHash ? ', password_hash = ?' : ''}
        WHERE id = ? AND role = 'admin'`,
       [
         payload.fullName,
@@ -134,7 +133,6 @@ export async function updateAdminRecord(id, payload) {
         payload.phone || null,
         payload.status,
         payload.status === 'active' ? 1 : 0,
-        ...(payload.passwordHash ? [payload.passwordHash] : []),
         existing.userId,
       ],
     );

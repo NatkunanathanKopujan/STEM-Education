@@ -66,7 +66,9 @@ export async function updateLatestAiUsageOutcome(payload) {
 }
 
 export async function listAiUsageLogs({ limit = 50, offset = 0 } = {}) {
-  const [rows] = await db.execute(
+  const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
+  const safeOffset = Math.max(Number(offset) || 0, 0);
+  const [rows] = await db.query(
     `SELECT id, uuid, provider, model, teacher_id AS teacherId, curriculum_id AS curriculumId,
       course_id AS courseId, subject, topic, week_no AS weekNo, prompt_id AS promptId,
       started_at AS startedAt, ended_at AS endedAt, duration_ms AS durationMs,
@@ -76,8 +78,7 @@ export async function listAiUsageLogs({ limit = 50, offset = 0 } = {}) {
       questions_saved AS questionsSaved, status, error_message AS errorMessage, metadata, created_at AS createdAt
      FROM ai_usage_logs
      ORDER BY created_at DESC
-     LIMIT ? OFFSET ?`,
-    [limit, offset],
+     LIMIT ${safeLimit} OFFSET ${safeOffset}`,
   );
 
   return rows;

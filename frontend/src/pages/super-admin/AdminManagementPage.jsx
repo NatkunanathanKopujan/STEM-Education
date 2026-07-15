@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FiEdit2, FiEye, FiKey, FiPower, FiTrash2 } from 'react-icons/fi';
+import { FiEdit2, FiEye, FiPower, FiTrash2 } from 'react-icons/fi';
 import { AdminForm } from '../../components/super-admin/AdminForm';
 import { PageHeader } from '../../components/super-admin/PageHeader';
 import { StatusBadge } from '../../components/super-admin/StatusBadge';
@@ -17,6 +17,7 @@ export function AdminManagementPage() {
   const adminState = useAdminManagement();
   const [modalOpen, setModalOpen] = useState(false);
   const [editingAdmin, setEditingAdmin] = useState(null);
+  const [viewingAdmin, setViewingAdmin] = useState(null);
   const [deleteAdmin, setDeleteAdmin] = useState(null);
 
   const openCreate = () => {
@@ -42,7 +43,7 @@ export function AdminManagementPage() {
     <div className="space-y-6">
       <PageHeader
         title="Admin Management"
-        description="Create, search, edit, activate, deactivate, reset, and delete LMS admin accounts."
+        description="Create, search, view, edit, activate, deactivate, and delete LMS admin accounts."
         actionLabel="Create Admin"
         onAction={openCreate}
       />
@@ -115,7 +116,15 @@ export function AdminManagementPage() {
                   <td className="px-4 py-3 text-muted">{admin.createdDate}</td>
                   <td className="px-4 py-3">
                     <div className="flex gap-2">
-                      <Button disabled={adminState.isSaving} variant="ghost" className="px-2" aria-label="View admin"><FiEye /></Button>
+                      <Button
+                        disabled={adminState.isSaving}
+                        variant="ghost"
+                        className="px-2"
+                        aria-label={`View ${admin.fullName}`}
+                        onClick={() => setViewingAdmin(admin)}
+                      >
+                        <FiEye />
+                      </Button>
                       <Button
                         variant="ghost"
                         className="px-2"
@@ -128,7 +137,6 @@ export function AdminManagementPage() {
                       >
                         <FiEdit2 />
                       </Button>
-                      <Button disabled={adminState.isSaving} variant="ghost" className="px-2" aria-label="Reset password"><FiKey /></Button>
                       <Button
                         variant="ghost"
                         className="px-2"
@@ -174,6 +182,43 @@ export function AdminManagementPage() {
           onCancel={() => setModalOpen(false)}
           generateUsername={adminState.generateUsername}
         />
+      </Modal>
+      <Modal
+        open={Boolean(viewingAdmin)}
+        title="Admin Details"
+        onClose={() => setViewingAdmin(null)}
+      >
+        {viewingAdmin ? (
+          <div className="space-y-4">
+            <div className="flex items-center gap-4">
+              <span className="grid size-14 place-items-center rounded-xl bg-orange-50 text-lg font-bold text-primary">
+                {viewingAdmin.photo}
+              </span>
+              <div>
+                <h3 className="text-lg font-bold text-ink">{viewingAdmin.fullName}</h3>
+                <p className="text-sm text-muted">{viewingAdmin.username}</p>
+              </div>
+            </div>
+            <dl className="grid gap-3 sm:grid-cols-2">
+              {[
+                ['Email', viewingAdmin.email],
+                ['Phone', viewingAdmin.phone || '-'],
+                ['Department', viewingAdmin.department || '-'],
+                ['Status', viewingAdmin.status],
+                ['Created Date', viewingAdmin.createdDate || '-'],
+                ['Role', 'Admin'],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-xl border border-line bg-page p-3">
+                  <dt className="text-xs font-semibold uppercase text-muted">{label}</dt>
+                  <dd className="mt-1 font-semibold text-ink">{value}</dd>
+                </div>
+              ))}
+            </dl>
+            <div className="flex justify-end">
+              <SecondaryButton onClick={() => setViewingAdmin(null)}>Close</SecondaryButton>
+            </div>
+          </div>
+        ) : null}
       </Modal>
       <ConfirmationDialog
         open={Boolean(deleteAdmin)}

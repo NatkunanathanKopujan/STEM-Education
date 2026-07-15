@@ -320,7 +320,7 @@ export async function recordReportView({ userId, reportType, filters }) {
 export async function recordGeneratedReport(payload) {
   await db.execute(
     `INSERT INTO generated_reports
-      (uuid, report_type, role_scope, generated_by, filters, report_payload)
+      (uuid, report_type, role_scope, generated_by, filters, payload)
      VALUES (?, ?, ?, ?, ?, ?)`,
     [
       generateId(),
@@ -354,7 +354,7 @@ export async function recordReportExport(payload) {
     role: payload.role,
     title: 'Report export completed',
     message: `${payload.reportType} report was exported as ${payload.format.toUpperCase()}.`,
-    notificationType: 'report',
+    notificationType: 'system',
     sourceModule: 'reports',
     actionUrl: '/notifications',
     metadata: {

@@ -71,12 +71,15 @@ export const superAdminService = {
   },
 
   async update(id, payload) {
+    if (payload.password || payload.confirmPassword) {
+      throw new AppError('Super Admin cannot change an admin password after account creation', 403);
+    }
+
     const current = await this.findById(id);
     const adminPayload = toAdminPayload({ ...current, ...payload });
-    const passwordHash = payload.password ? await hashPassword(payload.password) : null;
 
     try {
-      const updated = await updateAdminRecord(id, { ...adminPayload, passwordHash });
+      const updated = await updateAdminRecord(id, adminPayload);
       if (!updated) {
         throw new AppError('Admin was not found', 404);
       }

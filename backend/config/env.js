@@ -41,6 +41,14 @@ export const env = {
     geminiModel: process.env.GEMINI_MODEL || 'gemini-1.5-flash',
     ollamaBaseUrl: process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
     ollamaModel: process.env.OLLAMA_MODEL || 'llama3.1',
+    costPer1kTokens: {
+      openaiInput: Number(process.env.OPENAI_INPUT_COST_PER_1K || 0),
+      openaiOutput: Number(process.env.OPENAI_OUTPUT_COST_PER_1K || 0),
+      geminiInput: Number(process.env.GEMINI_INPUT_COST_PER_1K || 0),
+      geminiOutput: Number(process.env.GEMINI_OUTPUT_COST_PER_1K || 0),
+      ollamaInput: Number(process.env.OLLAMA_INPUT_COST_PER_1K || 0),
+      ollamaOutput: Number(process.env.OLLAMA_OUTPUT_COST_PER_1K || 0),
+    },
   },
   storage: {
     provider: process.env.STORAGE_PROVIDER || 'local',
