@@ -32,11 +32,6 @@ const ResetPasswordPage = lazy(() =>
 const NotFoundPage = lazy(() =>
   import('../pages/NotFoundPage').then((module) => ({ default: module.NotFoundPage })),
 );
-const RoutePlaceholderPage = lazy(() =>
-  import('../pages/RoutePlaceholderPage').then((module) => ({
-    default: module.RoutePlaceholderPage,
-  })),
-);
 const ProfilePage = lazy(() =>
   import('../pages/profile/ProfilePage').then((module) => ({ default: module.ProfilePage })),
 );
@@ -170,6 +165,9 @@ const StudentMarksPage = lazy(() =>
 );
 const StudentDashboardPage = lazy(() =>
   import('../pages/student/StudentDashboardPage').then((module) => ({ default: module.StudentDashboardPage })),
+);
+const StudentCurriculumPage = lazy(() =>
+  import('../pages/student/StudentCurriculumPage').then((module) => ({ default: module.StudentCurriculumPage })),
 );
 const StudentMaterialsPage = lazy(() =>
   import('../pages/student/StudentMaterialsPage').then((module) => ({ default: module.StudentMaterialsPage })),
@@ -305,7 +303,7 @@ export function AppRoutes() {
                 element={<StudentDashboardPage />}
               />
               <Route path="/student/courses" element={<Navigate to="/student/curriculum" replace />} />
-              <Route path="/student/curriculum" element={<RoutePlaceholderPage title="My Curriculum" />} />
+              <Route path="/student/curriculum" element={<StudentCurriculumPage />} />
               <Route path="/student/materials" element={<StudentMaterialsPage />} />
               <Route path="/student/videos" element={<StudentVideosPage />} />
               <Route path="/student/notes" element={<StudentNotesPage />} />

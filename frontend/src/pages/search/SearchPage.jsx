@@ -128,6 +128,7 @@ export function SearchPage() {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
   const [showFilters, setShowFilters] = useState(true);
   const debouncedQuery = useDebouncedValue(query, 350);
 
@@ -148,15 +149,19 @@ export function SearchPage() {
     let isMounted = true;
 
     async function loadMeta() {
-      const [historyData, savedData, suggestionData] = await Promise.all([
-        searchService.history(),
-        searchService.saved(),
-        searchService.suggestions({ q: debouncedQuery }),
-      ]);
-      if (!isMounted) return;
-      setHistory(historyData.history || []);
-      setSaved(savedData.savedSearches || []);
-      setSuggestions(suggestionData);
+      try {
+        const [historyData, savedData, suggestionData] = await Promise.all([
+          searchService.history(),
+          searchService.saved(),
+          searchService.suggestions({ q: debouncedQuery }),
+        ]);
+        if (!isMounted) return;
+        setHistory(historyData.history || []);
+        setSaved(savedData.savedSearches || []);
+        setSuggestions(suggestionData);
+      } catch (apiError) {
+        if (isMounted) setError(apiError.response?.data?.message || 'Unable to load search metadata.');
+      }
     }
 
     loadMeta();
@@ -175,11 +180,17 @@ export function SearchPage() {
         return;
       }
       setIsLoading(true);
-      const data = await searchService.search(params);
-      if (!isMounted) return;
-      setResult(data);
-      setSearchParams(params);
-      setIsLoading(false);
+      setError('');
+      try {
+        const data = await searchService.search(params);
+        if (!isMounted) return;
+        setResult(data);
+        setSearchParams(params);
+      } catch (apiError) {
+        if (isMounted) setError(apiError.response?.data?.message || 'Search failed.');
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
     }
 
     runSearch();
@@ -190,7 +201,11 @@ export function SearchPage() {
   }, [debouncedQuery, params, setSearchParams]);
 
   const reloadSaved = async () => {
-    setSaved((await searchService.saved()).savedSearches || []);
+    try {
+      setSaved((await searchService.saved()).savedSearches || []);
+    } catch (apiError) {
+      setError(apiError.response?.data?.message || 'Unable to reload saved searches.');
+    }
   };
 
   const changeFilter = (key, value) => {
@@ -204,14 +219,19 @@ export function SearchPage() {
   const handleSave = async () => {
     const name = window.prompt('Saved search name', query || 'New search');
     if (!name) return;
-    await searchService.save({
-      name,
-      searchTerm: query,
-      filters,
-      isPinned: true,
-    });
-    setMessage('Search saved.');
-    await reloadSaved();
+    setError('');
+    try {
+      await searchService.save({
+        name,
+        searchTerm: query,
+        filters,
+        isPinned: true,
+      });
+      setMessage('Search saved.');
+      await reloadSaved();
+    } catch (apiError) {
+      setError(apiError.response?.data?.message || 'Save search failed.');
+    }
   };
 
   const loadSaved = (item) => {
@@ -222,13 +242,23 @@ export function SearchPage() {
   const renameSaved = async (item) => {
     const name = window.prompt('Rename saved search', item.name);
     if (!name) return;
-    await searchService.updateSaved(item.id, { name });
-    await reloadSaved();
+    setError('');
+    try {
+      await searchService.updateSaved(item.id, { name });
+      await reloadSaved();
+    } catch (apiError) {
+      setError(apiError.response?.data?.message || 'Rename saved search failed.');
+    }
   };
 
   const togglePin = async (item) => {
-    await searchService.updateSaved(item.id, { isPinned: !item.isPinned });
-    await reloadSaved();
+    setError('');
+    try {
+      await searchService.updateSaved(item.id, { isPinned: !item.isPinned });
+      await reloadSaved();
+    } catch (apiError) {
+      setError(apiError.response?.data?.message || 'Update saved search failed.');
+    }
   };
 
   const inputClass = 'min-h-11 w-full rounded-xl border border-line px-3 text-sm outline-none focus:border-primary';
@@ -244,6 +274,11 @@ export function SearchPage() {
       {message ? (
         <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm font-semibold text-green-700">
           {message}
+        </div>
+      ) : null}
+      {error ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
+          {error}
         </div>
       ) : null}
 
@@ -488,8 +523,13 @@ export function SearchPage() {
                       type="button"
                       className="rounded-lg p-2 text-red-600 hover:bg-red-50"
                       onClick={async () => {
-                        await searchService.deleteSaved(item.id);
-                        await reloadSaved();
+                        setError('');
+                        try {
+                          await searchService.deleteSaved(item.id);
+                          await reloadSaved();
+                        } catch (apiError) {
+                          setError(apiError.response?.data?.message || 'Delete saved search failed.');
+                        }
                       }}
                       aria-label="Delete saved search"
                     >
@@ -509,8 +549,13 @@ export function SearchPage() {
                 variant="ghost"
                 className="min-h-9 px-2"
                 onClick={async () => {
-                  await searchService.clearHistory();
-                  setHistory([]);
+                  setError('');
+                  try {
+                    await searchService.clearHistory();
+                    setHistory([]);
+                  } catch (apiError) {
+                    setError(apiError.response?.data?.message || 'Clear history failed.');
+                  }
                 }}
               >
                 Clear

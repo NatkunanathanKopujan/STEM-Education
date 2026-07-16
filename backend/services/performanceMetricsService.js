@@ -1,4 +1,5 @@
 import os from 'os';
+import { env } from '../config/env.js';
 import { cacheService } from './cacheService.js';
 
 const apiMetrics = [];
@@ -83,9 +84,10 @@ export const performanceMetricsService = {
         averageDownloadSpeedMbps: average(downloadMetrics.slice(-100), (item) => item.speedMbps),
       },
       monitoring: {
-        prometheusReady: true,
-        grafanaReady: true,
-        openTelemetryReady: true,
+        prometheusReady: Boolean(process.env.PROMETHEUS_ENDPOINT),
+        grafanaReady: Boolean(process.env.GRAFANA_URL),
+        openTelemetryReady: Boolean(process.env.OTEL_EXPORTER_OTLP_ENDPOINT),
+        cacheProvider: env.performance.cacheProvider,
       },
     };
   },

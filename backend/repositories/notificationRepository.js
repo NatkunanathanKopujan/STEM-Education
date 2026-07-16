@@ -23,7 +23,7 @@ async function isNotificationEnabled(userId, notificationType) {
   }
 
   await db.execute('INSERT IGNORE INTO notification_preferences (user_id) VALUES (?)', [userId]);
-  const [rows] = await db.execute(
+  const [rows] = await db.query(
     `SELECT ${preferenceColumn} AS enabled FROM notification_preferences WHERE user_id = ? LIMIT 1`,
     [userId],
   );
@@ -31,7 +31,18 @@ async function isNotificationEnabled(userId, notificationType) {
   return Boolean(rows[0]?.enabled);
 }
 
-export async function listNotifications({ userId, search, type, status = 'active', limit = 30, offset = 0 }) {
+export async function listNotifications({
+  userId,
+  search,
+  type,
+  readStatus,
+  priority,
+  status = 'active',
+  limit = 30,
+  offset = 0,
+}) {
+  const safeLimit = Math.min(Math.max(Number(limit) || 30, 1), 100);
+  const safeOffset = Math.max(Number(offset) || 0, 0);
   const where = ['user_id = ?', 'status = ?'];
   const values = [userId, status];
 
@@ -40,20 +51,43 @@ export async function listNotifications({ userId, search, type, status = 'active
     values.push(type);
   }
 
+  if (priority) {
+    where.push('priority = ?');
+    values.push(priority);
+  }
+
+  if (readStatus === 'read') {
+    where.push('is_read = 1');
+  }
+
+  if (readStatus === 'unread') {
+    where.push('is_read = 0');
+  }
+
   if (search) {
     where.push('(title LIKE ? OR message LIKE ? OR source_module LIKE ?)');
     values.push(`%${search}%`, `%${search}%`, `%${search}%`);
   }
 
-  const [rows] = await db.execute(
+  const whereSql = where.join(' AND ');
+  const [rows] = await db.query(
     `${notificationSelect}
-     WHERE ${where.join(' AND ')}
+     WHERE ${whereSql}
      ORDER BY is_read ASC, created_at DESC
      LIMIT ? OFFSET ?`,
-    [...values, limit, offset],
+    [...values, safeLimit, safeOffset],
+  );
+  const [countRows] = await db.execute(
+    `SELECT COUNT(*) AS total FROM notifications WHERE ${whereSql}`,
+    values,
   );
 
-  return rows;
+  return {
+    notifications: rows,
+    total: countRows[0]?.total || 0,
+    limit: safeLimit,
+    offset: safeOffset,
+  };
 }
 
 export async function countUnreadNotifications(userId) {
@@ -130,7 +164,7 @@ export async function markNotificationsRead({ userId, ids }) {
 
 export async function deleteNotification({ userId, id }) {
   const [result] = await db.execute(
-    "UPDATE notifications SET status = 'deleted' WHERE id = ? AND user_id = ?",
+    "UPDATE notifications SET status = 'deleted', updated_at = NOW() WHERE id = ? AND user_id = ? AND status = 'active'",
     [id, userId],
   );
 
@@ -298,18 +332,40 @@ async function listAnnouncementAttachments(announcementId) {
   return rows;
 }
 
-export async function listAnnouncements({ user, limit = 30, offset = 0 }) {
-  const [rows] = await db.execute(
+export async function listAnnouncements({ user, search, priority, status, limit = 30, offset = 0 }) {
+  const safeLimit = Math.min(Math.max(Number(limit) || 30, 1), 100);
+  const safeOffset = Math.max(Number(offset) || 0, 0);
+  const where = [];
+  const values = [user.id, user.id, user.role, user.role, user.id, user.id];
+
+  if (['super-admin', 'admin', 'teacher'].includes(user.role) && status) {
+    where.push('a.status = ?');
+    values.push(status);
+  } else {
+    where.push("a.status = 'published'");
+  }
+
+  if (priority) {
+    where.push('a.priority = ?');
+    values.push(priority);
+  }
+
+  if (search) {
+    where.push('(a.title LIKE ? OR a.body LIKE ?)');
+    values.push(`%${search}%`, `%${search}%`);
+  }
+
+  const whereSql = where.length ? `AND ${where.join(' AND ')}` : '';
+  const [rows] = await db.query(
     `SELECT DISTINCT a.id, a.uuid, a.title, a.body AS description, a.attachment_path AS attachmentPath,
       audience_role AS audienceRole, priority, status, expiry_at AS expiryDate,
-      created_by AS createdBy, publish_at AS publishDate, created_at AS createdAt,
-      updated_at AS updatedAt
+      created_by AS createdBy, publish_at AS publishDate, a.created_at AS createdAt,
+      a.updated_at AS updatedAt
      FROM announcements a
      LEFT JOIN announcement_targets at ON at.announcement_id = a.id
      LEFT JOIN teachers t ON t.user_id = ?
      LEFT JOIN students s ON s.user_id = ?
-     WHERE a.status = 'published'
-       AND (a.audience_role IS NULL OR a.audience_role = ?)
+     WHERE (a.audience_role IS NULL OR a.audience_role = ?)
        AND (a.expiry_at IS NULL OR a.expiry_at > NOW())
        AND (
         at.id IS NULL
@@ -321,18 +377,47 @@ export async function listAnnouncements({ user, limit = 30, offset = 0 }) {
           SELECT 1 FROM courses c WHERE c.curriculum_id = at.target_id AND c.teacher_id = t.id
         ))
        )
+       ${whereSql}
      ORDER BY a.priority DESC, a.publish_at DESC, a.created_at DESC
      LIMIT ? OFFSET ?`,
-    [user.id, user.id, user.role, user.role, user.id, user.id, limit, offset],
+    [...values, safeLimit, safeOffset],
+  );
+  const [countRows] = await db.query(
+    `SELECT COUNT(DISTINCT a.id) AS total
+     FROM announcements a
+     LEFT JOIN announcement_targets at ON at.announcement_id = a.id
+     LEFT JOIN teachers t ON t.user_id = ?
+     LEFT JOIN students s ON s.user_id = ?
+     WHERE (a.audience_role IS NULL OR a.audience_role = ?)
+       AND (a.expiry_at IS NULL OR a.expiry_at > NOW())
+       AND (
+        at.id IS NULL
+        OR at.target_type = 'all_users'
+        OR (at.target_type = 'role' AND at.target_role = ?)
+        OR (at.target_type = 'teacher' AND (at.target_id = ? OR at.target_id = t.id))
+        OR (at.target_type = 'student' AND (at.target_id = ? OR at.target_id = s.id))
+        OR (at.target_type = 'curriculum' AND EXISTS (
+          SELECT 1 FROM courses c WHERE c.curriculum_id = at.target_id AND c.teacher_id = t.id
+        ))
+       )
+       ${whereSql}`,
+    values,
   );
 
-  return Promise.all(
+  const announcements = await Promise.all(
     rows.map(async (row) => ({
       ...row,
       targets: await listAnnouncementTargets(row.id),
       attachments: await listAnnouncementAttachments(row.id),
     })),
   );
+
+  return {
+    announcements,
+    total: countRows[0]?.total || 0,
+    limit: safeLimit,
+    offset: safeOffset,
+  };
 }
 
 export async function replaceAnnouncementTargets(announcementId, targets = []) {

@@ -102,7 +102,7 @@ function addLimit(params, filters) {
 async function executeSearch(category, selectedCategory, user, sql, params, results, aliases = []) {
   if (!categoryMatches(selectedCategory, category, aliases)) return;
   if (!canSearch(user, category)) return;
-  const [rows] = await db.execute(sql, params);
+  const [rows] = await db.query(sql, params);
   results.push(...rows.map(result));
 }
 
@@ -120,7 +120,7 @@ export async function runRoleSearch(user, filters) {
     addExactFilter(where, params, 'status', filters.status);
     addDateFilters(where, params, 'created_at', filters);
     addLimit(params, filters);
-    const [rows] = await db.execute(
+    const [rows] = await db.query(
       `SELECT id, full_name AS title, role AS category, email AS description, username AS owner,
         created_at AS createdAt, updated_at AS updatedAt, CONCAT('/', role, '/profile') AS actionUrl,
         CASE WHEN full_name = ? OR username = ? THEN 100 ELSE 20 END AS relevance
@@ -365,7 +365,7 @@ export async function runRoleSearch(user, filters) {
        AND (? = '' OR co.title LIKE ? OR co.code LIKE ?)
        AND (? = '' OR u.full_name LIKE ?)
        AND (? = '' OR m.is_published = IF(? IN ('published', 'active'), 1, 0))
-       AND (? = '' OR DATE(m.created_at) = ?)
+       AND (? IS NULL OR DATE(m.created_at) = ?)
        AND (? NOT IN ('teacher', 'student') OR m.is_published = 1 OR m.uploaded_by = ?)
      LIMIT ?`,
     [
@@ -388,8 +388,8 @@ export async function runRoleSearch(user, filters) {
       like(filters.teacher || filters.createdBy || ''),
       filters.status || '',
       filters.status || '',
-      filters.uploadDate || '',
-      filters.uploadDate || '',
+      filters.uploadDate || null,
+      filters.uploadDate || null,
       user.role,
       user.id,
       Math.min(Number(filters.limit) || 50, 100),
@@ -526,7 +526,7 @@ export async function runRoleSearch(user, filters) {
   );
 
   if ((!selectedCategory || selectedCategory === 'quizzes') && canSearch(user, 'quizzes')) {
-    const [rows] = await db.execute(
+    const [rows] = await db.query(
       `SELECT qb.id, LEFT(qb.question_text, 120) AS title, 'quizzes' AS category,
         CONCAT_WS(' - ', qb.subject, qb.topic, qb.difficulty, qb.approval_status) AS description,
         COALESCE(u.full_name, 'AI') AS owner, qb.created_at AS createdAt, qb.updated_at AS updatedAt,

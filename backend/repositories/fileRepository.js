@@ -110,8 +110,12 @@ export async function listFiles(user, filters = {}) {
   applyRoleScope(user, where, values);
   applyFilters(filters, where, values);
 
+  if (!filters.status) {
+    where.push("f.status <> 'deleted'");
+  }
+
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-  const [rows] = await db.execute(
+  const [rows] = await db.query(
     `${fileSelect}
      ${whereSql}
      ORDER BY ${sortClause(filters.sort)}

@@ -1,3 +1,3 @@
-import { createModuleService } from './moduleServiceFactory.js';
+import { createUserManagementService } from './userManagementService.js';
 
-export const adminService = createModuleService('Admin');
+export const adminService = createUserManagementService('admin');

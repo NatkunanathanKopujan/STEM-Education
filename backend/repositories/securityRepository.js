@@ -72,7 +72,7 @@ export async function listAuditLogs(filters = {}) {
   }
 
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-  const [rows] = await db.execute(
+  const [rows] = await db.query(
     `SELECT a.id, a.uuid, a.user_id AS userId, u.full_name AS userName, a.role, a.action,
       a.module, a.description, a.ip_address AS ipAddress, a.browser, a.device, a.status,
       a.metadata, a.created_at AS createdAt
@@ -149,7 +149,7 @@ export async function listSecurityAlerts(filters = {}) {
   }
 
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-  const [rows] = await db.execute(
+  const [rows] = await db.query(
     `SELECT s.id, s.uuid, s.alert_type AS alertType, s.severity, s.title, s.description,
       s.user_id AS userId, u.full_name AS userName, s.role, s.source_module AS sourceModule,
       s.ip_address AS ipAddress, s.status, s.metadata, s.created_at AS createdAt, s.resolved_at AS resolvedAt
@@ -200,7 +200,7 @@ export async function recordPermissionCheck(payload) {
 }
 
 export async function countRecentFailedAttempts(identifier, windowMinutes) {
-  const [rows] = await db.execute(
+  const [rows] = await db.query(
     `SELECT COUNT(*) AS failedCount
      FROM login_attempts
      WHERE identifier = ? AND status = 'failed'
@@ -231,7 +231,7 @@ export async function listLoginAttempts(filters = {}) {
   }
 
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-  const [rows] = await db.execute(
+  const [rows] = await db.query(
     `SELECT l.id, l.user_id AS userId, u.full_name AS userName, l.identifier, l.status,
       l.failure_reason AS failureReason, l.ip_address AS ipAddress, l.browser,
       l.operating_system AS operatingSystem, l.device_info AS deviceInfo, l.attempted_at AS attemptedAt
@@ -257,7 +257,7 @@ export async function setUserStatus(userId, status) {
 }
 
 export async function listActiveSessions() {
-  const [rows] = await db.execute(
+  const [rows] = await db.query(
     `SELECT s.id, s.user_id AS userId, u.full_name AS userName, u.role, s.login_time AS loginTime,
       s.ip_address AS ipAddress, s.user_agent AS userAgent
      FROM user_sessions s
@@ -291,7 +291,7 @@ export async function createBackupRecord(payload) {
 
 export async function listBackups(filters = {}) {
   const { limit, offset, page } = limitOffset(filters);
-  const [rows] = await db.execute(
+  const [rows] = await db.query(
     `SELECT b.id, b.uuid, b.backup_type AS backupType, b.backup_scope AS backupScope,
       b.backup_size AS backupSize, b.status, b.duration_ms AS durationMs, b.created_by AS createdBy,
       u.full_name AS createdByName, b.metadata, b.file_path AS filePath, b.created_at AS createdAt
@@ -303,6 +303,19 @@ export async function listBackups(filters = {}) {
   );
   const [countRows] = await db.execute('SELECT COUNT(*) AS total FROM backup_history');
   return { backups: rows, total: countRows[0]?.total || 0, page, limit };
+}
+
+export async function findBackupById(id) {
+  const [rows] = await db.execute(
+    `SELECT id, uuid, backup_type AS backupType, backup_scope AS backupScope,
+      backup_size AS backupSize, status, duration_ms AS durationMs, created_by AS createdBy,
+      metadata, file_path AS filePath, created_at AS createdAt
+     FROM backup_history
+     WHERE id = ?
+     LIMIT 1`,
+    [id],
+  );
+  return rows[0] || null;
 }
 
 export async function createRestoreRecord(payload) {
@@ -351,7 +364,7 @@ export async function listRestoreHistory(filters = {}) {
   }
 
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-  const [rows] = await db.execute(
+  const [rows] = await db.query(
     `SELECT r.id, r.uuid, r.backup_id AS backupId, b.uuid AS backupUuid,
       r.restore_scope AS restoreScope, r.status, r.duration_ms AS durationMs,
       r.restored_by AS restoredBy, u.full_name AS restoredByName,

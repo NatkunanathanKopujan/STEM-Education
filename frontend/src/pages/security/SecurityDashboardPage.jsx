@@ -38,6 +38,7 @@ export function SecurityDashboardPage() {
   const [backups, setBackups] = useState([]);
   const [auditFilter, setAuditFilter] = useState('');
   const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isBackingUp, setIsBackingUp] = useState(false);
 
@@ -48,13 +49,19 @@ export function SecurityDashboardPage() {
 
   async function loadSecurity() {
     setIsLoading(true);
-    const [dashboardData, backupData] = await Promise.all([
-      securityService.dashboard(),
-      securityService.backups({ limit: 6 }),
-    ]);
-    setOverview(dashboardData);
-    setBackups(backupData.backups || []);
-    setIsLoading(false);
+    setError('');
+    try {
+      const [dashboardData, backupData] = await Promise.all([
+        securityService.dashboard(),
+        securityService.backups({ limit: 6 }),
+      ]);
+      setOverview(dashboardData);
+      setBackups(backupData.backups || []);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Security data load failed.');
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -63,21 +70,37 @@ export function SecurityDashboardPage() {
 
   const runBackup = async () => {
     setIsBackingUp(true);
-    const result = await securityService.backup({ backupType: 'manual', backupScope: 'full' });
-    setMessage(`Backup ${result.backupId} completed.`);
-    setIsBackingUp(false);
-    await loadSecurity();
+    setError('');
+    try {
+      const result = await securityService.backup({ backupType: 'manual', backupScope: 'full' });
+      setMessage(`Backup ${result.backupId} completed.`);
+      await loadSecurity();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Backup failed.');
+    } finally {
+      setIsBackingUp(false);
+    }
   };
 
   const runRestoreValidation = async (backupId) => {
-    const result = await securityService.restore({ backupId, restoreScope: 'metadata_validation' });
-    setMessage(`Restore validation ${result.restoreId} completed.`);
+    setError('');
+    try {
+      const result = await securityService.restore({ backupId, restoreScope: 'metadata_validation' });
+      setMessage(`Restore validation ${result.restoreId} completed.`);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Restore validation failed.');
+    }
   };
 
   const unlockUser = async (userId) => {
-    await securityService.unlockUser(userId);
-    setMessage(`User ${userId} unlocked.`);
-    await loadSecurity();
+    setError('');
+    try {
+      await securityService.unlockUser(userId);
+      setMessage(`User ${userId} unlocked.`);
+      await loadSecurity();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Unlock user failed.');
+    }
   };
 
   const auditLogs = (overview?.recentAuditLogs || []).filter((item) =>
@@ -88,6 +111,19 @@ export function SecurityDashboardPage() {
     return <Loader label="Loading security dashboard" />;
   }
 
+  if (!overview) {
+    return (
+      <div className="space-y-6">
+        <PageHeader
+          eyebrow="Enterprise Security"
+          title="Security, Audit & Recovery"
+          description="Monitor authentication, RBAC, alerts, backups, restore readiness, and system health."
+        />
+        <EmptyState title="Security data unavailable" description={error || 'Refresh security data and try again.'} />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -96,6 +132,7 @@ export function SecurityDashboardPage() {
         description="Monitor authentication, RBAC, alerts, backups, restore readiness, and system health."
       />
       {message ? <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm font-semibold text-green-700">{message}</div> : null}
+      {error ? <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">{error}</div> : null}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <DashboardCard title="Open Alerts" value={overview.dashboard.openAlerts} icon={FiAlertTriangle} />

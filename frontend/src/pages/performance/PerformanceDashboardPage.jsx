@@ -14,6 +14,7 @@ import { FiActivity, FiCpu, FiDatabase, FiRefreshCw, FiServer, FiZap } from 'rea
 import { PageHeader } from '../../components/super-admin/PageHeader';
 import { Button } from '../../components/ui/Button';
 import { Card, DashboardCard } from '../../components/ui/Card';
+import { EmptyState } from '../../components/ui/EmptyState';
 import { Loader } from '../../components/ui/Loader';
 import { VirtualizedList } from '../../components/ui/VirtualizedList';
 import { performanceService } from '../../services/performanceService';
@@ -32,11 +33,18 @@ function formatBytes(value = 0) {
 export function PerformanceDashboardPage() {
   const [dashboard, setDashboard] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
 
   async function loadDashboard() {
     setIsLoading(true);
-    setDashboard(await performanceService.dashboard());
-    setIsLoading(false);
+    setError('');
+    try {
+      setDashboard(await performanceService.dashboard());
+    } catch (apiError) {
+      setError(apiError.response?.data?.message || 'Unable to load performance metrics.');
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -53,12 +61,16 @@ export function PerformanceDashboardPage() {
   );
 
   const queueData = useMemo(
-    () => (dashboard?.queues || []).map((queue) => ({ name: queue.name, ready: queue.status === 'prepared' ? 1 : 0 })),
+    () => (dashboard?.queues || []).map((queue) => ({ name: queue.name, ready: queue.ready ? 1 : 0 })),
     [dashboard],
   );
 
   if (isLoading) {
     return <Loader label="Loading performance metrics" />;
+  }
+
+  if (!dashboard) {
+    return <EmptyState title="Performance metrics unavailable" description={error || 'Refresh metrics and try again.'} />;
   }
 
   return (
@@ -75,6 +87,7 @@ export function PerformanceDashboardPage() {
           Refresh Metrics
         </Button>
       </div>
+      {error ? <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">{error}</div> : null}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <DashboardCard title="Avg API Response" value={formatMs(dashboard.api.averageResponseTimeMs)} icon={FiZap} />

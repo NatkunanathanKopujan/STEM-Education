@@ -60,8 +60,9 @@ class FutureCacheProvider extends MemoryCacheProvider {
   getStats() {
     return {
       ...super.getStats(),
-      provider: env.performance.cacheProvider,
-      mode: 'future-ready-fallback',
+      configuredProvider: env.performance.cacheProvider,
+      provider: 'memory',
+      fallbackActive: true,
     };
   }
 }

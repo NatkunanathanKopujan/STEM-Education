@@ -19,6 +19,7 @@ const uploadFolders = {
   assignments: 'assignments',
   announcements: 'announcements',
   profiles: 'profiles',
+  settings: 'settings',
   aiMaterials: 'notes',
   files: 'files',
 };
@@ -43,6 +44,7 @@ const extensionGroups = {
     ...allowedFileGroups.images,
   ],
   profiles: allowedFileGroups.images,
+  settings: allowedFileGroups.images,
   aiMaterials: [
     ...allowedFileGroups.pdf,
     ...allowedFileGroups.ppt,

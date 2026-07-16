@@ -19,30 +19,39 @@ import {
 const announcementPublishRoles = [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.TEACHER];
 
 export async function getNotifications(user, filters = {}) {
-  const [items, unreadCount] = await Promise.all([
+  const [result, unreadCount] = await Promise.all([
     listNotifications({
       userId: user.id,
       search: filters.search,
       type: filters.type,
+      readStatus: filters.readStatus,
+      priority: filters.priority,
       limit: Number(filters.limit) || 30,
       offset: Number(filters.offset) || 0,
     }),
     countUnreadNotifications(user.id),
   ]);
 
-  return { unreadCount, notifications: items };
+  return {
+    unreadCount,
+    notifications: result.notifications,
+    total: result.total,
+    limit: result.limit,
+    offset: result.offset,
+  };
 }
 
 export async function getUnreadNotifications(user) {
   const notifications = await listNotifications({
     userId: user.id,
+    readStatus: 'unread',
     limit: 10,
     offset: 0,
   });
 
   return {
     unreadCount: await countUnreadNotifications(user.id),
-    notifications: notifications.filter((item) => !item.isRead),
+    notifications: notifications.notifications,
   };
 }
 
@@ -75,13 +84,15 @@ export async function savePreferences(user, payload) {
 }
 
 export async function getAnnouncements(user, filters = {}) {
-  return {
-    announcements: await listAnnouncements({
-      user,
-      limit: Number(filters.limit) || 30,
-      offset: Number(filters.offset) || 0,
-    }),
-  };
+  return listAnnouncements({
+    user,
+    search: filters.search,
+    type: filters.type,
+    priority: filters.priority,
+    status: filters.status,
+    limit: Number(filters.limit) || 30,
+    offset: Number(filters.offset) || 0,
+  });
 }
 
 async function notifyAnnouncementAudience(announcement, createdBy) {
@@ -139,7 +150,7 @@ export async function editAnnouncement(user, id, payload) {
 
   const updated = await updateAnnouncement(id, payload);
 
-  if (!updated) {
+  if (!updated && !payload.targets) {
     throw new AppError('Announcement not found or no changes supplied', 404);
   }
 

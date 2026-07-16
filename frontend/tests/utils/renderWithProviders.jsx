@@ -2,6 +2,7 @@ import { render } from '@testing-library/react';
 import { jest } from '@jest/globals';
 import { MemoryRouter } from 'react-router-dom';
 import { AuthContext } from '../../src/context/authContextValue';
+import { BrandingContext } from '../../src/context/brandingContextValue';
 import { users } from '../fixtures/lmsFixtures';
 
 export function renderWithProviders(ui, options = {}) {
@@ -18,10 +19,21 @@ export function renderWithProviders(ui, options = {}) {
     logout: jest.fn(),
     ...options.auth,
   };
+  const brandingValue = {
+    branding: {
+      universityName: 'DBIT LMS',
+      subtitle: 'Learning Management System',
+      logoUrl: '',
+    },
+    refreshBranding: jest.fn(),
+    ...options.branding,
+  };
 
   return render(
     <MemoryRouter initialEntries={[options.route || '/']}>
-      <AuthContext.Provider value={authValue}>{ui}</AuthContext.Provider>
+      <AuthContext.Provider value={authValue}>
+        <BrandingContext.Provider value={brandingValue}>{ui}</BrandingContext.Provider>
+      </AuthContext.Provider>
     </MemoryRouter>,
   );
 }

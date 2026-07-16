@@ -72,6 +72,7 @@ export function AuditLogsPage() {
   const [filters, setFilters] = useState(defaultFilters);
   const [result, setResult] = useState({ logs: [], total: 0, page: 1, limit: 15 });
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
 
   const totalPages = useMemo(
     () => Math.max(Math.ceil((result.total || 0) / (result.limit || 15)), 1),
@@ -80,9 +81,15 @@ export function AuditLogsPage() {
 
   const loadLogs = useCallback(async (nextFilters) => {
     setIsLoading(true);
-    const data = await securityService.auditLogs(nextFilters);
-    setResult(data);
-    setIsLoading(false);
+    setError('');
+    try {
+      const data = await securityService.auditLogs(nextFilters);
+      setResult(data);
+    } catch (apiError) {
+      setError(apiError.response?.data?.message || 'Unable to load audit logs.');
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -156,6 +163,12 @@ export function AuditLogsPage() {
           </div>
         </form>
       </Card>
+
+      {error ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
+          {error}
+        </div>
+      ) : null}
 
       <Card className="overflow-hidden">
         {isLoading ? (

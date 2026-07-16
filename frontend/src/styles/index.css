@@ -3,6 +3,11 @@
 @tailwind utilities;
 
 :root {
+  --color-primary: 249 115 22;
+  --color-primary-dark: 234 88 12;
+  --color-primary-light: 253 186 116;
+  --color-surface: 255 255 255;
+  --color-page: 248 250 252;
   color: #1f2937;
   background: #f8fafc;
   font-synthesis: none;

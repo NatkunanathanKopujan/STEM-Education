@@ -11,6 +11,7 @@ import {
 import {
   FiArchive,
   FiDownload,
+  FiEdit3,
   FiEye,
   FiFile,
   FiRefreshCw,
@@ -23,6 +24,7 @@ import { Button } from '../../components/ui/Button';
 import { Card, DashboardCard } from '../../components/ui/Card';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Loader } from '../../components/ui/Loader';
+import { Modal } from '../../components/ui/Modal';
 import { fileService } from '../../services/fileService';
 
 const acceptedTypes = '.pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx,.zip,.jpg,.jpeg,.png,.webp,.mp4,.mov,.avi,.mp3,.wav';
@@ -47,6 +49,14 @@ function buildDefaultMetadata() {
   };
 }
 
+function apiErrorMessage(error, fallback) {
+  const details = error.response?.data?.errors;
+  if (Array.isArray(details) && details.length) {
+    return details.map((item) => `${item.path || item.param}: ${item.msg}`).join(', ');
+  }
+  return error.response?.data?.message || fallback;
+}
+
 export function FileManagerPage() {
   const [files, setFiles] = useState([]);
   const [stats, setStats] = useState(null);
@@ -57,7 +67,10 @@ export function FileManagerPage() {
   const [versionTarget, setVersionTarget] = useState(null);
   const [previewUrl, setPreviewUrl] = useState('');
   const [previewFileMeta, setPreviewFileMeta] = useState(null);
+  const [editingFile, setEditingFile] = useState(null);
+  const [editForm, setEditForm] = useState(buildDefaultMetadata);
   const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
 
@@ -65,13 +78,19 @@ export function FileManagerPage() {
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
-    const [fileData, statData] = await Promise.all([
-      fileService.list({ ...filters, limit: 20 }),
-      fileService.statistics().catch(() => null),
-    ]);
-    setFiles(fileData);
-    setStats(statData);
-    setIsLoading(false);
+    setError('');
+    try {
+      const [fileData, statData] = await Promise.all([
+        fileService.list({ ...filters, limit: 20 }),
+        fileService.statistics().catch(() => null),
+      ]);
+      setFiles(fileData);
+      setStats(statData);
+    } catch (apiError) {
+      setError(apiErrorMessage(apiError, 'Unable to load files.'));
+    } finally {
+      setIsLoading(false);
+    }
   }, [filters]);
 
   useEffect(() => {
@@ -121,7 +140,7 @@ export function FileManagerPage() {
               ? {
                   ...entry,
                   status: 'failed',
-                  error: error.response?.data?.message || error.response?.data?.data?.message || 'Upload failed',
+                  error: apiErrorMessage(error, 'Upload failed'),
                 }
               : entry,
           ),
@@ -138,39 +157,95 @@ export function FileManagerPage() {
   const updateFilter = (key, value) => setFilters((current) => ({ ...current, [key]: value, page: 1 }));
 
   const previewFile = async (file) => {
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    const url = await fileService.previewBlob(file.id);
-    setPreviewUrl(url);
-    setPreviewFileMeta(file);
+    setError('');
+    try {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      const url = await fileService.previewBlob(file.id);
+      setPreviewUrl(url);
+      setPreviewFileMeta(file);
+    } catch (apiError) {
+      setError(apiErrorMessage(apiError, 'Preview failed.'));
+    }
   };
 
   const downloadFile = async (file) => {
-    const blob = await fileService.downloadBlob(file.id);
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = file.originalFileName;
-    anchor.click();
-    URL.revokeObjectURL(url);
-    await loadData();
+    setError('');
+    try {
+      const blob = await fileService.downloadBlob(file.id);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = file.originalFileName;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      await loadData();
+    } catch (apiError) {
+      setError(apiErrorMessage(apiError, 'Download failed.'));
+    }
   };
 
   const removeFile = async (file) => {
     if (!window.confirm(`Archive ${file.originalFileName}?`)) return;
-    await fileService.remove(file.id);
-    setMessage(`${file.originalFileName} archived.`);
-    await loadData();
+    setError('');
+    try {
+      await fileService.remove(file.id);
+      setMessage(`${file.originalFileName} archived.`);
+      await loadData();
+    } catch (apiError) {
+      setError(apiErrorMessage(apiError, 'Archive failed.'));
+    }
   };
 
   const loadVersions = async (file) => {
-    setVersions(await fileService.history(file.id));
+    setError('');
+    try {
+      setVersions(await fileService.history(file.id));
+    } catch (apiError) {
+      setError(apiErrorMessage(apiError, 'Unable to load version history.'));
+    }
   };
 
   const restoreVersion = async (versionId) => {
-    await fileService.restoreVersion(versionId);
-    setMessage('File version restored.');
-    setVersions(null);
-    await loadData();
+    setError('');
+    try {
+      await fileService.restoreVersion(versionId);
+      setMessage('File version restored.');
+      setVersions(null);
+      await loadData();
+    } catch (apiError) {
+      setError(apiErrorMessage(apiError, 'Restore version failed.'));
+    }
+  };
+
+  const startEdit = (file) => {
+    setEditingFile(file);
+    setEditForm({
+      curriculum: file.curriculum || '',
+      subject: file.subject || '',
+      weekNo: file.weekNo || '',
+      topic: file.topic || '',
+      description: file.description || '',
+      visibility: file.visibility || 'private',
+      status: file.status || 'active',
+      tags: file.tags || '',
+    });
+  };
+
+  const updateEditField = (key, value) => {
+    setEditForm((current) => ({ ...current, [key]: value }));
+  };
+
+  const saveFileChanges = async () => {
+    if (!editingFile) return;
+    setError('');
+    try {
+      await fileService.update(editingFile.id, editForm);
+      setMessage(`${editingFile.originalFileName} updated.`);
+      setEditingFile(null);
+      await loadData();
+    } catch (apiError) {
+      setError(apiErrorMessage(apiError, 'File update failed.'));
+    }
   };
 
   return (
@@ -180,7 +255,14 @@ export function FileManagerPage() {
         title="File Management"
         description="Manage LMS files, storage usage, previews, secure downloads, and version history."
       />
+      <div className="flex justify-end">
+        <Button variant="secondary" onClick={loadData}>
+          <FiRefreshCw />
+          Refresh
+        </Button>
+      </div>
       {message ? <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm font-semibold text-green-700">{message}</div> : null}
+      {error ? <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">{error}</div> : null}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <DashboardCard title="Total Files" value={Number(stats?.summary?.totalFiles || 0).toLocaleString()} icon={FiFile} />
@@ -302,6 +384,7 @@ export function FileManagerPage() {
             <option value="active">Active</option>
             <option value="archived">Archived</option>
             <option value="draft">Draft</option>
+            <option value="deleted">Deleted</option>
           </select>
           <select value={filters.sort} onChange={(event) => updateFilter('sort', event.target.value)} className="min-h-11 rounded-xl border border-line px-3 text-sm">
             <option value="newest">Newest</option>
@@ -383,6 +466,7 @@ export function FileManagerPage() {
                     <td className="px-4 py-4">
                       <div className="flex flex-wrap gap-2">
                         <Button variant="ghost" className="min-h-9 px-2" aria-label={`Preview ${file.originalFileName}`} onClick={() => previewFile(file)}><FiEye /></Button>
+                        <Button variant="ghost" className="min-h-9 px-2" aria-label={`Edit ${file.originalFileName}`} onClick={() => startEdit(file)}><FiEdit3 /></Button>
                         <Button variant="ghost" className="min-h-9 px-2" aria-label={`Download ${file.originalFileName}`} onClick={() => downloadFile(file)}><FiDownload /></Button>
                         <Button variant="ghost" className="min-h-9 px-2" aria-label={`View version history for ${file.originalFileName}`} onClick={() => loadVersions(file)}><FiRefreshCw /></Button>
                         <Button variant="ghost" className="min-h-9 px-2" aria-label="Upload new version" onClick={() => { setVersionTarget(file); window.scrollTo({ top: 0, behavior: 'smooth' }); }}><FiUploadCloud /></Button>
@@ -439,6 +523,77 @@ export function FileManagerPage() {
           </div>
         </Card>
       ) : null}
+
+      <Modal
+        open={Boolean(editingFile)}
+        title={editingFile ? `Edit ${editingFile.originalFileName}` : 'Edit file'}
+        onClose={() => setEditingFile(null)}
+        footer={
+          <div className="flex justify-end gap-3">
+            <Button variant="secondary" onClick={() => setEditingFile(null)}>Cancel</Button>
+            <Button onClick={saveFileChanges}>Save Changes</Button>
+          </div>
+        }
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          {[
+            ['curriculum', 'Curriculum'],
+            ['subject', 'Subject'],
+            ['weekNo', 'Week'],
+            ['topic', 'Topic'],
+          ].map(([key, label]) => (
+            <label key={key} className="block">
+              <span className="text-xs font-semibold uppercase text-muted">{label}</span>
+              <input
+                value={editForm[key] || ''}
+                onChange={(event) => updateEditField(key, event.target.value)}
+                className="mt-1 min-h-11 w-full rounded-xl border border-line px-3 text-sm outline-none focus:border-primary"
+              />
+            </label>
+          ))}
+          <label className="block">
+            <span className="text-xs font-semibold uppercase text-muted">Visibility</span>
+            <select
+              value={editForm.visibility}
+              onChange={(event) => updateEditField('visibility', event.target.value)}
+              className="mt-1 min-h-11 w-full rounded-xl border border-line px-3 text-sm outline-none focus:border-primary"
+            >
+              <option value="private">Private</option>
+              <option value="public">Public</option>
+              <option value="restricted">Restricted</option>
+              <option value="draft">Draft</option>
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-xs font-semibold uppercase text-muted">Status</span>
+            <select
+              value={editForm.status}
+              onChange={(event) => updateEditField('status', event.target.value)}
+              className="mt-1 min-h-11 w-full rounded-xl border border-line px-3 text-sm outline-none focus:border-primary"
+            >
+              <option value="active">Active</option>
+              <option value="archived">Archived</option>
+              <option value="draft">Draft</option>
+            </select>
+          </label>
+        </div>
+        <label className="mt-3 block">
+          <span className="text-xs font-semibold uppercase text-muted">Tags</span>
+          <input
+            value={editForm.tags || ''}
+            onChange={(event) => updateEditField('tags', event.target.value)}
+            className="mt-1 min-h-11 w-full rounded-xl border border-line px-3 text-sm outline-none focus:border-primary"
+          />
+        </label>
+        <label className="mt-3 block">
+          <span className="text-xs font-semibold uppercase text-muted">Description</span>
+          <textarea
+            value={editForm.description || ''}
+            onChange={(event) => updateEditField('description', event.target.value)}
+            className="mt-1 min-h-24 w-full rounded-xl border border-line px-3 py-2 text-sm outline-none focus:border-primary"
+          />
+        </label>
+      </Modal>
     </div>
   );
 }

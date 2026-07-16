@@ -32,6 +32,7 @@ yarn-error.log*
 pnpm-debug.log*
 logs/**
 backend/logs/**
+backend/backups/**
 uploads/**
 backend/uploads/**
 !uploads/.gitkeep

@@ -1,5 +1,11 @@
 import { apiClient } from './apiClient';
 
+function compactValues(values = {}) {
+  return Object.fromEntries(
+    Object.entries(values).filter(([, value]) => value !== undefined && value !== null && value !== ''),
+  );
+}
+
 export const securityService = {
   async dashboard() {
     const { data } = await apiClient.get('/security/dashboard');
@@ -7,17 +13,17 @@ export const securityService = {
   },
 
   async auditLogs(params = {}) {
-    const { data } = await apiClient.get('/security/audit-logs', { params });
+    const { data } = await apiClient.get('/security/audit-logs', { params: compactValues(params) });
     return data.data;
   },
 
   async alerts(params = {}) {
-    const { data } = await apiClient.get('/security/alerts', { params });
+    const { data } = await apiClient.get('/security/alerts', { params: compactValues(params) });
     return data.data;
   },
 
   async loginHistory(params = {}) {
-    const { data } = await apiClient.get('/security/login-history', { params });
+    const { data } = await apiClient.get('/security/login-history', { params: compactValues(params) });
     return data.data;
   },
 
@@ -37,7 +43,7 @@ export const securityService = {
   },
 
   async backups(params = {}) {
-    const { data } = await apiClient.get('/security/backups', { params });
+    const { data } = await apiClient.get('/security/backups', { params: compactValues(params) });
     return data.data;
   },
 
@@ -47,7 +53,7 @@ export const securityService = {
   },
 
   async restores(params = {}) {
-    const { data } = await apiClient.get('/security/restores', { params });
+    const { data } = await apiClient.get('/security/restores', { params: compactValues(params) });
     return data.data;
   },
 

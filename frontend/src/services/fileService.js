@@ -1,8 +1,14 @@
 import { apiClient } from './apiClient';
 
+function compactValues(values = {}) {
+  return Object.fromEntries(
+    Object.entries(values).filter(([, value]) => value !== undefined && value !== null && value !== ''),
+  );
+}
+
 export const fileService = {
   async list(params = {}) {
-    const { data } = await apiClient.get('/files', { params });
+    const { data } = await apiClient.get('/files', { params: compactValues(params) });
     return data.data;
   },
 
@@ -40,7 +46,7 @@ export const fileService = {
   },
 
   async update(id, payload) {
-    const { data } = await apiClient.put(`/files/${id}`, payload);
+    const { data } = await apiClient.put(`/files/${id}`, compactValues(payload));
     return data.data;
   },
 

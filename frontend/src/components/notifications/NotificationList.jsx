@@ -8,8 +8,16 @@ const priorityStyles = {
   normal: 'border-line bg-white text-muted',
 };
 
-export function NotificationList({ notifications = [], onRead, onDelete, compact = false }) {
+export function NotificationList({
+  notifications = [],
+  onRead,
+  onDelete,
+  compact = false,
+  selectedIds = [],
+  onToggleSelect,
+}) {
   const navigate = useNavigate();
+  const selected = new Set(selectedIds);
 
   if (!notifications.length) {
     return (
@@ -29,23 +37,34 @@ export function NotificationList({ notifications = [], onRead, onDelete, compact
           }`}
         >
           <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h3 className="font-semibold text-ink">{notification.title}</h3>
-                <span
-                  className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${
-                    priorityStyles[notification.priority] || priorityStyles.normal
-                  }`}
-                >
-                  {notification.priority}
-                </span>
+            <div className="flex min-w-0 flex-1 items-start gap-3">
+              {onToggleSelect ? (
+                <input
+                  type="checkbox"
+                  checked={selected.has(notification.id)}
+                  onChange={() => onToggleSelect(notification.id)}
+                  className="mt-1 size-4 rounded border-line text-primary"
+                  aria-label={`Select ${notification.title}`}
+                />
+              ) : null}
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="font-semibold text-ink">{notification.title}</h3>
+                  <span
+                    className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${
+                      priorityStyles[notification.priority] || priorityStyles.normal
+                    }`}
+                  >
+                    {notification.priority}
+                  </span>
+                </div>
+                <p className={`mt-2 text-sm leading-6 text-muted ${compact ? 'max-h-12 overflow-hidden' : ''}`}>
+                  {notification.message}
+                </p>
+                <p className="mt-2 text-xs text-muted">
+                  {notification.notificationType} - {new Date(notification.createdAt).toLocaleString()}
+                </p>
               </div>
-              <p className={`mt-2 text-sm leading-6 text-muted ${compact ? 'max-h-12 overflow-hidden' : ''}`}>
-                {notification.message}
-              </p>
-              <p className="mt-2 text-xs text-muted">
-                {notification.notificationType} • {new Date(notification.createdAt).toLocaleString()}
-              </p>
             </div>
             <div className="flex shrink-0 gap-2">
               {notification.actionUrl ? (

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { FiCpu, FiDollarSign, FiServer, FiZap } from 'react-icons/fi';
+import { FiCpu, FiDollarSign, FiRefreshCw, FiServer, FiZap } from 'react-icons/fi';
 import { PageHeader } from '../../components/super-admin/PageHeader';
 import { StatusBadge } from '../../components/super-admin/StatusBadge';
+import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Loader } from '../../components/ui/Loader';
@@ -24,36 +25,28 @@ export function AIMonitoringPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    let isMounted = true;
+  async function loadAiMonitoring({ keepData = false } = {}) {
+    if (!keepData) setIsLoading(true);
+    setError('');
+    try {
+      const [providers, costs, logs] = await Promise.all([
+        superAdminService.getAiProviders(),
+        superAdminService.getAiCosts(),
+        superAdminService.getAiLogs({ limit: 25 }),
+      ]);
 
-    async function loadAiMonitoring() {
-      try {
-        const [providers, costs, logs] = await Promise.all([
-          superAdminService.getAiProviders(),
-          superAdminService.getAiCosts(),
-          superAdminService.getAiLogs({ limit: 25 }),
-        ]);
-
-        if (isMounted) {
-          setData({ providers, costs, logs });
-        }
-      } catch (apiError) {
-        if (isMounted) {
-          setError(apiError.response?.data?.message || 'Unable to load AI monitoring data.');
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
+      setData({ providers, costs, logs });
+    } catch (apiError) {
+      setError(apiError.response?.data?.message || 'Unable to load AI monitoring data.');
+    } finally {
+      if (!keepData) {
+        setIsLoading(false);
       }
     }
+  }
 
+  useEffect(() => {
     loadAiMonitoring();
-
-    return () => {
-      isMounted = false;
-    };
   }, []);
 
   if (isLoading) {
@@ -75,6 +68,13 @@ export function AIMonitoringPage() {
         title="AI Monitoring"
         description="Track active AI providers, request volume, token estimates, cost estimates, and generation logs."
       />
+      <div className="flex justify-end">
+        <Button variant="secondary" onClick={() => loadAiMonitoring({ keepData: true })}>
+          <FiRefreshCw />
+          Refresh
+        </Button>
+      </div>
+      {error ? <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">{error}</div> : null}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard title="Total Requests" value={totals.totalRequests || 0} icon={FiZap} />
         <StatCard title="Daily Requests" value={totals.dailyRequests || 0} icon={FiCpu} />

@@ -1,12 +1,43 @@
 import { body, param, query } from 'express-validator';
 
+const optionalField = { values: 'falsy' };
+const targetIdTypes = ['curriculum', 'batch', 'teacher', 'student'];
+
+function validateAnnouncementTargets(targets = []) {
+  if (!Array.isArray(targets)) {
+    return true;
+  }
+
+  targets.forEach((target) => {
+    if (target?.targetType === 'role' && !target.targetRole) {
+      throw new Error('Target role is required when target type is role');
+    }
+
+    if (targetIdTypes.includes(target?.targetType) && !target.targetId) {
+      throw new Error('Target ID is required for the selected target type');
+    }
+  });
+
+  return true;
+}
+
 export const notificationQueryValidator = [
-  query('search').optional().trim(),
+  query('search').optional(optionalField).trim(),
   query('type')
-    .optional()
+    .optional(optionalField)
     .isIn(['system', 'academic', 'quiz', 'material', 'announcement', 'security', 'reminder']),
-  query('limit').optional().isInt({ min: 1, max: 100 }),
-  query('offset').optional().isInt({ min: 0 }),
+  query('readStatus').optional(optionalField).isIn(['read', 'unread']),
+  query('priority').optional(optionalField).isIn(['normal', 'important', 'urgent']),
+  query('limit').optional(optionalField).isInt({ min: 1, max: 100 }),
+  query('offset').optional(optionalField).isInt({ min: 0 }),
+];
+
+export const announcementQueryValidator = [
+  query('search').optional(optionalField).trim(),
+  query('priority').optional(optionalField).isIn(['normal', 'important', 'urgent']),
+  query('status').optional(optionalField).isIn(['draft', 'published', 'expired']),
+  query('limit').optional(optionalField).isInt({ min: 1, max: 100 }),
+  query('offset').optional(optionalField).isInt({ min: 0 }),
 ];
 
 export const readNotificationsValidator = [
@@ -22,20 +53,40 @@ export const announcementValidator = [
   body('title').trim().isLength({ min: 3, max: 180 }).withMessage('Title is required'),
   body('description').trim().isLength({ min: 5 }).withMessage('Description is required'),
   body('audienceRole')
-    .optional({ nullable: true })
+    .optional({ nullable: true, values: 'falsy' })
     .isIn(['super-admin', 'admin', 'teacher', 'student']),
-  body('priority').optional().isIn(['normal', 'important', 'urgent']),
-  body('status').optional().isIn(['draft', 'published', 'expired']),
-  body('publishDate').optional({ nullable: true }).isISO8601(),
-  body('expiryDate').optional({ nullable: true }).isISO8601(),
-  body('targets').optional().isArray(),
+  body('priority').optional(optionalField).isIn(['normal', 'important', 'urgent']),
+  body('status').optional(optionalField).isIn(['draft', 'published', 'expired']),
+  body('publishDate').optional({ nullable: true, values: 'falsy' }).isISO8601(),
+  body('expiryDate').optional({ nullable: true, values: 'falsy' }).isISO8601(),
+  body('targets').optional().isArray().custom(validateAnnouncementTargets),
   body('targets.*.targetType')
-    .optional()
+    .optional(optionalField)
     .isIn(['all_users', 'role', 'curriculum', 'batch', 'teacher', 'student']),
   body('targets.*.targetRole')
-    .optional({ nullable: true })
+    .optional({ nullable: true, values: 'falsy' })
     .isIn(['super-admin', 'admin', 'teacher', 'student']),
-  body('targets.*.targetId').optional({ nullable: true }).isInt({ min: 1 }),
+  body('targets.*.targetId').optional({ nullable: true, values: 'falsy' }).isInt({ min: 1 }),
+];
+
+export const announcementUpdateValidator = [
+  body('title').optional(optionalField).trim().isLength({ min: 3, max: 180 }).withMessage('Title must be 3 to 180 characters'),
+  body('description').optional(optionalField).trim().isLength({ min: 5 }).withMessage('Description must be at least 5 characters'),
+  body('audienceRole')
+    .optional({ nullable: true, values: 'falsy' })
+    .isIn(['super-admin', 'admin', 'teacher', 'student']),
+  body('priority').optional(optionalField).isIn(['normal', 'important', 'urgent']),
+  body('status').optional(optionalField).isIn(['draft', 'published', 'expired']),
+  body('publishDate').optional({ nullable: true, values: 'falsy' }).isISO8601(),
+  body('expiryDate').optional({ nullable: true, values: 'falsy' }).isISO8601(),
+  body('targets').optional().isArray().custom(validateAnnouncementTargets),
+  body('targets.*.targetType')
+    .optional(optionalField)
+    .isIn(['all_users', 'role', 'curriculum', 'batch', 'teacher', 'student']),
+  body('targets.*.targetRole')
+    .optional({ nullable: true, values: 'falsy' })
+    .isIn(['super-admin', 'admin', 'teacher', 'student']),
+  body('targets.*.targetId').optional({ nullable: true, values: 'falsy' }).isInt({ min: 1 }),
 ];
 
 export const announcementIdValidator = [

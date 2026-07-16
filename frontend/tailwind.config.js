@@ -5,12 +5,12 @@ export default {
     extend: {
       colors: {
         primary: {
-          DEFAULT: '#F97316',
-          dark: '#EA580C',
-          light: '#FDBA74',
+          DEFAULT: 'rgb(var(--color-primary) / <alpha-value>)',
+          dark: 'rgb(var(--color-primary-dark) / <alpha-value>)',
+          light: 'rgb(var(--color-primary-light) / <alpha-value>)',
         },
-        surface: '#FFFFFF',
-        page: '#F8FAFC',
+        surface: 'rgb(var(--color-surface) / <alpha-value>)',
+        page: 'rgb(var(--color-page) / <alpha-value>)',
         ink: '#1F2937',
         muted: '#6B7280',
         line: '#E5E7EB',
