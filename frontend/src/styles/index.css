@@ -8,6 +8,13 @@
   --color-primary-light: 253 186 116;
   --color-surface: 255 255 255;
   --color-page: 248 250 252;
+  --color-elevated: 255 255 255;
+  --color-subtle: 241 245 249;
+  --color-ink: 31 41 55;
+  --color-muted: 107 114 128;
+  --color-line: 229 231 235;
+  --color-accent-soft: 255 247 237;
+  --shadow-soft: 0 12px 30px rgba(15, 23, 42, 0.08);
   color: #1f2937;
   background: #f8fafc;
   font-synthesis: none;
@@ -16,10 +23,40 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+:root.theme-dark {
+  --color-surface: 15 23 42;
+  --color-page: 2 6 23;
+  --color-elevated: 30 41 59;
+  --color-subtle: 30 41 59;
+  --color-ink: 248 250 252;
+  --color-muted: 203 213 225;
+  --color-line: 71 85 105;
+  --color-accent-soft: 67 20 7;
+  --shadow-soft: 0 18px 40px rgba(0, 0, 0, 0.35);
+  color: rgb(var(--color-ink));
+  background: rgb(var(--color-page));
+}
+
+:root.dark {
+  --color-surface: 15 23 42;
+  --color-page: 2 6 23;
+  --color-elevated: 30 41 59;
+  --color-subtle: 30 41 59;
+  --color-ink: 248 250 252;
+  --color-muted: 203 213 225;
+  --color-line: 71 85 105;
+  --color-accent-soft: 67 20 7;
+  --shadow-soft: 0 18px 40px rgba(0, 0, 0, 0.35);
+  color: rgb(var(--color-ink));
+  background: rgb(var(--color-page));
+}
+
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  background: rgb(var(--color-page));
+  color: rgb(var(--color-ink));
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
     sans-serif;
@@ -36,4 +73,190 @@ select {
   .focus-ring {
     @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2;
   }
+}
+
+@layer utilities {
+  .theme-dark .bg-white,
+  .theme-dark .bg-white\/95 {
+    background-color: rgb(var(--color-surface) / var(--tw-bg-opacity, 1));
+  }
+
+  .theme-dark .bg-slate-50,
+  .theme-dark .bg-slate-100,
+  .theme-dark .bg-slate-200,
+  .theme-dark .bg-gray-50,
+  .theme-dark .bg-gray-100 {
+    background-color: rgb(var(--color-subtle) / var(--tw-bg-opacity, 1));
+  }
+
+  .theme-dark .bg-orange-50,
+  .theme-dark .bg-orange-50\/40 {
+    background-color: rgb(var(--color-accent-soft) / var(--tw-bg-opacity, 1));
+  }
+
+  .theme-dark .hover\:bg-orange-50:hover,
+  .theme-dark .hover\:bg-orange-50\/40:hover {
+    background-color: rgb(var(--color-accent-soft) / var(--tw-bg-opacity, 1));
+  }
+
+  .theme-dark .border-white {
+    border-color: rgb(var(--color-line) / var(--tw-border-opacity, 1));
+  }
+
+  .theme-dark input,
+  .theme-dark textarea,
+  .theme-dark select {
+    background-color: rgb(var(--color-surface));
+    color: rgb(var(--color-ink));
+    border-color: rgb(var(--color-line));
+  }
+
+  .theme-dark input::placeholder,
+  .theme-dark textarea::placeholder {
+    color: rgb(var(--color-muted));
+  }
+}
+
+[data-theme='dark'] body {
+  background-color: rgb(2 6 23);
+  color: rgb(248 250 252);
+}
+
+[data-theme='dark'] .text-ink {
+  color: rgb(248 250 252) !important;
+}
+
+[data-theme='dark'] .text-muted {
+  color: rgb(203 213 225) !important;
+}
+
+[data-theme='dark'] .text-slate-500,
+[data-theme='dark'] .text-slate-600,
+[data-theme='dark'] .text-gray-500,
+[data-theme='dark'] .text-gray-600 {
+  color: rgb(203 213 225) !important;
+}
+
+[data-theme='dark'] .border-line,
+[data-theme='dark'] .divide-line > :not([hidden]) ~ :not([hidden]) {
+  border-color: rgb(71 85 105) !important;
+}
+
+[data-theme='dark'] .bg-page {
+  background-color: rgb(2 6 23) !important;
+}
+
+[data-theme='dark'] .bg-surface,
+[data-theme='dark'] .bg-white,
+[data-theme='dark'] .bg-white\/95 {
+  background-color: rgb(15 23 42) !important;
+}
+
+[data-theme='dark'] .bg-slate-50,
+[data-theme='dark'] .bg-slate-100,
+[data-theme='dark'] .bg-slate-200,
+[data-theme='dark'] .bg-gray-50,
+[data-theme='dark'] .bg-gray-100 {
+  background-color: rgb(30 41 59) !important;
+}
+
+[data-theme='dark'] .bg-orange-50,
+[data-theme='dark'] .bg-orange-50\/40,
+[data-theme='dark'] .bg-orange-50\/50,
+[data-theme='dark'] .hover\:bg-orange-50:hover,
+[data-theme='dark'] .hover\:bg-orange-50\/40:hover {
+  background-color: rgb(67 20 7) !important;
+}
+
+[data-theme='dark'] .bg-green-50 {
+  background-color: rgb(5 46 22) !important;
+}
+
+[data-theme='dark'] .text-green-700,
+[data-theme='dark'] .text-green-800 {
+  color: rgb(187 247 208) !important;
+}
+
+[data-theme='dark'] .bg-red-50 {
+  background-color: rgb(69 10 10) !important;
+}
+
+[data-theme='dark'] .text-red-600,
+[data-theme='dark'] .text-red-700,
+[data-theme='dark'] .text-red-800 {
+  color: rgb(254 202 202) !important;
+}
+
+[data-theme='dark'] .bg-blue-50 {
+  background-color: rgb(23 37 84) !important;
+}
+
+[data-theme='dark'] .bg-amber-50,
+[data-theme='dark'] .bg-yellow-100 {
+  background-color: rgb(69 26 3) !important;
+}
+
+[data-theme='dark'] input,
+[data-theme='dark'] textarea,
+[data-theme='dark'] select {
+  background-color: rgb(15 23 42) !important;
+  color: rgb(248 250 252) !important;
+  border-color: rgb(71 85 105) !important;
+}
+
+[data-theme='dark'] input::placeholder,
+[data-theme='dark'] textarea::placeholder {
+  color: rgb(203 213 225) !important;
+  opacity: 1;
+}
+
+[data-theme='dark'] input[type='date']::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  opacity: 0.9;
+}
+
+[data-theme='dark'] input[type='checkbox'],
+[data-theme='dark'] input[type='radio'] {
+  background-color: rgb(30 41 59) !important;
+  border-color: rgb(148 163 184) !important;
+}
+
+[data-theme='dark'] button:disabled,
+[data-theme='dark'] input:disabled,
+[data-theme='dark'] textarea:disabled,
+[data-theme='dark'] select:disabled {
+  opacity: 0.55;
+  color: rgb(148 163 184) !important;
+}
+
+[data-theme='dark'] table {
+  color: rgb(248 250 252);
+}
+
+[data-theme='dark'] thead {
+  background-color: rgb(30 41 59) !important;
+}
+
+[data-theme='dark'] tbody {
+  background-color: rgb(15 23 42) !important;
+}
+
+[data-theme='dark'] tr:hover {
+  background-color: rgb(67 20 7 / 0.65) !important;
+}
+
+[data-theme='dark'] .shadow-soft {
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35) !important;
+}
+
+[data-theme='dark'] .backdrop-blur {
+  background-color: rgb(15 23 42 / 0.94) !important;
+}
+
+[data-theme='dark'] svg {
+  color: currentColor;
+}
+
+[data-theme='dark'] .focus-ring:focus-visible {
+  --tw-ring-offset-color: rgb(2 6 23);
 }

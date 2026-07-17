@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { env } from '../config/env.js';
 import { generateId } from '../utils/idGenerator.js';
 import { allowedFileGroups, allManagedFileExtensions, isAllowedExtension } from '../utils/fileHelper.js';
+import { AppError } from '../utils/appError.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -55,6 +56,17 @@ const extensionGroups = {
   files: allManagedFileExtensions,
 };
 
+const mimeExtensions = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+  'image/gif': '.gif',
+  'image/bmp': '.bmp',
+  'image/x-icon': '.ico',
+  'image/vnd.microsoft.icon': '.ico',
+  'image/avif': '.avif',
+};
+
 function ensureDirectory(directory) {
   if (!fs.existsSync(directory)) {
     fs.mkdirSync(directory, { recursive: true });
@@ -71,7 +83,8 @@ const storage = multer.diskStorage({
   },
   filename: (req, file, callback) => {
     const uploadType = req.uploadType || 'documents';
-    callback(null, `${uploadType}-${generateId()}${path.extname(file.originalname)}`);
+    const extension = path.extname(file.originalname) || mimeExtensions[file.mimetype] || '';
+    callback(null, `${uploadType}-${generateId()}${extension}`);
   },
 });
 
@@ -81,8 +94,19 @@ const multerInstance = multer({
     const uploadType = req.uploadType || 'documents';
     const allowedExtensions = extensionGroups[uploadType] || extensionGroups.documents;
 
-    if (!isAllowedExtension(file.originalname, allowedExtensions)) {
-      return callback(new Error(`Invalid file type for ${uploadType} upload`));
+    const extension = path.extname(file.originalname).toLowerCase();
+    const isKnownImageBlob =
+      !extension &&
+      allowedExtensions === allowedFileGroups.images &&
+      Boolean(mimeExtensions[file.mimetype]);
+
+    if (!isKnownImageBlob && !isAllowedExtension(file.originalname, allowedExtensions)) {
+      return callback(
+        new AppError(
+          `Invalid file type for ${uploadType} upload. Allowed extensions: ${allowedExtensions.join(', ')}`,
+          400,
+        ),
+      );
     }
 
     return callback(null, true);
@@ -99,7 +123,12 @@ export function uploadFor(uploadType, fieldName = 'file', options = {}) {
       ? multerInstance.array(fieldName, options.maxCount || 10)
       : multerInstance.single(fieldName);
 
-    return handler(req, res, next);
+    return handler(req, res, (error) => {
+      if (!error) return next();
+      if (error.statusCode) return next(error);
+
+      return next(new AppError(error.message || 'File upload failed', 400));
+    });
   };
 }
 

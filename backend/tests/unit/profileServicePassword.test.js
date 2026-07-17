@@ -6,6 +6,7 @@ const mockComparePassword = jest.fn();
 const mockHashPassword = jest.fn();
 const mockCreateSecurityEvent = jest.fn();
 const mockTouchPasswordChanged = jest.fn();
+const mockAuditAction = jest.fn();
 const MOCK_CURRENT_PASSWORD = 'MockCurrent1!';
 const MOCK_NEW_PASSWORD = 'MockUpdated1!';
 
@@ -41,6 +42,10 @@ jest.unstable_mockModule('../../repositories/notificationRepository.js', () => (
   updateNotificationPreferences: jest.fn(),
 }));
 
+jest.unstable_mockModule('../../services/securityService.js', () => ({
+  auditAction: mockAuditAction,
+}));
+
 const { changeMyPassword } = await import('../../services/profileService.js');
 
 describe('profileService self-service password changes', () => {
@@ -72,6 +77,13 @@ describe('profileService self-service password changes', () => {
       expect.objectContaining({
         userId: 22,
         eventType: 'password_changed',
+      }),
+    );
+    expect(mockAuditAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user: expect.objectContaining({ id: 22, role: 'admin' }),
+        action: 'password_changed',
+        module: 'profile',
       }),
     );
   });

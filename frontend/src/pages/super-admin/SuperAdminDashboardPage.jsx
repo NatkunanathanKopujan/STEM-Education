@@ -34,18 +34,25 @@ export function SuperAdminDashboardPage() {
 
   useEffect(() => {
     let mounted = true;
-    async function loadDashboard() {
+    async function loadDashboard({ initial = false } = {}) {
+      if (initial) {
+        setIsLoading(true);
+      }
       const summary = await dashboardService.summary();
       if (mounted) {
         setData(summary);
         setIsLoading(false);
       }
     }
-    loadDashboard().catch(() => {
+    loadDashboard({ initial: true }).catch(() => {
       if (mounted) setIsLoading(false);
     });
+    const intervalId = window.setInterval(() => {
+      loadDashboard().catch(() => {});
+    }, 30000);
     return () => {
       mounted = false;
+      window.clearInterval(intervalId);
     };
   }, []);
 
@@ -94,20 +101,44 @@ export function SuperAdminDashboardPage() {
           )}
         </Card>
         <Card className="p-5">
-          <h2 className="text-lg font-bold text-ink">Notifications</h2>
+          <h2 className="text-lg font-bold text-ink">Account Activity</h2>
           <div className="mt-5 space-y-3">
-            {data?.notifications?.map((item) => (
-              <div key={`${item.title}-${item.createdAt}`} className="rounded-xl border border-line bg-page p-4">
-                <p className="text-sm font-semibold text-ink">{item.title}</p>
-                <p className="mt-1 text-xs text-muted">{item.message}</p>
+            {data?.recentActivities?.map((item) => (
+              <div key={item.id || `${item.action}-${item.createdAt}`} className="rounded-xl border border-line bg-page p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-ink">{item.description || item.action}</p>
+                    <p className="mt-1 text-xs text-muted">
+                      {item.userName || 'System'}{item.role ? ` - ${item.role}` : ''} - {item.module}
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-orange-50 px-2 py-1 text-xs font-bold capitalize text-primary">
+                    {item.status || 'success'}
+                  </span>
+                </div>
+                <p className="mt-2 text-xs text-muted">{item.createdAt ? new Date(item.createdAt).toLocaleString() : '-'}</p>
               </div>
             ))}
-            {!data?.notifications?.length ? (
-              <EmptyState title="No notifications" description="System notifications will appear here when records are created." />
+            {!data?.recentActivities?.length ? (
+              <EmptyState title="No account activity" description="Real audit activity will appear here after users perform system actions." />
             ) : null}
           </div>
         </Card>
       </div>
+      <Card className="p-5">
+        <h2 className="text-lg font-bold text-ink">Notifications</h2>
+        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {data?.notifications?.map((item) => (
+            <div key={`${item.title}-${item.createdAt}`} className="rounded-xl border border-line bg-page p-4">
+              <p className="text-sm font-semibold text-ink">{item.title}</p>
+              <p className="mt-1 text-xs text-muted">{item.message}</p>
+            </div>
+          ))}
+          {!data?.notifications?.length ? (
+            <EmptyState title="No notifications" description="System notifications will appear here when records are created." />
+          ) : null}
+        </div>
+      </Card>
     </div>
   );
 }

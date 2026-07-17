@@ -4,6 +4,7 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Loader } from '../../components/ui/Loader';
 import { profileService } from '../../services/profileService';
+import { useTheme } from '../../hooks/useTheme';
 
 const notificationKeys = [
   ['quizNotifications', 'Quiz Notifications'],
@@ -17,6 +18,7 @@ const notificationKeys = [
 ];
 
 export function UserSettingsPage() {
+  const { setThemePreference, themePreference } = useTheme();
   const [preferences, setPreferences] = useState(null);
   const [notificationPreferences, setNotificationPreferences] = useState(null);
   const [loginHistory, setLoginHistory] = useState([]);
@@ -29,7 +31,7 @@ export function UserSettingsPage() {
       profileService.getLoginHistory({ limit: 20, ...filters }),
     ]);
 
-    setPreferences(prefs.preferences);
+    setPreferences({ ...prefs.preferences, themePreference });
     setNotificationPreferences(prefs.notificationPreferences);
     setLoginHistory(history.history || []);
   };
@@ -45,6 +47,7 @@ export function UserSettingsPage() {
     });
     setPreferences(data.preferences);
     setNotificationPreferences(data.notificationPreferences);
+    setThemePreference(data.preferences.themePreference);
     setMessage('Settings saved successfully.');
   };
 
@@ -68,8 +71,12 @@ export function UserSettingsPage() {
               Theme Preference
               <select
                 value={preferences.themePreference}
-                onChange={(event) => setPreferences((value) => ({ ...value, themePreference: event.target.value }))}
-                className="mt-2 min-h-11 w-full rounded-xl border border-line px-4 text-sm outline-none focus:border-primary"
+                onChange={(event) => {
+                  const nextTheme = event.target.value;
+                  setPreferences((value) => ({ ...value, themePreference: nextTheme }));
+                  setThemePreference(nextTheme);
+                }}
+                className="mt-2 min-h-11 w-full rounded-xl border border-line bg-white px-4 text-sm text-ink outline-none focus:border-primary"
               >
                 <option value="light">Light Mode</option>
                 <option value="dark">Dark Mode</option>
@@ -81,7 +88,7 @@ export function UserSettingsPage() {
               <select
                 value={preferences.languagePreference}
                 onChange={(event) => setPreferences((value) => ({ ...value, languagePreference: event.target.value }))}
-                className="mt-2 min-h-11 w-full rounded-xl border border-line px-4 text-sm outline-none focus:border-primary"
+                className="mt-2 min-h-11 w-full rounded-xl border border-line bg-white px-4 text-sm text-ink outline-none focus:border-primary"
               >
                 <option value="en">English</option>
                 <option value="ta">Tamil</option>
@@ -122,7 +129,7 @@ export function UserSettingsPage() {
                   preferences: { ...(value.preferences || {}), profileVisibility: event.target.value },
                 }))
               }
-              className="mt-2 min-h-11 w-full rounded-xl border border-line px-4 text-sm outline-none focus:border-primary"
+              className="mt-2 min-h-11 w-full rounded-xl border border-line bg-white px-4 text-sm text-ink outline-none focus:border-primary"
             >
               <option value="private">Private</option>
               <option value="role_members">Role Members</option>
@@ -160,12 +167,12 @@ export function UserSettingsPage() {
                 value={historyFilters.search}
                 onChange={(event) => setHistoryFilters((value) => ({ ...value, search: event.target.value }))}
                 placeholder="Search IP, browser, location"
-                className="min-h-11 rounded-xl border border-line px-4 text-sm outline-none focus:border-primary"
+                className="min-h-11 rounded-xl border border-line bg-white px-4 text-sm text-ink outline-none focus:border-primary"
               />
               <select
                 value={historyFilters.status}
                 onChange={(event) => setHistoryFilters((value) => ({ ...value, status: event.target.value }))}
-                className="min-h-11 rounded-xl border border-line px-4 text-sm outline-none focus:border-primary"
+                className="min-h-11 rounded-xl border border-line bg-white px-4 text-sm text-ink outline-none focus:border-primary"
               >
                 <option value="">All Status</option>
                 <option value="successful">Successful</option>

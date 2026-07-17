@@ -26,9 +26,7 @@ export const loginValidator = [
 
 export const changePasswordValidator = [
   body('currentPassword').notEmpty().withMessage('Current password is required'),
-  body('newPassword')
-    .isLength({ min: 8 })
-    .withMessage('New password must be at least 8 characters'),
+  body('newPassword').notEmpty().withMessage('New password is required'),
   body('confirmPassword').custom((value, { req }) => {
     if (value !== req.body.newPassword) {
       throw new Error('Password confirmation does not match');
@@ -47,9 +45,7 @@ export const forgotPasswordValidator = [
 
 export const resetPasswordValidator = [
   body('token').notEmpty().withMessage('Reset token is required'),
-  body('newPassword')
-    .isLength({ min: 8 })
-    .withMessage('New password must be at least 8 characters'),
+  body('newPassword').notEmpty().withMessage('New password is required'),
   body('confirmPassword').custom((value, { req }) => {
     if (value !== req.body.newPassword) {
       throw new Error('Password confirmation does not match');

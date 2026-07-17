@@ -1,19 +1,31 @@
 import { body, param, query } from 'express-validator';
 
 export const updateProfileValidator = [
-  body('fullName').optional().trim().isLength({ min: 2, max: 120 }),
-  body('email').optional().isEmail().withMessage('Valid email is required'),
-  body('phone').optional({ nullable: true }).trim().isLength({ min: 6, max: 30 }),
-  body('address').optional({ nullable: true }).trim().isLength({ max: 255 }),
-  body('bio').optional({ nullable: true }).trim().isLength({ max: 1000 }),
-  body('department').optional({ nullable: true }).trim().isLength({ max: 120 }),
-  body('qualification').optional({ nullable: true }).trim().isLength({ max: 180 }),
-  body('curriculum').optional({ nullable: true }).trim().isLength({ max: 180 }),
+  body('fullName')
+    .optional()
+    .trim()
+    .isLength({ min: 2, max: 120 })
+    .withMessage('Full name must be 2 to 120 characters'),
+  body('email')
+    .optional({ nullable: true, values: 'falsy' })
+    .trim()
+    .isEmail()
+    .withMessage('Valid email is required'),
+  body('phone')
+    .optional({ nullable: true, values: 'falsy' })
+    .trim()
+    .matches(/^[+()\-\s0-9]{6,30}$/)
+    .withMessage('Phone number must be 6 to 30 digits or phone symbols'),
+  body('address').optional({ nullable: true, values: 'falsy' }).trim().isLength({ max: 255 }),
+  body('bio').optional({ nullable: true, values: 'falsy' }).trim().isLength({ max: 1000 }),
+  body('department').optional({ nullable: true, values: 'falsy' }).trim().isLength({ max: 120 }),
+  body('qualification').optional({ nullable: true, values: 'falsy' }).trim().isLength({ max: 180 }),
+  body('curriculum').optional({ nullable: true, values: 'falsy' }).trim().isLength({ max: 180 }),
 ];
 
 export const changePasswordValidator = [
   body('currentPassword').notEmpty().withMessage('Current password is required'),
-  body('newPassword').isLength({ min: 8 }).withMessage('New password must be at least 8 characters'),
+  body('newPassword').notEmpty().withMessage('New password is required'),
   body('confirmPassword').custom((value, { req }) => value === req.body.newPassword).withMessage('Passwords do not match'),
 ];
 

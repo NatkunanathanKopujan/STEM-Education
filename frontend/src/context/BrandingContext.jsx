@@ -7,6 +7,7 @@ const defaultBranding = {
   universityName: 'DBIT LMS',
   subtitle: 'Learning Management System',
   logoUrl: '',
+  logoVersion: '',
 };
 
 function resolveAssetUrl(value) {
@@ -19,17 +20,21 @@ function resolveAssetUrl(value) {
   }
 
   const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
-  const assetBase = apiBase.replace(/\/api\/?$/, '');
+  const assetBase = apiBase.startsWith('http')
+    ? apiBase.replace(/\/api\/?$/, '')
+    : 'http://localhost:5000';
   return `${assetBase}${value.startsWith('/') ? value : `/${value}`}`;
 }
 
 function mapSettingsToBranding(settings = []) {
-  const byKey = Object.fromEntries(settings.map((setting) => [setting.settingKey, setting.settingValue]));
+  const byKey = Object.fromEntries(settings.map((setting) => [setting.settingKey, setting]));
+  const logoSetting = byKey['branding.logoUrl'];
 
   return {
-    universityName: byKey['branding.universityName'] || defaultBranding.universityName,
-    subtitle: byKey['branding.universityName'] ? 'Learning Management System' : defaultBranding.subtitle,
-    logoUrl: resolveAssetUrl(byKey['branding.logoUrl']),
+    universityName: byKey['branding.universityName']?.settingValue || defaultBranding.universityName,
+    subtitle: byKey['branding.universityName']?.settingValue ? 'Learning Management System' : defaultBranding.subtitle,
+    logoUrl: resolveAssetUrl(logoSetting?.settingValue),
+    logoVersion: logoSetting?.updatedAt || '',
   };
 }
 
@@ -37,17 +42,46 @@ export function BrandingProvider({ children }) {
   const { isAuthenticated, role } = useAuth();
   const [branding, setBranding] = useState(defaultBranding);
 
-  const refreshBranding = useCallback(async () => {
+  const refreshBranding = useCallback(async (optimisticBranding = {}) => {
     if (!isAuthenticated || !['super-admin', 'admin'].includes(role)) {
       setBranding(defaultBranding);
       return;
     }
 
+    if (optimisticBranding.logoUrl) {
+      setBranding((currentBranding) => ({
+        ...currentBranding,
+        logoUrl: resolveAssetUrl(optimisticBranding.logoUrl),
+        logoVersion: optimisticBranding.logoVersion || String(Date.now()),
+      }));
+    }
+
+    if (optimisticBranding.universityName) {
+      setBranding((currentBranding) => ({
+        ...currentBranding,
+        universityName: optimisticBranding.universityName,
+        subtitle: 'Learning Management System',
+      }));
+    }
+
     try {
       const data = await settingsService.list({ search: 'branding.', limit: 20 });
-      setBranding(mapSettingsToBranding(data.settings || []));
+      const nextBranding = mapSettingsToBranding(data.settings || []);
+      const optimisticLogoUrl = optimisticBranding.logoUrl
+        ? resolveAssetUrl(optimisticBranding.logoUrl)
+        : '';
+
+      setBranding({
+        ...nextBranding,
+        universityName: optimisticBranding.universityName || nextBranding.universityName,
+        subtitle: optimisticBranding.universityName ? 'Learning Management System' : nextBranding.subtitle,
+        logoUrl: optimisticLogoUrl || nextBranding.logoUrl,
+        logoVersion: optimisticBranding.logoVersion || nextBranding.logoVersion,
+      });
     } catch {
-      setBranding(defaultBranding);
+      if (!optimisticBranding.logoUrl) {
+        setBranding(defaultBranding);
+      }
     }
   }, [isAuthenticated, role]);
 

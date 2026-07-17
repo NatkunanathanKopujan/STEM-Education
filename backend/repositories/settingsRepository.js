@@ -63,8 +63,10 @@ export async function listSettings({ search, limit = 100, offset = 0 } = {}) {
   };
 }
 
-export async function findSettingByKey(settingKey) {
-  const [rows] = await db.execute(`${settingsSelect} WHERE s.setting_key = ? LIMIT 1`, [settingKey]);
+export async function findSettingByKey(settingKey, connection = db) {
+  const [rows] = await connection.execute(`${settingsSelect} WHERE s.setting_key = ? LIMIT 1`, [
+    settingKey,
+  ]);
   return rows[0] ? mapSetting(rows[0]) : null;
 }
 
@@ -99,6 +101,7 @@ export async function updateSetting(settingKey, { settingValue, description, upd
 
   assignments.push('updated_by = ?');
   values.push(updatedBy || null);
+  assignments.push('updated_at = CURRENT_TIMESTAMP');
 
   const [result] = await db.execute(
     `UPDATE settings SET ${assignments.join(', ')} WHERE setting_key = ?`,
@@ -108,14 +111,15 @@ export async function updateSetting(settingKey, { settingValue, description, upd
   return result.affectedRows > 0;
 }
 
-export async function upsertSetting(payload) {
-  await db.execute(
+export async function upsertSetting(payload, connection = db) {
+  await connection.execute(
     `INSERT INTO settings (setting_key, setting_value, description, updated_by)
      VALUES (?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        setting_value = VALUES(setting_value),
        description = VALUES(description),
-       updated_by = VALUES(updated_by)`,
+       updated_by = VALUES(updated_by),
+       updated_at = CURRENT_TIMESTAMP`,
     [
       payload.settingKey,
       JSON.stringify(payload.settingValue ?? null),
@@ -124,7 +128,7 @@ export async function upsertSetting(payload) {
     ],
   );
 
-  return findSettingByKey(payload.settingKey);
+  return findSettingByKey(payload.settingKey, connection);
 }
 
 export async function deleteSetting(settingKey) {

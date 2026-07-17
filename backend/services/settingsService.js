@@ -9,6 +9,10 @@ import {
 } from '../repositories/settingsRepository.js';
 import { auditAction } from './securityService.js';
 
+function isBlankLogoSetting(setting) {
+  return setting.settingKey === 'branding.logoUrl' && !String(setting.settingValue || '').trim();
+}
+
 export function getSettings(filters = {}) {
   return listSettings(filters);
 }
@@ -50,6 +54,10 @@ export async function addSetting(user, payload, req = {}) {
 }
 
 export async function saveSetting(user, settingKey, payload, req = {}) {
+  if (isBlankLogoSetting({ settingKey, settingValue: payload.settingValue })) {
+    throw new AppError('Use Reset to remove the system logo instead of saving an empty logo URL', 400);
+  }
+
   const updated = await updateSetting(settingKey, {
     settingValue: payload.settingValue,
     description: payload.description,
@@ -75,8 +83,9 @@ export async function saveSetting(user, settingKey, payload, req = {}) {
 }
 
 export async function saveSettings(user, payload, req = {}) {
+  const settingsPayload = payload.settings.filter((setting) => !isBlankLogoSetting(setting));
   const settings = await Promise.all(
-    payload.settings.map((setting) =>
+    settingsPayload.map((setting) =>
       upsertSetting({
         ...setting,
         updatedBy: user.id,

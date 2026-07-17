@@ -36,37 +36,65 @@ function SeverityBadge({ value }) {
 export function SecurityDashboardPage() {
   const [overview, setOverview] = useState(null);
   const [backups, setBackups] = useState([]);
+  const [activity, setActivity] = useState({ logs: [], total: 0, page: 1, limit: 12 });
   const [auditFilter, setAuditFilter] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isBackingUp, setIsBackingUp] = useState(false);
+  const [isActivityLoading, setIsActivityLoading] = useState(false);
 
   const auditChart = useMemo(
     () => overview?.dashboard?.auditSummary || [],
     [overview],
   );
 
-  async function loadSecurity() {
-    setIsLoading(true);
+  async function loadActivity(params = {}) {
+    setIsActivityLoading(true);
+    try {
+      const data = await securityService.activity({ limit: 12, ...params });
+      setActivity(data);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Activity timeline load failed.');
+    } finally {
+      setIsActivityLoading(false);
+    }
+  }
+
+  async function loadSecurity({ initial = false } = {}) {
+    if (initial) {
+      setIsLoading(true);
+    }
     setError('');
     try {
-      const [dashboardData, backupData] = await Promise.all([
+      const [dashboardData, backupData, activityData] = await Promise.all([
         securityService.dashboard(),
         securityService.backups({ limit: 6 }),
+        securityService.activity({ limit: 12 }),
       ]);
       setOverview(dashboardData);
       setBackups(backupData.backups || []);
+      setActivity(activityData);
     } catch (err) {
       setError(err.response?.data?.message || 'Security data load failed.');
     } finally {
-      setIsLoading(false);
+      if (initial) {
+        setIsLoading(false);
+      }
     }
   }
 
   useEffect(() => {
-    loadSecurity();
+    loadSecurity({ initial: true });
   }, []);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      loadActivity({ search: auditFilter });
+    }, 30000);
+
+    return () => window.clearInterval(intervalId);
+  }, [auditFilter]);
 
   const runBackup = async () => {
     setIsBackingUp(true);
@@ -103,8 +131,10 @@ export function SecurityDashboardPage() {
     }
   };
 
-  const auditLogs = (overview?.recentAuditLogs || []).filter((item) =>
-    auditFilter ? `${item.action} ${item.module} ${item.description}`.toLowerCase().includes(auditFilter.toLowerCase()) : true,
+  const auditLogs = (activity.logs || []).filter((item) =>
+    auditFilter
+      ? `${item.action} ${item.module} ${item.description} ${item.userName || ''}`.toLowerCase().includes(auditFilter.toLowerCase())
+      : true,
   );
 
   if (isLoading) {
@@ -190,7 +220,7 @@ export function SecurityDashboardPage() {
         <Card className="p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-lg font-bold text-ink">Recent Security Alerts</h2>
-            <Button variant="secondary" className="min-h-9 px-3" onClick={loadSecurity}>
+            <Button variant="secondary" className="min-h-9 px-3" onClick={() => loadSecurity()}>
               <FiRefreshCw />
               Refresh
             </Button>
@@ -234,19 +264,33 @@ export function SecurityDashboardPage() {
 
       <Card className="p-5">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <h2 className="text-lg font-bold text-ink">Activity Timeline</h2>
-          <input
-            value={auditFilter}
-            onChange={(event) => setAuditFilter(event.target.value)}
-            placeholder="Filter activity"
-            className="min-h-11 rounded-xl border border-line px-3 text-sm outline-none focus:border-primary"
-          />
+          <div>
+            <h2 className="text-lg font-bold text-ink">Activity Timeline</h2>
+            <p className="mt-1 text-sm text-muted">Live audit activity from the database.</p>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <input
+              value={auditFilter}
+              onChange={(event) => setAuditFilter(event.target.value)}
+              placeholder="Filter activity"
+              className="min-h-11 rounded-xl border border-line px-3 text-sm outline-none focus:border-primary"
+            />
+            <Button
+              variant="secondary"
+              className="min-h-11 px-3"
+              isLoading={isActivityLoading}
+              onClick={() => loadActivity({ search: auditFilter })}
+            >
+              <FiRefreshCw />
+              Refresh
+            </Button>
+          </div>
         </div>
         <div className="mt-4 overflow-x-auto">
           <table className="min-w-full divide-y divide-line text-sm">
             <thead className="bg-page text-left text-xs uppercase text-muted">
               <tr>
-                {['User', 'Role', 'Module', 'Action', 'Status', 'Time'].map((heading) => (
+                {['User', 'Role', 'Module', 'Action', 'Description', 'Status', 'Time'].map((heading) => (
                   <th key={heading} className="px-4 py-3">{heading}</th>
                 ))}
               </tr>
@@ -258,12 +302,21 @@ export function SecurityDashboardPage() {
                   <td className="px-4 py-3 capitalize">{log.role || '-'}</td>
                   <td className="px-4 py-3">{log.module}</td>
                   <td className="px-4 py-3">{log.action}</td>
+                  <td className="max-w-md px-4 py-3 text-muted">{log.description}</td>
                   <td className="px-4 py-3 capitalize">{log.status}</td>
                   <td className="px-4 py-3">{log.createdAt ? new Date(log.createdAt).toLocaleString() : '-'}</td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+        {!auditLogs.length ? (
+          <div className="mt-4 rounded-xl border border-line p-4 text-sm text-muted">
+            No account activity found. Login, profile changes, user changes, backups, and permission events will appear here after real actions happen.
+          </div>
+        ) : null}
+        <div className="mt-4 text-sm text-muted">
+          Showing {auditLogs.length} of {activity.total || 0} recorded activities
         </div>
       </Card>
     </div>

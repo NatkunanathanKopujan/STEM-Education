@@ -1,3 +1,6 @@
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { findUserById, updatePassword } from '../models/userModel.js';
 import { ROLES } from '../config/roles.js';
 import { AppError } from '../utils/appError.js';
@@ -22,21 +25,52 @@ import {
   getNotificationPreferences,
   updateNotificationPreferences,
 } from '../repositories/notificationRepository.js';
+import { auditAction } from './securityService.js';
 
-function validatePasswordStrength(password) {
-  const checks = [
-    password?.length >= 8,
-    /[A-Z]/.test(password || ''),
-    /[a-z]/.test(password || ''),
-    /\d/.test(password || ''),
-    /[^A-Za-z0-9]/.test(password || ''),
-  ];
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const profileUploadDirectory = path.resolve(__dirname, '..', 'uploads', 'profiles');
 
-  if (!checks.every(Boolean)) {
-    throw new AppError(
-      'Password must contain uppercase, lowercase, number, special character, and be at least 8 characters',
-      422,
-    );
+const editableProfileFields = new Set([
+  'fullName',
+  'email',
+  'phone',
+  'address',
+  'bio',
+  'department',
+  'qualification',
+  'curriculum',
+]);
+
+const allowedProfilePhotoTypes = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'image/bmp',
+  'image/avif',
+  'image/x-icon',
+  'image/vnd.microsoft.icon',
+]);
+
+async function deleteRejectedProfileUpload(file) {
+  if (!file?.path) {
+    return;
+  }
+
+  const resolvedPath = path.resolve(file.path);
+  const allowedRoot = `${profileUploadDirectory}${path.sep}`;
+
+  if (!resolvedPath.startsWith(allowedRoot)) {
+    return;
+  }
+
+  try {
+    await fs.unlink(resolvedPath);
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      throw error;
+    }
   }
 }
 
@@ -63,9 +97,11 @@ export async function updateMyProfile(user, payload, ipAddress) {
     throw new AppError('Email is already in use', 409);
   }
 
-  const allowedPayload = { ...payload };
+  const allowedPayload = Object.fromEntries(
+    Object.entries(payload).filter(([key]) => editableProfileFields.has(key)),
+  );
 
-  if (![ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.TEACHER].includes(user.role)) {
+  if (![ROLES.ADMIN, ROLES.TEACHER].includes(user.role)) {
     delete allowedPayload.department;
   }
 
@@ -84,6 +120,14 @@ export async function updateMyProfile(user, payload, ipAddress) {
     description: 'Profile information updated',
     ipAddress,
   });
+  await auditAction({
+    user,
+    action: 'profile_updated',
+    module: 'profile',
+    description: 'Profile information updated',
+    ipAddress,
+    metadata: { fields: Object.keys(allowedPayload) },
+  });
 
   return getProfile(user.id);
 }
@@ -94,17 +138,27 @@ export async function uploadProfilePhoto(user, file, ipAddress) {
   }
 
   if (file.size > 5 * 1024 * 1024) {
+    await deleteRejectedProfileUpload(file);
     throw new AppError('Profile photo must be 5 MB or smaller', 422);
   }
 
-  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)) {
-    throw new AppError('Profile photo must be JPG, PNG, or WEBP', 422);
+  if (!allowedProfilePhotoTypes.has(file.mimetype)) {
+    await deleteRejectedProfileUpload(file);
+    throw new AppError('Profile photo must be a valid image file', 422);
   }
 
   await saveProfilePhoto(user.id, file);
   await createSecurityEvent({
     userId: user.id,
     eventType: 'profile_photo_updated',
+    description: 'Profile photo uploaded',
+    ipAddress,
+    metadata: { fileName: file.filename },
+  });
+  await auditAction({
+    user,
+    action: 'profile_photo_updated',
+    module: 'profile',
     description: 'Profile photo uploaded',
     ipAddress,
     metadata: { fileName: file.filename },
@@ -121,11 +175,17 @@ export async function deleteProfilePhoto(user, ipAddress) {
     description: 'Profile photo removed',
     ipAddress,
   });
+  await auditAction({
+    user,
+    action: 'profile_photo_removed',
+    module: 'profile',
+    description: 'Profile photo removed',
+    ipAddress,
+  });
   return { removed: true };
 }
 
 export async function changeMyPassword(user, { currentPassword, newPassword }, ipAddress) {
-  validatePasswordStrength(newPassword);
   const existing = await findUserById(user.id);
 
   if (!existing) {
@@ -148,6 +208,13 @@ export async function changeMyPassword(user, { currentPassword, newPassword }, i
     description: 'Password changed successfully',
     ipAddress,
   });
+  await auditAction({
+    user,
+    action: 'password_changed',
+    module: 'profile',
+    description: 'Password changed successfully',
+    ipAddress,
+  });
 
   return { changed: true };
 }
@@ -164,10 +231,35 @@ export async function getLoginHistory(user, query = {}) {
 }
 
 export async function getSessions(user) {
-  return { sessions: await listSessions(user.id) };
+  const sessions = await listSessions(user.id);
+
+  return {
+    sessions: sessions.map((session) => {
+      let deviceInfo = session.deviceInfo;
+
+      if (typeof deviceInfo === 'string') {
+        try {
+          deviceInfo = JSON.parse(deviceInfo);
+        } catch {
+          deviceInfo = { raw: session.deviceInfo };
+        }
+      }
+
+      return {
+        ...session,
+        deviceInfo,
+        isActive: Boolean(session.isActive),
+        isCurrent: Number(session.sessionId) === Number(user.sessionId),
+      };
+    }),
+  };
 }
 
 export async function terminateSession(user, sessionId, ipAddress) {
+  if (Number(sessionId) === Number(user.sessionId)) {
+    throw new AppError('Current session cannot be removed from Connected Sessions. Use Logout instead.', 400);
+  }
+
   const closed = await closeSession({ userId: user.id, sessionId });
 
   if (!closed) {
@@ -177,6 +269,14 @@ export async function terminateSession(user, sessionId, ipAddress) {
   await createSecurityEvent({
     userId: user.id,
     eventType: 'session_terminated',
+    description: 'A connected session was terminated',
+    ipAddress,
+    metadata: { sessionId },
+  });
+  await auditAction({
+    user,
+    action: 'session_terminated',
+    module: 'profile',
     description: 'A connected session was terminated',
     ipAddress,
     metadata: { sessionId },
@@ -202,6 +302,14 @@ export async function terminateAllSessions(user, { keepCurrent = true, password 
     ipAddress,
     metadata: { affected },
   });
+  await auditAction({
+    user,
+    action: 'sessions_terminated',
+    module: 'profile',
+    description: 'Connected sessions were terminated',
+    ipAddress,
+    metadata: { affected, keepCurrent },
+  });
   return { affected };
 }
 
@@ -225,6 +333,13 @@ export async function updateProfilePreferences(user, payload, ipAddress) {
   await createSecurityEvent({
     userId: user.id,
     eventType: 'preferences_updated',
+    description: 'User preferences updated',
+    ipAddress,
+  });
+  await auditAction({
+    user,
+    action: 'preferences_updated',
+    module: 'profile',
     description: 'User preferences updated',
     ipAddress,
   });

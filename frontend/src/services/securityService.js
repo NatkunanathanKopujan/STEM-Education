@@ -17,6 +17,11 @@ export const securityService = {
     return data.data;
   },
 
+  async activity(params = {}) {
+    const { data } = await apiClient.get('/security/activity', { params: compactValues(params) });
+    return data.data;
+  },
+
   async alerts(params = {}) {
     const { data } = await apiClient.get('/security/alerts', { params: compactValues(params) });
     return data.data;

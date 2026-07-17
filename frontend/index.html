@@ -12,6 +12,19 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48.png" />
     <link rel="apple-touch-icon" href="/favicon.png" />
+    <script>
+      (() => {
+        const key = 'ai_smart_lms_theme';
+        const preference = localStorage.getItem(key) || 'light';
+        const systemDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches;
+        const resolved = preference === 'system' ? (systemDark ? 'dark' : 'light') : preference;
+        document.documentElement.classList.toggle('dark', resolved === 'dark');
+        document.documentElement.classList.toggle('theme-dark', resolved === 'dark');
+        document.documentElement.dataset.theme = resolved;
+        document.documentElement.dataset.themePreference = preference;
+        document.documentElement.style.colorScheme = resolved;
+      })();
+    </script>
     <title>DBIT LMS</title>
   </head>
   <body>

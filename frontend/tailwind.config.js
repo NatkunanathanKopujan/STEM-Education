@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  darkMode: 'class',
   content: ['./index.html', './src/**/*.{js,jsx}'],
   theme: {
     extend: {
@@ -11,12 +12,14 @@ export default {
         },
         surface: 'rgb(var(--color-surface) / <alpha-value>)',
         page: 'rgb(var(--color-page) / <alpha-value>)',
-        ink: '#1F2937',
-        muted: '#6B7280',
-        line: '#E5E7EB',
+        ink: 'rgb(var(--color-ink) / <alpha-value>)',
+        muted: 'rgb(var(--color-muted) / <alpha-value>)',
+        line: 'rgb(var(--color-line) / <alpha-value>)',
+        elevated: 'rgb(var(--color-elevated) / <alpha-value>)',
+        subtle: 'rgb(var(--color-subtle) / <alpha-value>)',
       },
       boxShadow: {
-        soft: '0 12px 30px rgba(15, 23, 42, 0.08)',
+        soft: 'var(--shadow-soft)',
       },
       borderRadius: {
         xl: '16px',

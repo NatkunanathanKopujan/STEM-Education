@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { FiBell, FiLogOut, FiMenu, FiMoon, FiUser } from 'react-icons/fi';
+import { FiBell, FiLogOut, FiMenu, FiMoon, FiSun, FiUser } from 'react-icons/fi';
 import { Button } from '../ui/Button';
 import { Dropdown } from '../ui/Dropdown';
 import { GlobalSearchBox } from '../search/GlobalSearchBox';
 import { NotificationPanel } from '../notifications/NotificationPanel';
 import { ROLE_LABELS } from '../../utils/constants';
+import { useTheme } from '../../hooks/useTheme';
 
 const formatTitle = (pathname) => {
   const segment = pathname.split('/').filter(Boolean).pop() || 'Dashboard';
@@ -18,6 +19,7 @@ const formatTitle = (pathname) => {
 export function Navbar({ user, onMenuClick, onLogout }) {
   const location = useLocation();
   const navigate = useNavigate();
+  const { isDark, toggleTheme } = useTheme();
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const pageTitle = useMemo(() => formatTitle(location.pathname), [location.pathname]);
 
@@ -46,8 +48,14 @@ export function Navbar({ user, onMenuClick, onLogout }) {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button variant="ghost" className="px-3" aria-label="Dark mode placeholder">
-            <FiMoon className="size-5" />
+          <Button
+            variant="ghost"
+            className="px-3"
+            aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            onClick={toggleTheme}
+          >
+            {isDark ? <FiSun className="size-5" /> : <FiMoon className="size-5" />}
           </Button>
           <Button
             variant="ghost"

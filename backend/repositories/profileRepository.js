@@ -1,4 +1,11 @@
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { db } from '../config/database.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const profileUploadDirectory = path.resolve(__dirname, '..', 'uploads', 'profiles');
 
 const profileSelect = `SELECT u.id, u.uuid, u.full_name AS fullName, u.username, u.email,
   u.phone, u.role, u.status, u.profile_photo AS profilePhoto, u.last_login AS lastLogin,
@@ -62,8 +69,61 @@ export async function isEmailAvailable(email, userId) {
   return rows.length === 0;
 }
 
+function resolveProfilePhotoPath(photo) {
+  const candidate = photo.file_path || photo.filePath || photo.file_name || photo.fileName || photo.profilePhoto;
+
+  if (!candidate) {
+    return null;
+  }
+
+  return path.isAbsolute(candidate)
+    ? path.resolve(candidate)
+    : path.resolve(profileUploadDirectory, candidate);
+}
+
+async function listProfilePhotoFiles(userId) {
+  const [photoRows] = await db.execute(
+    'SELECT file_name AS fileName, file_path AS filePath FROM profile_photos WHERE user_id = ?',
+    [userId],
+  );
+  const [userRows] = await db.execute(
+    'SELECT profile_photo AS profilePhoto FROM users WHERE id = ? AND profile_photo IS NOT NULL LIMIT 1',
+    [userId],
+  );
+
+  return [...photoRows, ...userRows];
+}
+
+async function deleteStoredProfilePhotos(photos) {
+  const allowedRoot = `${profileUploadDirectory}${path.sep}`;
+  const paths = new Set(
+    photos
+      .map(resolveProfilePhotoPath)
+      .filter((filePath) => filePath && filePath.startsWith(allowedRoot)),
+  );
+
+  await Promise.all(
+    [...paths].map(async (filePath) => {
+      try {
+        await fs.unlink(filePath);
+      } catch (error) {
+        if (error.code !== 'ENOENT') {
+          throw error;
+        }
+      }
+    }),
+  );
+}
+
+async function clearProfilePhotoReferences(userId) {
+  const photos = await listProfilePhotoFiles(userId);
+  await db.execute('DELETE FROM profile_photos WHERE user_id = ?', [userId]);
+  await db.execute('UPDATE users SET profile_photo = NULL WHERE id = ?', [userId]);
+  await deleteStoredProfilePhotos(photos);
+}
+
 export async function saveProfilePhoto(userId, file) {
-  await db.execute('UPDATE profile_photos SET is_active = 0 WHERE user_id = ?', [userId]);
+  await clearProfilePhotoReferences(userId);
   await db.execute(
     `INSERT INTO profile_photos (user_id, file_name, file_path, mime_type, file_size)
      VALUES (?, ?, ?, ?, ?)`,
@@ -73,8 +133,7 @@ export async function saveProfilePhoto(userId, file) {
 }
 
 export async function removeProfilePhoto(userId) {
-  await db.execute('UPDATE profile_photos SET is_active = 0 WHERE user_id = ?', [userId]);
-  await db.execute('UPDATE users SET profile_photo = NULL WHERE id = ?', [userId]);
+  await clearProfilePhotoReferences(userId);
 }
 
 export async function touchPasswordChanged(userId) {
@@ -116,28 +175,36 @@ export async function listLoginHistory(userId, { limit = 30, offset = 0, search,
 
 export async function listSessions(userId) {
   const [rows] = await db.execute(
-    `SELECT id, session_id AS sessionId, login_at AS loginAt, revoked_at AS logoutAt,
-      ip_address AS ipAddress, user_agent AS userAgent, device_info AS deviceInfo,
-      CASE WHEN revoked_at IS NULL THEN 1 ELSE 0 END AS isActive
-     FROM active_sessions
-     WHERE user_id = ?
+    `SELECT s.id, s.id AS sessionId, s.login_time AS loginAt, s.logout_time AS logoutAt,
+      COALESCE(a.last_seen_at, s.login_time) AS lastSeenAt,
+      s.ip_address AS ipAddress, s.user_agent AS userAgent, s.device_info AS deviceInfo,
+      NULL AS location,
+      CASE WHEN logout_time IS NULL THEN 1 ELSE 0 END AS isActive,
+      'user_sessions' AS source
+     FROM user_sessions s
+     LEFT JOIN active_sessions a
+      ON a.session_id = s.id AND a.user_id = s.user_id AND a.revoked_at IS NULL
+     WHERE s.user_id = ? AND s.logout_time IS NULL
      UNION ALL
-     SELECT id, id AS sessionId, login_time AS loginAt, logout_time AS logoutAt, ip_address AS ipAddress,
-      user_agent AS userAgent, device_info AS deviceInfo,
-      CASE WHEN logout_time IS NULL THEN 1 ELSE 0 END AS isActive
-     FROM user_sessions
-     WHERE user_id = ? AND NOT EXISTS (SELECT 1 FROM active_sessions WHERE user_id = ?)
+     SELECT id, COALESCE(session_id, id) AS sessionId, login_at AS loginAt, revoked_at AS logoutAt,
+      last_seen_at AS lastSeenAt,
+      ip_address AS ipAddress, user_agent AS userAgent, device_info AS deviceInfo,
+      NULL AS location,
+      CASE WHEN revoked_at IS NULL THEN 1 ELSE 0 END AS isActive,
+      'active_sessions' AS source
+     FROM active_sessions
+     WHERE user_id = ? AND session_id IS NULL AND revoked_at IS NULL
      ORDER BY loginAt DESC
      LIMIT 25`,
-    [userId, userId, userId],
+    [userId, userId],
   );
   return rows;
 }
 
 export async function closeSession({ userId, sessionId }) {
   const [activeResult] = await db.execute(
-    'UPDATE active_sessions SET revoked_at = COALESCE(revoked_at, NOW()) WHERE id = ? AND user_id = ?',
-    [sessionId, userId],
+    'UPDATE active_sessions SET revoked_at = COALESCE(revoked_at, NOW()) WHERE user_id = ? AND (id = ? OR session_id = ?)',
+    [userId, sessionId, sessionId],
   );
   const [result] = await db.execute(
     'UPDATE user_sessions SET logout_time = COALESCE(logout_time, NOW()) WHERE id = ? AND user_id = ?',
@@ -162,7 +229,7 @@ export async function closeAllSessions(userId, exceptSessionId = null) {
   );
   const [activeResult] = await db.execute(
     `UPDATE active_sessions SET revoked_at = COALESCE(revoked_at, NOW())
-     WHERE user_id = ? AND revoked_at IS NULL ${exception}`,
+     WHERE user_id = ? AND revoked_at IS NULL ${exceptSessionId ? 'AND (session_id IS NULL OR session_id <> ?)' : ''}`,
     values,
   );
   return result.affectedRows + activeResult.affectedRows;

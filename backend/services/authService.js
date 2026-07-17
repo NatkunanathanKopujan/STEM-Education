@@ -14,6 +14,7 @@ import {
   recordLoginAttempt,
   setUserStatus,
 } from '../repositories/securityRepository.js';
+import { touchPasswordChanged } from '../repositories/profileRepository.js';
 import { auditAction, createAlert } from './securityService.js';
 
 const ACTIVE_STATUSES = ['active', 1, true];
@@ -178,6 +179,11 @@ export async function changeUserPassword(userId, currentPassword, newPassword) {
     throw new AppError('Current password is incorrect', 400);
   }
 
+  if (await comparePassword(newPassword, user.passwordHash)) {
+    throw new AppError('New password cannot reuse the current password', 422);
+  }
+
   await updatePassword(userId, await hashPassword(newPassword));
+  await touchPasswordChanged(userId);
   return true;
 }

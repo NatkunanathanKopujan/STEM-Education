@@ -1,7 +1,8 @@
+import { isUserSessionActive, touchUserSession } from '../models/sessionModel.js';
 import { verifyToken } from '../utils/jwt.js';
 import { sendError } from '../utils/apiResponse.js';
 
-export function authenticate(req, res, next) {
+export async function authenticate(req, res, next) {
   const authHeader = req.headers.authorization;
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
 
@@ -12,6 +13,13 @@ export function authenticate(req, res, next) {
   try {
     req.token = token;
     req.user = verifyToken(token);
+
+    if (!(await isUserSessionActive({ sessionId: req.user.sessionId, userId: req.user.id }))) {
+      return sendError(res, 'Session has expired. Please login again.', 401);
+    }
+
+    await touchUserSession({ sessionId: req.user.sessionId, userId: req.user.id });
+
     return next();
   } catch (error) {
     return sendError(res, error.message || 'Invalid or expired authentication token', 401);

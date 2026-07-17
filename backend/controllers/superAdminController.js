@@ -1,5 +1,11 @@
 import { superAdminService } from '../services/superAdminService.js';
+import { auditAction } from '../services/securityService.js';
 import { sendSuccess } from '../utils/apiResponse.js';
+
+const requestMeta = (req) => ({
+  ipAddress: req.ip,
+  browser: req.get('user-agent'),
+});
 
 export const superAdminController = {
   index: async (req, res, next) => {
@@ -28,9 +34,18 @@ export const superAdminController = {
 
   create: async (req, res, next) => {
     try {
+      const admin = await superAdminService.create(req.body);
+      await auditAction({
+        user: req.user,
+        action: 'admin_created',
+        module: 'users',
+        description: `Admin ${admin.fullName || admin.username || admin.id} created`,
+        ...requestMeta(req),
+        metadata: { targetUserId: admin.id, targetRole: 'admin' },
+      });
       return sendSuccess(
         res,
-        await superAdminService.create(req.body),
+        admin,
         'Admin created successfully',
         201,
       );
@@ -41,9 +56,18 @@ export const superAdminController = {
 
   update: async (req, res, next) => {
     try {
+      const admin = await superAdminService.update(req.params.id, req.body);
+      await auditAction({
+        user: req.user,
+        action: 'admin_updated',
+        module: 'users',
+        description: `Admin ${admin.fullName || admin.username || req.params.id} updated`,
+        ...requestMeta(req),
+        metadata: { targetUserId: Number(req.params.id), targetRole: 'admin' },
+      });
       return sendSuccess(
         res,
-        await superAdminService.update(req.params.id, req.body),
+        admin,
         'Admin updated successfully',
       );
     } catch (error) {
@@ -53,9 +77,18 @@ export const superAdminController = {
 
   remove: async (req, res, next) => {
     try {
+      const result = await superAdminService.remove(req.params.id);
+      await auditAction({
+        user: req.user,
+        action: 'admin_deleted',
+        module: 'users',
+        description: `Admin ${req.params.id} deleted`,
+        ...requestMeta(req),
+        metadata: { targetUserId: Number(req.params.id), targetRole: 'admin' },
+      });
       return sendSuccess(
         res,
-        await superAdminService.remove(req.params.id),
+        result,
         'Admin deleted successfully',
       );
     } catch (error) {

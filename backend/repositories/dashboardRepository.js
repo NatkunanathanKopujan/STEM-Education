@@ -30,9 +30,11 @@ export async function getDashboardSummary() {
      ORDER BY YEAR(created_at), MONTH(created_at)`,
   );
   const [recentActivities] = await db.query(
-    `SELECT action, module, description, created_at AS createdAt
-     FROM audit_logs
-     ORDER BY created_at DESC
+    `SELECT a.id, a.action, a.module, a.description, a.status, a.role,
+      a.created_at AS createdAt, COALESCE(u.full_name, 'System') AS userName
+     FROM audit_logs a
+     LEFT JOIN users u ON u.id = a.user_id
+     ORDER BY a.created_at DESC
      LIMIT 5`,
   );
   const [notifications] = await db.query(

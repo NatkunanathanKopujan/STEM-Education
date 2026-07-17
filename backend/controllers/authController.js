@@ -5,6 +5,7 @@ import {
   getAuthenticatedUser,
   loginUser,
 } from '../services/authService.js';
+import { auditAction } from '../services/securityService.js';
 import { sendSuccess } from '../utils/apiResponse.js';
 import { decodeToken } from '../utils/jwt.js';
 
@@ -26,9 +27,20 @@ export async function login(req, res, next) {
 
     return sendSuccess(res, result, 'Login successful');
   } catch (error) {
+    const identifier = req.body.identifier || req.body.email || req.body.username;
     loggingService.auth('Failed login attempt', {
-      identifier: req.body.identifier || req.body.email || req.body.username,
+      identifier,
       ipAddress: req.ip,
+    });
+    await auditAction({
+      user: null,
+      action: 'login_failed',
+      module: 'auth',
+      description: `Login failed for ${identifier || 'unknown account'}`,
+      status: 'failed',
+      ipAddress: req.ip,
+      browser: req.get('user-agent'),
+      metadata: { identifier },
     });
     return next(error);
   }
@@ -52,6 +64,15 @@ export async function logout(req, res, next) {
   loggingService.auth('Logout successful', {
     userId: req.user?.id || null,
     ...session,
+  });
+  await auditAction({
+    user: req.user,
+    action: 'logout',
+    module: 'auth',
+    description: 'User logged out successfully',
+    ipAddress: req.ip,
+    browser: req.get('user-agent'),
+    metadata: { sessionId: req.user?.sessionId || null },
   });
 
   return sendSuccess(res, { session }, 'Logout successful');
@@ -87,6 +108,14 @@ export async function changePassword(req, res, next) {
   try {
     await changeUserPassword(req.user.id, req.body.currentPassword, req.body.newPassword);
     loggingService.auth('Password changed', { userId: req.user.id });
+    await auditAction({
+      user: req.user,
+      action: 'password_changed',
+      module: 'auth',
+      description: 'User changed password',
+      ipAddress: req.ip,
+      browser: req.get('user-agent'),
+    });
     return sendSuccess(res, null, 'Password changed successfully');
   } catch (error) {
     return next(error);

@@ -1,15 +1,17 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { FiRefreshCcw, FiZap } from 'react-icons/fi';
 import { Button, SecondaryButton } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { PasswordInput, SelectBox, Textarea } from '../ui/FormControls';
 import { generatePassword, generateStudentId } from '../../hooks/useEntityManagement';
+import { academicYearService } from '../../services/academicYearService';
 
 export function EntityForm({ type, item, onSubmit, onCancel, generateUsername }) {
   const isTeacher = type === 'teacher';
   const isStudent = type === 'student';
   const isCurriculum = type === 'curriculum';
+  const [academicYearOptions, setAcademicYearOptions] = useState([]);
   const {
     register,
     handleSubmit,
@@ -22,7 +24,7 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
       department: '',
       curriculum: 'Computer Science',
       semester: 'Semester 1',
-      academicYear: '2026/2027',
+      academicYear: '',
       duration: '',
       assignedTeachers: '',
       assignedStudents: '',
@@ -37,6 +39,32 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
     }
   }, [item, setValue]);
 
+  useEffect(() => {
+    if (!isCurriculum) return;
+
+    let isMounted = true;
+    academicYearService
+      .list({ limit: 100 })
+      .then((data) => {
+        if (!isMounted) return;
+        setAcademicYearOptions(
+          (data.academicYears || []).map((academicYear) => ({
+            label: academicYear.isCurrent ? `${academicYear.name} (Current)` : academicYear.name,
+            value: academicYear.name,
+          })),
+        );
+      })
+      .catch(() => {
+        if (isMounted) {
+          setAcademicYearOptions([]);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isCurriculum]);
+
   const password = watch('password');
 
   if (isCurriculum) {
@@ -46,7 +74,11 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
         <Input label="Duration" {...register('duration', { required: 'Duration is required' })} />
         <Textarea label="Description" className="md:col-span-2" {...register('description')} />
         <SelectBox label="Semester" options={[{ label: 'Semester 1', value: 'Semester 1' }, { label: 'Semester 2', value: 'Semester 2' }]} {...register('semester')} />
-        <Input label="Academic Year" {...register('academicYear', { required: 'Academic year is required' })} />
+        <SelectBox
+          label="Academic Year"
+          options={[{ label: 'Select academic year', value: '' }, ...academicYearOptions]}
+          {...register('academicYear', { required: 'Academic year is required' })}
+        />
         <Input label="Assigned Teachers" placeholder="Comma separated teacher names" {...register('assignedTeachers')} />
         <Input label="Assigned Students" placeholder="Total assigned students" type="number" {...register('students')} />
         <SelectBox label="Status" options={[{ label: 'Active', value: 'Active' }, { label: 'Archived', value: 'Archived' }]} {...register('status')} />

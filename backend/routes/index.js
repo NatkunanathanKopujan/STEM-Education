@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import adminRoutes from './adminRoutes.js';
+import academicYearRoutes from './academicYearRoutes.js';
 import aiRoutes from './aiRoutes.js';
 import announcementRoutes from './announcementRoutes.js';
 import authRoutes from './authRoutes.js';
@@ -22,6 +23,7 @@ import studentRoutes from './studentRoutes.js';
 import teacherAnalyticsRoutes from './teacherAnalyticsRoutes.js';
 import superAdminRoutes from './superAdminRoutes.js';
 import teacherRoutes from './teacherRoutes.js';
+import timezoneRoutes from './timezoneRoutes.js';
 
 const router = Router();
 
@@ -48,5 +50,7 @@ router.use('/quiz', quizRoutes);
 router.use('/results', resultRoutes);
 router.use('/reports', reportRoutes);
 router.use('/settings', settingsRoutes);
+router.use('/academic-years', academicYearRoutes);
+router.use('/timezones', timezoneRoutes);
 
 export default router;

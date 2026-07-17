@@ -7,7 +7,7 @@ export const allowedFileGroups = {
   spreadsheets: ['.xls', '.xlsx'],
   archives: ['.zip'],
   videos: ['.mp4', '.mov', '.avi'],
-  images: ['.jpg', '.jpeg', '.png', '.webp'],
+  images: ['.jpg', '.jpeg', '.jfif', '.png', '.webp', '.gif', '.bmp', '.ico', '.avif'],
   audio: ['.mp3', '.wav', '.m4a', '.aac', '.ogg'],
 };
 
