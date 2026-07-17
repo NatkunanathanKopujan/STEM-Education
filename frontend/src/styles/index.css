@@ -3,20 +3,20 @@
 @tailwind utilities;
 
 :root {
-  --color-primary: 249 115 22;
-  --color-primary-dark: 234 88 12;
-  --color-primary-light: 253 186 116;
+  --color-primary: 15 46 92;
+  --color-primary-dark: 8 31 68;
+  --color-primary-light: 59 130 246;
   --color-surface: 255 255 255;
-  --color-page: 248 250 252;
+  --color-page: 246 248 251;
   --color-elevated: 255 255 255;
-  --color-subtle: 241 245 249;
-  --color-ink: 31 41 55;
-  --color-muted: 107 114 128;
-  --color-line: 229 231 235;
+  --color-subtle: 239 244 250;
+  --color-ink: 15 23 42;
+  --color-muted: 82 96 116;
+  --color-line: 213 221 232;
   --color-accent-soft: 255 247 237;
-  --shadow-soft: 0 12px 30px rgba(15, 23, 42, 0.08);
-  color: #1f2937;
-  background: #f8fafc;
+  --shadow-soft: 0 10px 24px rgba(15, 46, 92, 0.08);
+  color: #0f172a;
+  background: #f6f8fb;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -24,29 +24,29 @@
 }
 
 :root.theme-dark {
-  --color-surface: 15 23 42;
-  --color-page: 2 6 23;
-  --color-elevated: 30 41 59;
-  --color-subtle: 30 41 59;
+  --color-surface: 17 24 39;
+  --color-page: 7 12 24;
+  --color-elevated: 24 34 53;
+  --color-subtle: 31 42 62;
   --color-ink: 248 250 252;
   --color-muted: 203 213 225;
-  --color-line: 71 85 105;
-  --color-accent-soft: 67 20 7;
-  --shadow-soft: 0 18px 40px rgba(0, 0, 0, 0.35);
+  --color-line: 76 91 114;
+  --color-accent-soft: 55 40 18;
+  --shadow-soft: 0 18px 42px rgba(0, 0, 0, 0.42);
   color: rgb(var(--color-ink));
   background: rgb(var(--color-page));
 }
 
 :root.dark {
-  --color-surface: 15 23 42;
-  --color-page: 2 6 23;
-  --color-elevated: 30 41 59;
-  --color-subtle: 30 41 59;
+  --color-surface: 17 24 39;
+  --color-page: 7 12 24;
+  --color-elevated: 24 34 53;
+  --color-subtle: 31 42 62;
   --color-ink: 248 250 252;
   --color-muted: 203 213 225;
-  --color-line: 71 85 105;
-  --color-accent-soft: 67 20 7;
-  --shadow-soft: 0 18px 40px rgba(0, 0, 0, 0.35);
+  --color-line: 76 91 114;
+  --color-accent-soft: 55 40 18;
+  --shadow-soft: 0 18px 42px rgba(0, 0, 0, 0.42);
   color: rgb(var(--color-ink));
   background: rgb(var(--color-page));
 }
@@ -60,6 +60,21 @@ body {
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
     sans-serif;
+  letter-spacing: 0;
+}
+
+a {
+  color: inherit;
+}
+
+hr {
+  border-color: rgb(var(--color-line));
+}
+
+input,
+textarea,
+select {
+  min-height: 2.75rem;
 }
 
 button,
@@ -71,7 +86,23 @@ select {
 
 @layer components {
   .focus-ring {
-    @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2;
+    @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/70 focus-visible:ring-offset-2;
+  }
+}
+
+@layer base {
+  table {
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  th {
+    letter-spacing: 0.02em;
+  }
+
+  ::selection {
+    background: rgb(var(--color-primary) / 0.16);
+    color: rgb(var(--color-ink));
   }
 }
 
@@ -96,7 +127,7 @@ select {
 
   .theme-dark .hover\:bg-orange-50:hover,
   .theme-dark .hover\:bg-orange-50\/40:hover {
-    background-color: rgb(var(--color-accent-soft) / var(--tw-bg-opacity, 1));
+    background-color: rgb(30 64 121 / 0.45);
   }
 
   .theme-dark .border-white {
@@ -118,7 +149,7 @@ select {
 }
 
 [data-theme='dark'] body {
-  background-color: rgb(2 6 23);
+  background-color: rgb(7 12 24);
   color: rgb(248 250 252);
 }
 
@@ -127,7 +158,18 @@ select {
 }
 
 [data-theme='dark'] .text-muted {
-  color: rgb(203 213 225) !important;
+  color: rgb(210 219 232) !important;
+}
+
+[data-theme='dark'] .text-primary {
+  color: rgb(245 158 11) !important;
+}
+
+[data-theme='dark'] .text-orange-50,
+[data-theme='dark'] .text-orange-100,
+[data-theme='dark'] .text-orange-200,
+[data-theme='dark'] .text-orange-600 {
+  color: rgb(251 191 36) !important;
 }
 
 [data-theme='dark'] .text-slate-500,
@@ -139,17 +181,33 @@ select {
 
 [data-theme='dark'] .border-line,
 [data-theme='dark'] .divide-line > :not([hidden]) ~ :not([hidden]) {
-  border-color: rgb(71 85 105) !important;
+  border-color: rgb(76 91 114) !important;
+}
+
+[data-theme='dark'] .border-primary,
+[data-theme='dark'] .border-primary\/10,
+[data-theme='dark'] .border-primary\/20,
+[data-theme='dark'] .border-primary\/40 {
+  border-color: rgb(245 158 11 / 0.45) !important;
 }
 
 [data-theme='dark'] .bg-page {
-  background-color: rgb(2 6 23) !important;
+  background-color: rgb(7 12 24) !important;
 }
 
 [data-theme='dark'] .bg-surface,
 [data-theme='dark'] .bg-white,
 [data-theme='dark'] .bg-white\/95 {
-  background-color: rgb(15 23 42) !important;
+  background-color: rgb(17 24 39) !important;
+}
+
+[data-theme='dark'] .bg-primary {
+  background-color: rgb(15 46 92) !important;
+}
+
+[data-theme='dark'] .hover\:bg-primary-dark:hover,
+[data-theme='dark'] .active\:bg-primary-dark:active {
+  background-color: rgb(8 31 68) !important;
 }
 
 [data-theme='dark'] .bg-slate-50,
@@ -157,7 +215,12 @@ select {
 [data-theme='dark'] .bg-slate-200,
 [data-theme='dark'] .bg-gray-50,
 [data-theme='dark'] .bg-gray-100 {
-  background-color: rgb(30 41 59) !important;
+  background-color: rgb(31 42 62) !important;
+}
+
+[data-theme='dark'] .hover\:bg-slate-50:hover,
+[data-theme='dark'] .hover\:bg-slate-100:hover {
+  background-color: rgb(38 52 75) !important;
 }
 
 [data-theme='dark'] .bg-orange-50,
@@ -165,11 +228,16 @@ select {
 [data-theme='dark'] .bg-orange-50\/50,
 [data-theme='dark'] .hover\:bg-orange-50:hover,
 [data-theme='dark'] .hover\:bg-orange-50\/40:hover {
-  background-color: rgb(67 20 7) !important;
+  background-color: rgb(55 40 18) !important;
+}
+
+[data-theme='dark'] .border-orange-100,
+[data-theme='dark'] .border-orange-200 {
+  border-color: rgb(245 158 11 / 0.38) !important;
 }
 
 [data-theme='dark'] .bg-green-50 {
-  background-color: rgb(5 46 22) !important;
+  background-color: rgb(6 48 34) !important;
 }
 
 [data-theme='dark'] .text-green-700,
@@ -178,7 +246,7 @@ select {
 }
 
 [data-theme='dark'] .bg-red-50 {
-  background-color: rgb(69 10 10) !important;
+  background-color: rgb(69 20 24) !important;
 }
 
 [data-theme='dark'] .text-red-600,
@@ -188,20 +256,20 @@ select {
 }
 
 [data-theme='dark'] .bg-blue-50 {
-  background-color: rgb(23 37 84) !important;
+  background-color: rgb(22 45 82) !important;
 }
 
 [data-theme='dark'] .bg-amber-50,
 [data-theme='dark'] .bg-yellow-100 {
-  background-color: rgb(69 26 3) !important;
+  background-color: rgb(70 47 15) !important;
 }
 
 [data-theme='dark'] input,
 [data-theme='dark'] textarea,
 [data-theme='dark'] select {
-  background-color: rgb(15 23 42) !important;
+  background-color: rgb(13 20 34) !important;
   color: rgb(248 250 252) !important;
-  border-color: rgb(71 85 105) !important;
+  border-color: rgb(76 91 114) !important;
 }
 
 [data-theme='dark'] input::placeholder,
@@ -217,8 +285,9 @@ select {
 
 [data-theme='dark'] input[type='checkbox'],
 [data-theme='dark'] input[type='radio'] {
-  background-color: rgb(30 41 59) !important;
+  background-color: rgb(17 24 39) !important;
   border-color: rgb(148 163 184) !important;
+  accent-color: rgb(245 158 11);
 }
 
 [data-theme='dark'] button:disabled,
@@ -234,23 +303,23 @@ select {
 }
 
 [data-theme='dark'] thead {
-  background-color: rgb(30 41 59) !important;
+  background-color: rgb(24 34 53) !important;
 }
 
 [data-theme='dark'] tbody {
-  background-color: rgb(15 23 42) !important;
+  background-color: rgb(17 24 39) !important;
 }
 
 [data-theme='dark'] tr:hover {
-  background-color: rgb(67 20 7 / 0.65) !important;
+  background-color: rgb(31 42 62) !important;
 }
 
 [data-theme='dark'] .shadow-soft {
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35) !important;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.42) !important;
 }
 
 [data-theme='dark'] .backdrop-blur {
-  background-color: rgb(15 23 42 / 0.94) !important;
+  background-color: rgb(17 24 39 / 0.94) !important;
 }
 
 [data-theme='dark'] svg {
@@ -258,5 +327,6 @@ select {
 }
 
 [data-theme='dark'] .focus-ring:focus-visible {
-  --tw-ring-offset-color: rgb(2 6 23);
+  --tw-ring-color: rgb(245 158 11 / 0.7);
+  --tw-ring-offset-color: rgb(7 12 24);
 }

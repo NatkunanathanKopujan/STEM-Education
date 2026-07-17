@@ -202,11 +202,13 @@ export async function changeMyPassword(user, { currentPassword, newPassword }, i
 
   await updatePassword(user.id, await hashPassword(newPassword));
   await touchPasswordChanged(user.id);
+  const affectedSessions = await closeAllSessions(user.id, user.sessionId);
   await createSecurityEvent({
     userId: user.id,
     eventType: 'password_changed',
     description: 'Password changed successfully',
     ipAddress,
+    metadata: { affectedSessions },
   });
   await auditAction({
     user,
@@ -214,9 +216,10 @@ export async function changeMyPassword(user, { currentPassword, newPassword }, i
     module: 'profile',
     description: 'Password changed successfully',
     ipAddress,
+    metadata: { affectedSessions },
   });
 
-  return { changed: true };
+  return { changed: true, affectedSessions };
 }
 
 export async function getLoginHistory(user, query = {}) {

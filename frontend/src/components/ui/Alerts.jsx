@@ -6,7 +6,7 @@ export function ErrorAlert({ message }) {
   }
 
   return (
-    <div className="flex gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+    <div className="flex gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-800 shadow-sm">
       <FiAlertCircle className="mt-0.5 size-5 shrink-0" />
       <p>{message}</p>
     </div>
@@ -19,7 +19,7 @@ export function SuccessAlert({ message }) {
   }
 
   return (
-    <div className="flex gap-3 rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-700">
+    <div className="flex gap-3 rounded-xl border border-green-200 bg-green-50 p-4 text-sm font-medium text-green-800 shadow-sm">
       <FiCheckCircle className="mt-0.5 size-5 shrink-0" />
       <p>{message}</p>
     </div>

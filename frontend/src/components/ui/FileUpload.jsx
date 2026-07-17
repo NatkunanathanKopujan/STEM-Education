@@ -2,7 +2,7 @@ import { FiUploadCloud } from 'react-icons/fi';
 
 export function FileUpload({ label = 'Upload file', helperText, onChange, accept, multiple }) {
   return (
-    <label className="focus-within:ring-primary block cursor-pointer rounded-xl border border-dashed border-line bg-white p-6 text-center transition hover:border-primary hover:bg-orange-50/40 focus-within:ring-2">
+    <label className="focus-within:ring-primary block cursor-pointer rounded-xl border border-dashed border-line bg-white p-6 text-center shadow-sm transition hover:border-primary hover:bg-slate-50 focus-within:ring-2">
       <input
         type="file"
         className="sr-only"

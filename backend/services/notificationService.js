@@ -15,6 +15,7 @@ import {
   updateAnnouncement,
   updateNotificationPreferences,
 } from '../repositories/notificationRepository.js';
+import { auditAction } from './securityService.js';
 
 const announcementPublishRoles = [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.TEACHER];
 
@@ -79,8 +80,18 @@ export async function getPreferences(user) {
   return getNotificationPreferences(user.id);
 }
 
-export async function savePreferences(user, payload) {
-  return updateNotificationPreferences(user.id, payload);
+export async function savePreferences(user, payload, requestMeta = {}) {
+  const preferences = await updateNotificationPreferences(user.id, payload);
+  await auditAction({
+    user,
+    action: 'notification_preferences_updated',
+    module: 'notifications',
+    description: 'Notification preferences updated',
+    ipAddress: requestMeta.ipAddress,
+    browser: requestMeta.userAgent,
+    metadata: { fields: Object.keys(payload || {}) },
+  });
+  return preferences;
 }
 
 export async function getAnnouncements(user, filters = {}) {

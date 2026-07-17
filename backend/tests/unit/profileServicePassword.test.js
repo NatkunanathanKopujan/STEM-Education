@@ -7,6 +7,7 @@ const mockHashPassword = jest.fn();
 const mockCreateSecurityEvent = jest.fn();
 const mockTouchPasswordChanged = jest.fn();
 const mockAuditAction = jest.fn();
+const mockCloseAllSessions = jest.fn();
 const MOCK_CURRENT_PASSWORD = 'MockCurrent1!';
 const MOCK_NEW_PASSWORD = 'MockUpdated1!';
 
@@ -21,7 +22,7 @@ jest.unstable_mockModule('../../utils/password.js', () => ({
 }));
 
 jest.unstable_mockModule('../../repositories/profileRepository.js', () => ({
-  closeAllSessions: jest.fn(),
+  closeAllSessions: mockCloseAllSessions,
   closeSession: jest.fn(),
   createSecurityEvent: mockCreateSecurityEvent,
   getProfile: jest.fn(),
@@ -59,6 +60,7 @@ describe('profileService self-service password changes', () => {
       .mockResolvedValueOnce(true)
       .mockResolvedValueOnce(false);
     mockHashPassword.mockResolvedValue('new-hash');
+    mockCloseAllSessions.mockResolvedValue(2);
 
     await expect(
       changeMyPassword(
@@ -69,10 +71,11 @@ describe('profileService self-service password changes', () => {
         },
         '127.0.0.1',
       ),
-    ).resolves.toEqual({ changed: true });
+    ).resolves.toEqual({ changed: true, affectedSessions: 2 });
 
     expect(mockUpdatePassword).toHaveBeenCalledWith(22, 'new-hash');
     expect(mockTouchPasswordChanged).toHaveBeenCalledWith(22);
+    expect(mockCloseAllSessions).toHaveBeenCalledWith(22, undefined);
     expect(mockCreateSecurityEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: 22,

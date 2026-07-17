@@ -13,7 +13,7 @@ const queues = new Map(
     {
       name,
       description,
-      status: 'ready',
+      status: 'not_configured',
       pending: 0,
       completed: 0,
       failed: 0,

@@ -80,7 +80,7 @@ export function GlobalSearchBox() {
             if (event.key === 'Enter') submit(activeIndex >= 0 ? options[activeIndex]?.label : query);
             if (event.key === 'Escape') setOpen(false);
           }}
-          className="focus-ring h-11 w-full rounded-xl border border-line bg-white pl-10 pr-3 text-sm text-ink placeholder:text-muted transition focus:border-primary"
+          className="focus-ring h-11 w-full rounded-xl border border-line bg-white pl-10 pr-3 text-sm text-ink shadow-sm placeholder:text-muted transition focus:border-primary"
           type="search"
           placeholder="Search users, materials, quizzes"
         />
@@ -96,7 +96,7 @@ export function GlobalSearchBox() {
                     key={item.key}
                     type="button"
                     className={`block w-full rounded-lg px-2 py-2 text-left text-sm ${
-                      activeIndex === index ? 'bg-orange-50 text-primary' : 'hover:bg-orange-50'
+                      activeIndex === index ? 'bg-orange-50 text-primary' : 'hover:bg-slate-100'
                     }`}
                     onMouseEnter={() => setActiveIndex(index)}
                     onMouseDown={() => submit(item.label)}

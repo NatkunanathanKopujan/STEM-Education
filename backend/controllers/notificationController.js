@@ -103,7 +103,14 @@ export async function preferencesController(req, res, next) {
 
 export async function updatePreferencesController(req, res, next) {
   try {
-    return sendSuccess(res, await savePreferences(req.user, req.body), 'Notification preferences updated');
+    return sendSuccess(
+      res,
+      await savePreferences(req.user, req.body, {
+        ipAddress: req.ip,
+        userAgent: req.get('user-agent'),
+      }),
+      'Notification preferences updated',
+    );
   } catch (error) {
     return next(error);
   }

@@ -33,9 +33,10 @@ export function ToastProvider({ children }) {
             return (
               <motion.div
                 key={toast.id}
-                initial={{ opacity: 0, x: 24 }}
+                initial={{ opacity: 0, y: -8 }}
                 animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 24 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.16 }}
                 className="rounded-xl border border-line bg-white p-4 shadow-soft"
               >
                 <div className="flex gap-3">

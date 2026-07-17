@@ -12,6 +12,6 @@ describe('Button', () => {
   test('supports danger variant', () => {
     render(<Button variant="danger">Delete</Button>);
 
-    expect(screen.getByRole('button', { name: /delete/i })).toHaveClass('bg-red-600');
+    expect(screen.getByRole('button', { name: /delete/i })).toHaveClass('bg-red-700');
   });
 });

@@ -2,7 +2,7 @@ import { FiLoader } from 'react-icons/fi';
 
 export function Loader({ label = 'Loading' }) {
   return (
-    <div className="flex min-h-40 items-center justify-center gap-3 text-sm font-medium text-muted">
+    <div className="flex min-h-40 items-center justify-center gap-3 text-sm font-semibold text-muted">
       <FiLoader className="size-5 animate-spin text-primary" />
       <span>{label}</span>
     </div>

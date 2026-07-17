@@ -14,15 +14,18 @@ function SidebarItem({ item, collapsed, onNavigate }) {
   const Icon = item.icon;
   const hasChildren = Boolean(item.children?.length);
   const active = location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
+  const itemBase =
+    'group flex w-full items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 text-sm font-semibold transition';
+  const itemState = active
+    ? 'border-primary/10 bg-primary text-white shadow-sm'
+    : 'text-muted hover:border-line hover:bg-slate-100 hover:text-primary';
 
   if (hasChildren) {
     return (
       <div>
         <button
           type="button"
-          className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
-            active ? 'bg-orange-50 text-primary' : 'text-muted hover:bg-orange-50 hover:text-primary'
-          }`}
+          className={`${itemBase} ${itemState}`}
           onClick={() => setOpen((value) => !value)}
         >
           {Icon ? <Icon className="size-5 shrink-0" /> : null}
@@ -38,7 +41,7 @@ function SidebarItem({ item, collapsed, onNavigate }) {
                 onClick={onNavigate}
                 className={({ isActive }) =>
                   `block rounded-lg px-3 py-2 text-sm font-medium transition ${
-                    isActive ? 'bg-orange-50 text-primary' : 'text-muted hover:bg-orange-50 hover:text-primary'
+                    isActive ? 'bg-orange-50 text-primary' : 'text-muted hover:bg-slate-100 hover:text-primary'
                   }`
                 }
               >
@@ -59,7 +62,7 @@ function SidebarItem({ item, collapsed, onNavigate }) {
           logout();
           onNavigate?.();
         }}
-        className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-muted transition hover:bg-orange-50 hover:text-primary"
+        className={`${itemBase} text-muted hover:border-line hover:bg-slate-100 hover:text-primary`}
       >
         {Icon ? <Icon className="size-5 shrink-0" /> : null}
         {!collapsed ? <span className="truncate">{item.label}</span> : null}
@@ -73,8 +76,10 @@ function SidebarItem({ item, collapsed, onNavigate }) {
       onClick={onNavigate}
       title={collapsed ? item.label : undefined}
       className={({ isActive }) =>
-        `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
-          isActive ? 'bg-orange-50 text-primary' : 'text-muted hover:bg-orange-50 hover:text-primary'
+        `${itemBase} ${
+          isActive
+            ? 'border-primary/10 bg-primary text-white shadow-sm'
+            : 'text-muted hover:border-line hover:bg-slate-100 hover:text-primary'
         }`
       }
     >
@@ -93,11 +98,11 @@ export function Sidebar({ role, collapsed, onToggle, onNavigate, className = '' 
         collapsed ? 'w-20' : 'w-72'
       } ${className}`}
     >
-      <div className="flex h-20 items-center justify-between border-b border-line px-4">
+      <div className="flex h-20 items-center justify-between border-b border-line bg-white px-4">
         {!collapsed ? <BrandLogo /> : <BrandLogo compact />}
         <button
           type="button"
-          className="focus-ring hidden rounded-lg p-2 text-muted hover:bg-orange-50 hover:text-primary lg:inline-flex"
+          className="focus-ring hidden rounded-lg p-2 text-muted hover:bg-slate-100 hover:text-primary lg:inline-flex"
           onClick={onToggle}
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >

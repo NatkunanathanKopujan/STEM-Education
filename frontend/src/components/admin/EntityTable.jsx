@@ -34,7 +34,7 @@ export function EntityTable({ type, items, isLoading = false, isSaving = false, 
           </thead>
           <tbody className="divide-y divide-line bg-white">
             {!isLoading && items.map((item) => (
-              <tr key={item.id} className="hover:bg-orange-50/40">
+              <tr key={item.id} className="hover:bg-slate-50">
                 <td className="px-4 py-3"><span className="grid size-10 place-items-center rounded-xl bg-orange-50 text-sm font-bold text-primary">{item.photo}</span></td>
                 {isStudent ? <td className="px-4 py-3 text-muted">{item.studentId}</td> : null}
                 <td className="px-4 py-3 font-semibold text-ink">{item.fullName}</td>

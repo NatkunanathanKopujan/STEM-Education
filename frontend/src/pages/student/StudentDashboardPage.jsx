@@ -52,13 +52,13 @@ export function StudentDashboardPage() {
 
   return (
     <div className="space-y-6">
-      <Card className="bg-gradient-to-r from-primary to-primary-dark p-6 text-white">
+      <Card className="border-primary/20 bg-primary p-6 text-white">
         <h1 className="text-2xl font-bold">Welcome, {user?.fullName || user?.name || 'Student'}</h1>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-orange-50">
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-200">
           Continue your learning journey with the latest materials, announcements, and quiz progress from the database.
         </p>
         <div className="mt-5 flex flex-wrap gap-3">
-          <Link to="/student/ai-quiz"><Button className="bg-white text-primary hover:from-white hover:to-orange-50">Start AI Quiz</Button></Link>
+          <Link to="/student/ai-quiz"><Button className="bg-white text-primary hover:bg-slate-100">Start AI Quiz</Button></Link>
           <Link to="/student/materials"><Button variant="secondary" className="border-white bg-primary text-white hover:bg-white hover:text-primary">View Materials</Button></Link>
         </div>
       </Card>

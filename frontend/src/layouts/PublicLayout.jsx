@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Outlet, Link } from 'react-router-dom';
-import { FiFacebook, FiLinkedin, FiMenu, FiTwitter, FiX } from 'react-icons/fi';
+import { FiMail, FiMapPin, FiMenu, FiPhone, FiX } from 'react-icons/fi';
 import { BrandLogo } from '../components/BrandLogo';
 import { Button } from '../components/ui/Button';
 
@@ -16,8 +16,8 @@ export function PublicLayout() {
 
   return (
     <div className="min-h-screen bg-page text-ink">
-      <header className="fixed inset-x-0 top-0 z-50 border-b border-line bg-white/95 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+      <header className="fixed inset-x-0 top-0 z-50 border-b border-line bg-white/95 shadow-sm backdrop-blur">
+        <div className="mx-auto flex h-[72px] max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <BrandLogo />
           <nav className="hidden items-center gap-8 md:flex" aria-label="Public navigation">
             {navLinks.map((link) => (
@@ -37,7 +37,7 @@ export function PublicLayout() {
           </div>
           <button
             type="button"
-            className="focus-ring rounded-xl p-2 text-muted hover:bg-orange-50 hover:text-primary md:hidden"
+            className="focus-ring rounded-xl p-2 text-muted hover:bg-slate-100 hover:text-primary md:hidden"
             onClick={() => setMobileOpen((value) => !value)}
             aria-label="Toggle navigation menu"
             aria-expanded={mobileOpen}
@@ -52,7 +52,7 @@ export function PublicLayout() {
                 <a
                   key={link.href}
                   href={link.href}
-                  className="rounded-xl px-3 py-2 text-sm font-semibold text-muted transition hover:bg-orange-50 hover:text-primary"
+                  className="rounded-xl px-3 py-2 text-sm font-semibold text-muted transition hover:bg-slate-100 hover:text-primary"
                   onClick={() => setMobileOpen(false)}
                 >
                   {link.label}
@@ -65,7 +65,7 @@ export function PublicLayout() {
           </div>
         ) : null}
       </header>
-      <div className="pt-16">
+      <div className="pt-[72px]">
         <Outlet />
       </div>
       <footer id="contact" className="border-t border-line bg-white">
@@ -76,17 +76,10 @@ export function PublicLayout() {
               AI Smart LMS helps universities manage teaching, learning, assessments,
               reports, and secure role-based access in one modern platform.
             </p>
-            <div className="mt-5 flex gap-3">
-              {[FiFacebook, FiTwitter, FiLinkedin].map((Icon, index) => (
-                <a
-                  key={index}
-                  href="#home"
-                  className="focus-ring grid size-10 place-items-center rounded-xl border border-line text-primary transition hover:border-primary hover:bg-orange-50"
-                  aria-label="Social media"
-                >
-                  <Icon className="size-5" />
-                </a>
-              ))}
+            <div className="mt-5 space-y-2 text-sm text-muted">
+              <p className="flex items-center gap-2"><FiMail className="size-4 text-primary" /> support@aismartlms.edu</p>
+              <p className="flex items-center gap-2"><FiPhone className="size-4 text-primary" /> +1 555 014 8820</p>
+              <p className="flex items-center gap-2"><FiMapPin className="size-4 text-primary" /> Academic Administration Office</p>
             </div>
           </div>
           <div>
@@ -124,8 +117,8 @@ export function PublicLayout() {
           <div>
             <h2 className="text-sm font-bold uppercase tracking-wide text-ink">Contact</h2>
             <ul className="mt-4 space-y-3 text-sm text-muted">
-              <li>Email: support@aismartlms.edu</li>
-              <li>Phone: +1 555 014 8820</li>
+              <li>Academic Records</li>
+              <li>Student Support Desk</li>
               <li>AI Smart Learning Management System</li>
             </ul>
           </div>

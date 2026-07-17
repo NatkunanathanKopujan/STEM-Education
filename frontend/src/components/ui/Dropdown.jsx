@@ -20,7 +20,7 @@ export function Dropdown({ label, items = [], align = 'right' }) {
     <div className="relative" ref={ref}>
       <button
         type="button"
-        className="focus-ring inline-flex min-h-11 items-center gap-2 rounded-xl border border-line bg-white px-3 text-sm font-semibold text-ink transition hover:border-primary hover:text-primary"
+        className="focus-ring inline-flex min-h-11 items-center gap-2 rounded-xl border border-line bg-white px-3 text-sm font-semibold text-ink shadow-sm transition hover:border-primary hover:text-primary"
         onClick={() => setOpen((value) => !value)}
       >
         {label}
@@ -36,7 +36,7 @@ export function Dropdown({ label, items = [], align = 'right' }) {
             <button
               key={item.label}
               type="button"
-              className="w-full rounded-lg px-3 py-2 text-left text-sm text-ink transition hover:bg-orange-50 hover:text-primary"
+              className="w-full rounded-lg px-3 py-2 text-left text-sm text-ink transition hover:bg-slate-100 hover:text-primary"
               onClick={() => {
                 item.onClick?.();
                 setOpen(false);

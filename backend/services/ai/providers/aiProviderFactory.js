@@ -1,12 +1,10 @@
 import { env } from '../../../config/env.js';
 import { AppError } from '../../../utils/appError.js';
 import { geminiProvider } from './geminiProvider.js';
-import { localQuestionProvider } from './localQuestionProvider.js';
 import { ollamaProvider } from './ollamaProvider.js';
 import { openAiProvider } from './openAiProvider.js';
 
 const providers = {
-  local: localQuestionProvider,
   openai: openAiProvider,
   gemini: geminiProvider,
   ollama: ollamaProvider,
@@ -35,6 +33,5 @@ export function listAiModels() {
     openai: [env.ai.openaiModel],
     gemini: [env.ai.geminiModel],
     ollama: [env.ai.ollamaModel],
-    local: [localQuestionProvider.model],
   };
 }

@@ -16,10 +16,6 @@ const costRateKeys = {
 };
 
 function estimateCost(providerName, usage = {}) {
-  if (providerName === 'local') {
-    return 0;
-  }
-
   const [inputKey, outputKey] = costRateKeys[providerName] || [];
   const inputRate = Number(env.ai.costPer1kTokens[inputKey] || 0);
   const outputRate = Number(env.ai.costPer1kTokens[outputKey] || 0);
@@ -50,11 +46,6 @@ export async function generateMcqQuestionsWithAi({
   context,
 }) {
   const provider = getAiProvider();
-
-  if (provider.generateQuestions && provider.name === 'local') {
-    return provider.generateQuestions({ knowledgeItems, difficultyConfig });
-  }
-
   const questionCount = countQuestions(difficultyConfig);
 
   if (!questionCount) {

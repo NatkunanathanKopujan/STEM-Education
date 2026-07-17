@@ -22,8 +22,8 @@ export default {
         soft: 'var(--shadow-soft)',
       },
       borderRadius: {
-        xl: '16px',
-        '2xl': '20px',
+        xl: '8px',
+        '2xl': '12px',
       },
       fontFamily: {
         sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],

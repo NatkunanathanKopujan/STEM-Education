@@ -29,7 +29,7 @@ export const env = {
     expiresIn: process.env.JWT_EXPIRES || '7d',
   },
   ai: {
-    provider: process.env.AI_PROVIDER || 'local',
+    provider: process.env.AI_PROVIDER || 'openai',
     timeoutMs: Number(process.env.AI_TIMEOUT || process.env.AI_TIMEOUT_MS || 30000),
     maxRetries: Number(process.env.AI_MAX_RETRIES || 2),
     batchSize: Number(process.env.AI_BATCH_SIZE || 25),

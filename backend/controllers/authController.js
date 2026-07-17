@@ -1,5 +1,6 @@
 import { loggingService } from '../services/loggingService.js';
 import { closeUserSession } from '../models/sessionModel.js';
+import { closeAllSessions } from '../repositories/profileRepository.js';
 import {
   changeUserPassword,
   getAuthenticatedUser,
@@ -107,6 +108,7 @@ export async function verify(req, res, next) {
 export async function changePassword(req, res, next) {
   try {
     await changeUserPassword(req.user.id, req.body.currentPassword, req.body.newPassword);
+    const affectedSessions = await closeAllSessions(req.user.id, req.user.sessionId);
     loggingService.auth('Password changed', { userId: req.user.id });
     await auditAction({
       user: req.user,
@@ -115,8 +117,9 @@ export async function changePassword(req, res, next) {
       description: 'User changed password',
       ipAddress: req.ip,
       browser: req.get('user-agent'),
+      metadata: { affectedSessions },
     });
-    return sendSuccess(res, null, 'Password changed successfully');
+    return sendSuccess(res, { changed: true, affectedSessions }, 'Password changed successfully');
   } catch (error) {
     return next(error);
   }
