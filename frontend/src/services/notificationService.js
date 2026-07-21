@@ -15,6 +15,7 @@ export const notificationService = {
   markAllRead: async () => unwrap(await apiClient.post('/notifications/read-all')),
   deleteNotification: async (id) => unwrap(await apiClient.delete(`/notifications/${id}`)),
   getAnnouncements: async (params) => unwrap(await apiClient.get('/announcements', { params: compactValues(params) })),
+  getAnnouncement: async (id) => unwrap(await apiClient.get(`/announcements/${id}`)),
   createAnnouncement: async (payload) => unwrap(await apiClient.post('/announcements', payload)),
   updateAnnouncement: async (id, payload) => unwrap(await apiClient.put(`/announcements/${id}`, payload)),
   deleteAnnouncement: async (id) => unwrap(await apiClient.delete(`/announcements/${id}`)),

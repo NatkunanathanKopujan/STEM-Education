@@ -2,8 +2,8 @@ import { FiLoader } from 'react-icons/fi';
 
 const variants = {
   primary:
-    'bg-primary text-white shadow-sm hover:bg-primary-dark hover:shadow-md active:bg-primary-dark',
-  secondary: 'border border-line bg-white text-primary shadow-sm hover:border-primary hover:bg-slate-50',
+    'bg-primary text-[#171411] shadow-sm hover:bg-primary-dark hover:text-white hover:shadow-md active:bg-primary-dark',
+  secondary: 'border border-line bg-white text-primary shadow-sm hover:border-primary hover:bg-orange-50',
   danger: 'bg-red-700 text-white shadow-sm hover:bg-red-800',
   ghost: 'text-muted hover:bg-slate-100 hover:text-primary',
 };

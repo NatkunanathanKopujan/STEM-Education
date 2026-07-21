@@ -18,7 +18,16 @@ export function createUserManagementController(service, label) {
 
     show: async (req, res, next) => {
       try {
-        return sendSuccess(res, await service.findById(req.params.id), `${label} fetched successfully`);
+        const record = await service.findById(req.params.id);
+        await auditAction({
+          user: req.user,
+          action: `${label.toLowerCase()}_viewed`,
+          module: 'users',
+          description: `${label} ${record.fullName || record.username || req.params.id} viewed`,
+          ...requestMeta(req),
+          metadata: { targetUserId: Number(req.params.id), targetRole: label.toLowerCase() },
+        });
+        return sendSuccess(res, record, `${label} fetched successfully`);
       } catch (error) {
         return next(error);
       }

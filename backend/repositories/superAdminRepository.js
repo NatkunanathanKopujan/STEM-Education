@@ -19,7 +19,15 @@ const mapAdminRow = (row) => ({
     .toUpperCase(),
 });
 
-export async function listAdmins({ search = '', status = '' } = {}) {
+export async function listAdmins({
+  search = '',
+  status = '',
+  page = 1,
+  limit = 10,
+} = {}) {
+  const safePage = Math.max(Number(page) || 1, 1);
+  const safeLimit = Math.min(Math.max(Number(limit) || 10, 1), 100);
+  const offset = (safePage - 1) * safeLimit;
   const filters = [`u.role = 'admin'`];
   const params = [];
 
@@ -34,6 +42,7 @@ export async function listAdmins({ search = '', status = '' } = {}) {
     params.push(status.toLowerCase());
   }
 
+  const whereSql = filters.join(' AND ');
   const [rows] = await db.query(
     `SELECT
        a.id AS adminId,
@@ -47,12 +56,25 @@ export async function listAdmins({ search = '', status = '' } = {}) {
        DATE_FORMAT(a.created_at, '%Y-%m-%d') AS createdDate
      FROM admins a
      INNER JOIN users u ON u.id = a.user_id
-     WHERE ${filters.join(' AND ')}
-     ORDER BY a.created_at DESC`,
+     WHERE ${whereSql}
+     ORDER BY a.created_at DESC
+     LIMIT ? OFFSET ?`,
+    [...params, safeLimit, offset],
+  );
+  const [countRows] = await db.query(
+    `SELECT COUNT(*) AS total
+     FROM admins a
+     INNER JOIN users u ON u.id = a.user_id
+     WHERE ${whereSql}`,
     params,
   );
 
-  return rows.map(mapAdminRow);
+  return {
+    admins: rows.map(mapAdminRow),
+    total: countRows[0]?.total || 0,
+    page: safePage,
+    limit: safeLimit,
+  };
 }
 
 export async function findAdminById(id) {

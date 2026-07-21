@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { FiEdit3, FiRefreshCw, FiTrash2 } from 'react-icons/fi';
+import { FiEdit3, FiEye, FiRefreshCw, FiTrash2 } from 'react-icons/fi';
 import { useAuth } from '../../hooks/useAuth';
 import { PageHeader } from '../../components/super-admin/PageHeader';
 import { StatusBadge } from '../../components/super-admin/StatusBadge';
@@ -7,6 +7,7 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Loader } from '../../components/ui/Loader';
+import { ConfirmationDialog, Modal } from '../../components/ui/Modal';
 import { USER_ROLES } from '../../utils/constants';
 import { notificationService } from '../../services/notificationService';
 
@@ -29,6 +30,7 @@ const initialFilters = {
   search: '',
   priority: '',
   status: '',
+  sort: 'newest',
   offset: 0,
 };
 function getApiErrorMessage(apiError, fallback) {
@@ -76,7 +78,38 @@ function validateForm(form) {
     return 'Description must be at least 5 characters.';
   }
 
+  if (!form.audience) {
+    return 'Audience is required.';
+  }
+
+  if (form.publishDate && form.expiryDate && new Date(form.expiryDate) <= new Date(form.publishDate)) {
+    return 'Expiry date must be after publish date.';
+  }
+
   return '';
+}
+
+function formatDateTime(value, fallback = 'Not set') {
+  if (!value) return fallback;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return fallback;
+  return date.toLocaleString();
+}
+
+function getEffectiveStatus(announcement) {
+  const now = Date.now();
+  const publishAt = announcement.publishDate ? new Date(announcement.publishDate).getTime() : null;
+  const expiryAt = announcement.expiryDate ? new Date(announcement.expiryDate).getTime() : null;
+
+  if (announcement.status === 'published' && publishAt && publishAt > now) {
+    return 'scheduled';
+  }
+
+  if (announcement.status === 'published' && expiryAt && expiryAt <= now) {
+    return 'expired';
+  }
+
+  return announcement.status || 'draft';
 }
 
 function mapAnnouncementToForm(announcement) {
@@ -125,6 +158,9 @@ export function AnnouncementCenterPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [selectedAnnouncement, setSelectedAnnouncement] = useState(null);
+  const [isViewing, setIsViewing] = useState(false);
   const [filters, setFilters] = useState(initialFilters);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -212,16 +248,30 @@ export function AnnouncementCenterPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const deleteAnnouncement = async (announcement) => {
-    if (!window.confirm(`Delete announcement "${announcement.title}"?`)) return;
+  const deleteAnnouncement = async () => {
+    if (!deleteTarget) return;
     setError('');
     setMessage('');
     try {
-      await notificationService.deleteAnnouncement(announcement.id);
+      await notificationService.deleteAnnouncement(deleteTarget.id);
       setMessage('Announcement deleted.');
+      setDeleteTarget(null);
       await loadAnnouncements(filters);
     } catch (apiError) {
       setError(getApiErrorMessage(apiError, 'Unable to delete announcement.'));
+    }
+  };
+
+  const viewAnnouncement = async (announcement) => {
+    setError('');
+    setIsViewing(true);
+    try {
+      const details = await notificationService.getAnnouncement(announcement.id);
+      setSelectedAnnouncement(details);
+    } catch (apiError) {
+      setError(getApiErrorMessage(apiError, 'Unable to load announcement details.'));
+    } finally {
+      setIsViewing(false);
     }
   };
 
@@ -323,7 +373,7 @@ export function AnnouncementCenterPage() {
       ) : null}
 
       <Card className="p-5">
-        <div className="grid gap-3 lg:grid-cols-[1fr_12rem_12rem_auto_auto_auto]">
+        <div className="grid gap-3 lg:grid-cols-[1fr_11rem_11rem_12rem_auto_auto_auto]">
           <input
             value={filters.search}
             onChange={(event) => updateFilter('search', event.target.value)}
@@ -346,10 +396,22 @@ export function AnnouncementCenterPage() {
             className="min-h-11 rounded-xl border border-line px-4 text-sm outline-none focus:border-primary"
             disabled={!canPublish}
           >
-            <option value="">Published</option>
+            <option value="">{canPublish ? 'All Status' : 'Published'}</option>
+            {canPublish ? <option value="scheduled">Scheduled</option> : null}
             <option value="draft">Draft</option>
             <option value="published">Published</option>
             <option value="expired">Expired</option>
+          </select>
+          <select
+            value={filters.sort}
+            onChange={(event) => updateFilter('sort', event.target.value)}
+            className="min-h-11 rounded-xl border border-line px-4 text-sm outline-none focus:border-primary"
+          >
+            <option value="newest">Newest</option>
+            <option value="oldest">Oldest</option>
+            <option value="publishDate">Publish date</option>
+            <option value="priority">Priority</option>
+            <option value="status">Status</option>
           </select>
           <Button onClick={applyFilters}>Filter</Button>
           <Button variant="secondary" onClick={resetFilters}>Reset</Button>
@@ -385,26 +447,37 @@ export function AnnouncementCenterPage() {
             </div>
             <p className="mt-4 text-xs text-muted">
               Target: {getAudienceLabel(announcement)} -
-              Published {announcement.publishDate ? new Date(announcement.publishDate).toLocaleString() : 'recently'} -
-              Status {announcement.status}
+              Published {formatDateTime(announcement.publishDate, 'recently')} -
+              Status {getEffectiveStatus(announcement)}
             </p>
             {announcement.attachments?.length ? (
               <p className="mt-2 text-xs font-semibold text-primary">
                 Attachment: {announcement.attachments[0].fileName}
               </p>
             ) : null}
-            {canPublish ? (
-              <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button
+                variant="secondary"
+                className="min-h-9 px-3"
+                disabled={isViewing}
+                onClick={() => viewAnnouncement(announcement)}
+              >
+                <FiEye />
+                View
+              </Button>
+              {canPublish ? (
+                <>
                 <Button variant="secondary" className="min-h-9 px-3" onClick={() => startEdit(announcement)}>
                   <FiEdit3 />
                   Edit
                 </Button>
-                <Button variant="ghost" className="min-h-9 px-3 text-red-600" onClick={() => deleteAnnouncement(announcement)}>
+                <Button variant="ghost" className="min-h-9 px-3 text-red-600" onClick={() => setDeleteTarget(announcement)}>
                   <FiTrash2 />
                   Delete
                 </Button>
-              </div>
-            ) : null}
+                </>
+              ) : null}
+            </div>
           </Card>
         ))}
       </div>
@@ -418,6 +491,47 @@ export function AnnouncementCenterPage() {
           Next
         </Button>
       </div>
+      <ConfirmationDialog
+        open={Boolean(deleteTarget)}
+        title="Delete announcement"
+        message={`Delete announcement "${deleteTarget?.title}"? This action cannot be undone.`}
+        confirmLabel="Delete"
+        isDanger
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={deleteAnnouncement}
+      />
+      <Modal
+        open={Boolean(selectedAnnouncement)}
+        title="Announcement details"
+        onClose={() => setSelectedAnnouncement(null)}
+      >
+        {selectedAnnouncement ? (
+          <div className="space-y-4 text-sm">
+            <div>
+              <p className="text-xs font-semibold uppercase text-muted">Title</p>
+              <p className="mt-1 font-semibold text-ink">{selectedAnnouncement.title}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase text-muted">Content</p>
+              <p className="mt-1 leading-6 text-muted">{selectedAnnouncement.description}</p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <p><span className="font-semibold text-ink">Audience:</span> {getAudienceLabel(selectedAnnouncement)}</p>
+              <p><span className="font-semibold text-ink">Priority:</span> {selectedAnnouncement.priority}</p>
+              <p><span className="font-semibold text-ink">Status:</span> {getEffectiveStatus(selectedAnnouncement)}</p>
+              <p><span className="font-semibold text-ink">Published:</span> {formatDateTime(selectedAnnouncement.publishDate)}</p>
+              <p><span className="font-semibold text-ink">Expires:</span> {formatDateTime(selectedAnnouncement.expiryDate)}</p>
+              <p><span className="font-semibold text-ink">Updated:</span> {formatDateTime(selectedAnnouncement.updatedAt)}</p>
+            </div>
+            {selectedAnnouncement.attachments?.length ? (
+              <div>
+                <p className="text-xs font-semibold uppercase text-muted">Attachment</p>
+                <p className="mt-1 text-primary">{selectedAnnouncement.attachments[0].fileName}</p>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </Modal>
     </div>
   );
 }

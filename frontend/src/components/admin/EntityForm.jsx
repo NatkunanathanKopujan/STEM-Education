@@ -6,12 +6,38 @@ import { Input } from '../ui/Input';
 import { PasswordInput, SelectBox, Textarea } from '../ui/FormControls';
 import { generatePassword, generateStudentId } from '../../hooks/useEntityManagement';
 import { academicYearService } from '../../services/academicYearService';
+import { departmentService } from '../../services/departmentService';
+import { userManagementService } from '../../services/userManagementService';
+
+const qualificationOptions = [
+  { label: 'Select qualification', value: '' },
+  { label: 'O/L', value: 'O/L' },
+  { label: 'A/L', value: 'A/L' },
+  { label: 'Diploma', value: 'Diploma' },
+  { label: 'HND', value: 'HND' },
+  { label: 'Degree', value: 'Degree' },
+  { label: "Master's Degree", value: "Master's Degree" },
+  { label: 'PhD', value: 'PhD' },
+  { label: 'NVQ Level 3', value: 'NVQ Level 3' },
+  { label: 'NVQ Level 4', value: 'NVQ Level 4' },
+  { label: 'NVQ Level 5', value: 'NVQ Level 5' },
+  { label: 'NVQ Level 6', value: 'NVQ Level 6' },
+  { label: 'NVQ Level 7', value: 'NVQ Level 7' },
+];
 
 export function EntityForm({ type, item, onSubmit, onCancel, generateUsername }) {
   const isTeacher = type === 'teacher';
   const isStudent = type === 'student';
   const isCurriculum = type === 'curriculum';
   const [academicYearOptions, setAcademicYearOptions] = useState([]);
+  const [departmentOptions, setDepartmentOptions] = useState([]);
+  const [departmentSearch, setDepartmentSearch] = useState(item?.department || '');
+  const [departmentsLoading, setDepartmentsLoading] = useState(false);
+  const [departmentError, setDepartmentError] = useState('');
+  const [curriculumOptions, setCurriculumOptions] = useState([]);
+  const [curriculumSearch, setCurriculumSearch] = useState(item?.curriculum || '');
+  const [curriculumsLoading, setCurriculumsLoading] = useState(false);
+  const [curriculumError, setCurriculumError] = useState('');
   const {
     register,
     handleSubmit,
@@ -22,7 +48,9 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
     defaultValues: {
       status: 'Active',
       department: '',
-      curriculum: 'Computer Science',
+      departmentId: '',
+      curriculum: '',
+      curriculumId: '',
       semester: 'Semester 1',
       academicYear: '',
       duration: '',
@@ -36,8 +64,16 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
       for (const [key, value] of Object.entries(item)) {
         setValue(key, Array.isArray(value) ? value.join(', ') : value);
       }
+      if (isTeacher) {
+        setDepartmentSearch(item.department || '');
+        setValue('departmentId', item.departmentId || '');
+      }
+      if (isStudent) {
+        setCurriculumSearch(item.curriculum || '');
+        setValue('curriculumId', item.curriculumId || '');
+      }
     }
-  }, [item, setValue]);
+  }, [isStudent, isTeacher, item, setValue]);
 
   useEffect(() => {
     if (!isCurriculum) return;
@@ -64,6 +100,112 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
       isMounted = false;
     };
   }, [isCurriculum]);
+
+  useEffect(() => {
+    if (!isTeacher) return undefined;
+
+    let isMounted = true;
+    const loadDepartments = async () => {
+      setDepartmentsLoading(true);
+      setDepartmentError('');
+      try {
+        const data = await departmentService.list({
+          status: 'active',
+          search: departmentSearch,
+          limit: 100,
+          sort: 'name',
+          direction: 'asc',
+        });
+        if (!isMounted) return;
+        const activeDepartments = data.departments || [];
+        setDepartmentOptions(activeDepartments);
+        const selected = activeDepartments.find(
+          (department) => department.name.toLowerCase() === departmentSearch.trim().toLowerCase(),
+        );
+        if (selected) {
+          setValue('departmentId', selected.id, { shouldValidate: true });
+          setValue('department', selected.name);
+        } else if (!item?.departmentId || departmentSearch !== item.department) {
+          setValue('departmentId', '', { shouldValidate: true });
+          setValue('department', departmentSearch);
+        }
+      } catch {
+        if (isMounted) {
+          setDepartmentOptions([]);
+          setDepartmentError('Unable to load active departments.');
+        }
+      } finally {
+        if (isMounted) setDepartmentsLoading(false);
+      }
+    };
+
+    loadDepartments();
+
+    const reloadDepartments = (event) => {
+      if (!event.detail || event.detail.type === 'department') {
+        loadDepartments();
+      }
+    };
+    window.addEventListener('lms:data-changed', reloadDepartments);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('lms:data-changed', reloadDepartments);
+    };
+  }, [departmentSearch, isTeacher, item, setValue]);
+
+  useEffect(() => {
+    if (!isStudent) return undefined;
+
+    let isMounted = true;
+    const loadCurriculums = async () => {
+      setCurriculumsLoading(true);
+      setCurriculumError('');
+      try {
+        const data = await userManagementService.list('curriculum', {
+          status: 'Active',
+          search: curriculumSearch,
+          limit: 100,
+          sort: 'name',
+          direction: 'asc',
+        });
+        if (!isMounted) return;
+        const activeCurriculums = data.curriculums || [];
+        setCurriculumOptions(activeCurriculums);
+        const selected = activeCurriculums.find(
+          (curriculum) => curriculum.name.toLowerCase() === curriculumSearch.trim().toLowerCase(),
+        );
+        if (selected) {
+          setValue('curriculumId', selected.id, { shouldValidate: true });
+          setValue('curriculum', selected.name);
+        } else if (!item?.curriculumId || curriculumSearch !== item.curriculum) {
+          setValue('curriculumId', '', { shouldValidate: true });
+          setValue('curriculum', curriculumSearch);
+        }
+      } catch {
+        if (isMounted) {
+          setCurriculumOptions([]);
+          setCurriculumError('Unable to load active curriculums.');
+        }
+      } finally {
+        if (isMounted) setCurriculumsLoading(false);
+      }
+    };
+
+    loadCurriculums();
+
+    const reloadCurriculums = (event) => {
+      if (!event.detail || event.detail.type === 'curriculum') {
+        loadCurriculums();
+      }
+    };
+    window.addEventListener('lms:data-changed', reloadCurriculums);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('lms:data-changed', reloadCurriculums);
+    };
+  }, [curriculumSearch, isStudent, item, setValue]);
 
   const password = watch('password');
 
@@ -111,14 +253,57 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
       <Input label="Phone Number" {...register('phone')} />
       {isTeacher ? (
         <>
-          <Input label="Department" {...register('department', { required: 'Department is required' })} />
-          <Input label="Qualification" {...register('qualification', { required: 'Qualification is required' })} />
+          <div>
+            <Input
+              label="Department"
+              list="teacher-department-options"
+              value={departmentSearch}
+              onChange={(event) => setDepartmentSearch(event.target.value)}
+              placeholder={departmentsLoading ? 'Loading departments...' : 'Search active departments'}
+              error={errors.departmentId?.message || departmentError}
+            />
+            <datalist id="teacher-department-options">
+              {departmentOptions.map((department) => (
+                <option key={department.id} value={department.name} />
+              ))}
+            </datalist>
+            <input type="hidden" {...register('departmentId', { required: 'Department is required' })} />
+            <input type="hidden" {...register('department')} />
+            <p className="mt-1 text-xs text-muted">
+              {departmentsLoading ? 'Refreshing active departments...' : 'Only active departments can be selected.'}
+            </p>
+          </div>
+          <SelectBox
+            label="Qualification"
+            error={errors.qualification?.message}
+            options={qualificationOptions}
+            {...register('qualification', { required: 'Qualification is required' })}
+          />
         </>
       ) : null}
       {isStudent ? (
         <>
           <Input label="Batch" {...register('batch', { required: 'Batch is required' })} />
-          <SelectBox label="Curriculum" options={[{ label: 'Computer Science', value: 'Computer Science' }, { label: 'Data Science', value: 'Data Science' }, { label: 'Business Management', value: 'Business Management' }]} {...register('curriculum')} />
+          <div>
+            <Input
+              label="Curriculum / Course"
+              list="student-curriculum-options"
+              value={curriculumSearch}
+              onChange={(event) => setCurriculumSearch(event.target.value)}
+              placeholder={curriculumsLoading ? 'Loading curriculums...' : 'Search active curriculums'}
+              error={errors.curriculumId?.message || curriculumError}
+            />
+            <datalist id="student-curriculum-options">
+              {curriculumOptions.map((curriculum) => (
+                <option key={curriculum.id} value={curriculum.name} />
+              ))}
+            </datalist>
+            <input type="hidden" {...register('curriculumId', { required: 'Curriculum is required' })} />
+            <input type="hidden" {...register('curriculum')} />
+            <p className="mt-1 text-xs text-muted">
+              {curriculumsLoading ? 'Refreshing active curriculums...' : 'Only active curriculums can be selected.'}
+            </p>
+          </div>
         </>
       ) : null}
       <div className="flex items-end gap-2">

@@ -5,7 +5,7 @@ import { PageHeader } from '../../components/super-admin/PageHeader';
 import { StatusBadge } from '../../components/super-admin/StatusBadge';
 import { Button, DangerButton, SecondaryButton } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
-import { ErrorAlert } from '../../components/ui/Alerts';
+import { ErrorAlert, SuccessAlert } from '../../components/ui/Alerts';
 import { Loader } from '../../components/ui/Loader';
 import { ConfirmationDialog, Modal } from '../../components/ui/Modal';
 import { Pagination } from '../../components/ui/Pagination';
@@ -19,6 +19,7 @@ export function AdminManagementPage() {
   const [editingAdmin, setEditingAdmin] = useState(null);
   const [viewingAdmin, setViewingAdmin] = useState(null);
   const [deleteAdmin, setDeleteAdmin] = useState(null);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
 
   const openCreate = () => {
     setEditingAdmin(null);
@@ -49,6 +50,7 @@ export function AdminManagementPage() {
       />
       <Card className="p-5">
         <ErrorAlert message={adminState.errorMessage} />
+        <SuccessAlert message={adminState.successMessage} />
         <div className="grid gap-3 lg:grid-cols-[1fr_180px_auto]">
           <SearchBar
             value={adminState.query}
@@ -65,9 +67,9 @@ export function AdminManagementPage() {
             ]}
           />
           <div className="flex flex-wrap gap-2">
-            <SecondaryButton disabled={adminState.isSaving} onClick={() => adminState.bulkUpdateStatus('Active')}>Bulk Activate</SecondaryButton>
-            <SecondaryButton disabled={adminState.isSaving} onClick={() => adminState.bulkUpdateStatus('Inactive')}>Bulk Deactivate</SecondaryButton>
-            <DangerButton disabled={adminState.isSaving} onClick={adminState.bulkDelete}>Bulk Delete</DangerButton>
+            <SecondaryButton disabled={adminState.isSaving || !adminState.selectedIds.length} onClick={() => adminState.bulkUpdateStatus('Active')}>Bulk Activate</SecondaryButton>
+            <SecondaryButton disabled={adminState.isSaving || !adminState.selectedIds.length} onClick={() => adminState.bulkUpdateStatus('Inactive')}>Bulk Deactivate</SecondaryButton>
+            <DangerButton disabled={adminState.isSaving || !adminState.selectedIds.length} onClick={() => setBulkDeleteOpen(true)}>Bulk Delete</DangerButton>
           </div>
         </div>
       </Card>
@@ -80,6 +82,7 @@ export function AdminManagementPage() {
                 <th className="px-4 py-3">
                   <input
                     type="checkbox"
+                    checked={Boolean(adminState.admins.length) && adminState.admins.every((admin) => adminState.selectedIds.includes(admin.id))}
                     onChange={(event) => adminState.toggleAll(event.target.checked)}
                     aria-label="Select all admins"
                   />
@@ -92,8 +95,8 @@ export function AdminManagementPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-line bg-white">
-              {!adminState.isLoading && adminState.filteredAdmins.map((admin) => (
-                <tr key={admin.id} className="hover:bg-orange-50/40">
+              {!adminState.isLoading && adminState.admins.map((admin) => (
+                <tr key={admin.id} className="hover:bg-slate-50">
                   <td className="px-4 py-3">
                     <input
                       type="checkbox"
@@ -157,7 +160,7 @@ export function AdminManagementPage() {
                   </td>
                 </tr>
               ))}
-              {!adminState.isLoading && !adminState.filteredAdmins.length ? (
+              {!adminState.isLoading && !adminState.admins.length ? (
                 <tr>
                   <td className="px-4 py-8 text-center text-sm font-semibold text-muted" colSpan={9}>
                     No admins found.
@@ -168,7 +171,11 @@ export function AdminManagementPage() {
           </table>
         </div>
         <div className="border-t border-line p-4">
-          <Pagination page={1} totalPages={1} />
+          <Pagination
+            page={adminState.page}
+            totalPages={adminState.totalPages}
+            onPageChange={adminState.setPage}
+          />
         </div>
       </Card>
       <Modal
@@ -231,6 +238,20 @@ export function AdminManagementPage() {
           adminState
             .deleteAdmin(deleteAdmin.id)
             .then(() => setDeleteAdmin(null))
+            .catch(() => {});
+        }}
+      />
+      <ConfirmationDialog
+        open={bulkDeleteOpen}
+        title="Delete selected admins"
+        message={`Are you sure you want to delete ${adminState.selectedIds.length} selected admin account(s)? This action cannot be undone.`}
+        confirmLabel="Delete selected"
+        isDanger
+        onClose={() => setBulkDeleteOpen(false)}
+        onConfirm={() => {
+          adminState
+            .bulkDelete()
+            .then(() => setBulkDeleteOpen(false))
             .catch(() => {});
         }}
       />

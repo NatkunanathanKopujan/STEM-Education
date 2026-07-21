@@ -28,7 +28,7 @@ export function Textarea({ label, error, id, className = '', ...props }) {
       {label ? <span className="mb-2 block">{label}</span> : null}
       <textarea
         id={inputId}
-        className={`focus-ring min-h-28 w-full resize-y rounded-xl border border-line bg-white px-3.5 py-2.5 text-sm text-ink shadow-sm placeholder:text-muted transition focus:border-primary ${className}`}
+        className={`focus-ring min-h-28 w-full resize-y rounded-xl border border-line bg-white px-3.5 py-2.5 text-sm text-ink shadow-sm placeholder:text-muted transition focus:border-primary focus:bg-white ${className}`}
         {...props}
       />
       {error ? <span className="mt-1 block text-xs text-red-600">{error}</span> : null}
@@ -44,7 +44,7 @@ export function SelectBox({ label, error, id, options = [], className = '', ...p
       {label ? <span className="mb-2 block">{label}</span> : null}
       <select
         id={inputId}
-        className={`focus-ring w-full rounded-xl border border-line bg-white px-3.5 py-2.5 text-sm text-ink shadow-sm transition focus:border-primary ${className}`}
+        className={`focus-ring w-full rounded-xl border border-line bg-white px-3.5 py-2.5 text-sm text-ink shadow-sm transition focus:border-primary focus:bg-white ${className}`}
         {...props}
       >
         {options.map((option) => (

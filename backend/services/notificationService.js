@@ -6,6 +6,7 @@ import {
   createNotification,
   deleteAnnouncement,
   deleteNotification,
+  findAnnouncementById,
   getNotificationPreferences,
   listAnnouncements,
   listNotifications,
@@ -58,11 +59,28 @@ export async function getUnreadNotifications(user) {
 
 export async function readNotifications(user, ids = []) {
   const affected = await markNotificationsRead({ userId: user.id, ids });
+  if (affected) {
+    await auditAction({
+      user,
+      action: 'notifications_marked_read',
+      module: 'notifications',
+      description: `${affected} notification${affected === 1 ? '' : 's'} marked as read`,
+      metadata: { ids },
+    });
+  }
   return { affected };
 }
 
 export async function readAllNotifications(user) {
   const affected = await markNotificationsRead({ userId: user.id });
+  if (affected) {
+    await auditAction({
+      user,
+      action: 'notifications_marked_all_read',
+      module: 'notifications',
+      description: `${affected} notification${affected === 1 ? '' : 's'} marked as read`,
+    });
+  }
   return { affected };
 }
 
@@ -72,6 +90,13 @@ export async function removeNotification(user, id) {
   if (!deleted) {
     throw new AppError('Notification not found', 404);
   }
+  await auditAction({
+    user,
+    action: 'notification_deleted',
+    module: 'notifications',
+    description: `Notification ${id} deleted`,
+    metadata: { notificationId: Number(id) },
+  });
 
   return { deleted: true };
 }
@@ -101,9 +126,30 @@ export async function getAnnouncements(user, filters = {}) {
     type: filters.type,
     priority: filters.priority,
     status: filters.status,
+    sort: filters.sort,
     limit: Number(filters.limit) || 30,
     offset: Number(filters.offset) || 0,
   });
+}
+
+export async function getAnnouncement(user, id) {
+  const announcement = await findAnnouncementById({ user, id });
+
+  if (!announcement) {
+    throw new AppError('Announcement not found', 404);
+  }
+
+  if (announcementPublishRoles.includes(user.role)) {
+    await auditAction({
+      user,
+      action: 'announcement_viewed',
+      module: 'announcements',
+      description: `Announcement ${announcement.title} viewed`,
+      metadata: { announcementId: Number(id) },
+    });
+  }
+
+  return announcement;
 }
 
 async function notifyAnnouncementAudience(announcement, createdBy) {
@@ -150,6 +196,13 @@ export async function publishAnnouncement(user, payload) {
   const id = await createAnnouncement(announcement);
   await replaceAnnouncementTargets(id, payload.targets || []);
   const delivery = await notifyAnnouncementAudience(announcement, user.id);
+  await auditAction({
+    user,
+    action: announcement.status === 'draft' ? 'announcement_draft_created' : 'announcement_published',
+    module: 'announcements',
+    description: `${announcement.status === 'draft' ? 'Announcement draft' : 'Announcement'} ${announcement.title} saved`,
+    metadata: { announcementId: id, delivered: delivery.delivered, audienceRole: announcement.audienceRole },
+  });
 
   return { id, ...delivery };
 }
@@ -168,6 +221,13 @@ export async function editAnnouncement(user, id, payload) {
   if (payload.targets) {
     await replaceAnnouncementTargets(id, payload.targets);
   }
+  await auditAction({
+    user,
+    action: 'announcement_updated',
+    module: 'announcements',
+    description: `Announcement ${id} updated`,
+    metadata: { announcementId: Number(id), fields: Object.keys(payload || {}) },
+  });
 
   return { updated: true };
 }
@@ -182,6 +242,13 @@ export async function removeAnnouncement(user, id) {
   if (!deleted) {
     throw new AppError('Announcement not found', 404);
   }
+  await auditAction({
+    user,
+    action: 'announcement_deleted',
+    module: 'announcements',
+    description: `Announcement ${id} deleted`,
+    metadata: { announcementId: Number(id) },
+  });
 
   return { deleted: true };
 }

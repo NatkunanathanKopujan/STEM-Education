@@ -12,6 +12,7 @@ const endpointFor = (type) => endpoints[type];
 
 export const userManagementService = {
   list: async (type, params) => unwrap(await apiClient.get(endpointFor(type), { params })),
+  get: async (type, id) => unwrap(await apiClient.get(`${endpointFor(type)}/${id}`)),
   create: async (type, payload) => unwrap(await apiClient.post(endpointFor(type), payload)),
   update: async (type, id, payload) => unwrap(await apiClient.put(`${endpointFor(type)}/${id}`, payload)),
   remove: async (type, id) => unwrap(await apiClient.delete(`${endpointFor(type)}/${id}`)),

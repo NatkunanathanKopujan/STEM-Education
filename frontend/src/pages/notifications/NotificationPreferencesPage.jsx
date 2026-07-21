@@ -11,9 +11,6 @@ const preferenceItems = [
   ['materialUploadNotifications', 'Material Upload Notifications'],
   ['reminderNotifications', 'Reminder Notifications'],
   ['securityNotifications', 'Security Notifications'],
-  ['emailNotifications', 'Future Email Notifications'],
-  ['pushNotifications', 'Future Push Notifications'],
-  ['smsNotifications', 'Future SMS Notifications'],
 ];
 
 export function NotificationPreferencesPage() {
@@ -73,7 +70,7 @@ export function NotificationPreferencesPage() {
         <PageHeader
           eyebrow="Communication"
           title="Notification Preferences"
-          description="Control in-app notification categories and future-ready Email, SMS, and Push channels."
+          description="Control the in-app notification categories saved to your account."
         />
         <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">{error}</div>
       </div>
@@ -89,7 +86,7 @@ export function NotificationPreferencesPage() {
       <PageHeader
         eyebrow="Communication"
         title="Notification Preferences"
-        description="Control in-app notification categories and future-ready Email, SMS, and Push channels."
+        description="Control the in-app notification categories saved to your account."
       />
       {message ? <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm font-semibold text-green-700">{message}</div> : null}
       {error ? <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">{error}</div> : null}

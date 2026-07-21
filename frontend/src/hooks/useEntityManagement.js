@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { userManagementService } from '../services/userManagementService';
 
 const createUsername = (fullName) =>
@@ -10,6 +10,11 @@ export const generatePassword = () =>
 export const generateStudentId = () =>
   `STU-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
+function notifyDataChanged(type, action) {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent('lms:data-changed', { detail: { type, action } }));
+}
+
 export function useEntityManagement(initialItems = [], type = null) {
   const [items, setItems] = useState(initialItems);
   const [query, setQuery] = useState('');
@@ -17,65 +22,79 @@ export function useEntityManagement(initialItems = [], type = null) {
   const [isLoading, setIsLoading] = useState(Boolean(type));
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+  const [page, setPage] = useState(1);
+  const [limit] = useState(10);
+  const [total, setTotal] = useState(initialItems.length);
+  const [sortField, setSortField] = useState('createdDate');
+  const [sortDirection, setSortDirection] = useState('desc');
   const isApiBacked = type === 'teacher' || type === 'student' || type === 'curriculum';
 
-  const loadItems = useCallback(async () => {
+  const fetchItems = useCallback(async (overrides = {}) => {
     if (!isApiBacked) {
+      setItems([]);
+      setTotal(0);
       return;
     }
 
+    const nextQuery = overrides.query ?? query;
+    const nextStatusFilter = overrides.statusFilter ?? statusFilter;
+    const nextPage = overrides.page ?? page;
+    const nextSortField = overrides.sortField ?? sortField;
+    const nextSortDirection = overrides.sortDirection ?? sortDirection;
+
+    const response = await userManagementService.list(type, {
+      search: nextQuery,
+      status: nextStatusFilter === 'All' ? '' : nextStatusFilter,
+      page: nextPage,
+      limit,
+      sort: nextSortField,
+      direction: nextSortDirection,
+    });
+
+    const records = response.users || response.curriculums || [];
+    setItems(records);
+    setTotal(Number(response.total || records.length || 0));
+    setPage(Number(response.page || nextPage || 1));
+    return response;
+  }, [isApiBacked, limit, page, query, sortDirection, sortField, statusFilter, type]);
+
+  const loadItems = useCallback(async (overrides = {}) => {
     setIsLoading(true);
     setErrorMessage('');
     try {
-      const response = await userManagementService.list(type);
-      setItems(response.users || response.curriculums || []);
+      await fetchItems(overrides);
     } catch (error) {
       setErrorMessage(error.response?.data?.message || `Unable to load ${type}s.`);
     } finally {
       setIsLoading(false);
     }
-  }, [isApiBacked, type]);
+  }, [fetchItems, type]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query, sortDirection, sortField, statusFilter]);
 
   useEffect(() => {
     loadItems();
   }, [loadItems]);
 
-  const filteredItems = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    return items.filter((item) => {
-      const matchesQuery = Object.values(item).join(' ').toLowerCase().includes(normalized);
-      const matchesStatus = statusFilter === 'All' || item.status === statusFilter;
-      return matchesQuery && matchesStatus;
-    });
-  }, [items, query, statusFilter]);
-
-  const createLocalItem = (payload) => {
-    const initials = (payload.fullName || payload.name || 'NA')
-      .split(' ')
-      .map((part) => part[0])
-      .join('')
-      .slice(0, 2)
-      .toUpperCase();
-    setItems((current) => [
-      { id: Date.now(), createdDate: new Date().toISOString().slice(0, 10), photo: initials, ...payload },
-      ...current,
-    ]);
-  };
-
   const createItem = async (payload) => {
     if (!isApiBacked) {
-      createLocalItem(payload);
       return null;
     }
 
     setIsSaving(true);
     setErrorMessage('');
+    setSuccessMessage('');
     try {
       const item = await userManagementService.create(type, {
         ...payload,
         username: payload.username || createUsername(payload.fullName),
       });
-      setItems((current) => [item, ...current]);
+      await fetchItems({ page: 1 });
+      setSuccessMessage(`${type === 'curriculum' ? 'Curriculum' : type === 'teacher' ? 'Teacher' : 'Student'} created successfully.`);
+      notifyDataChanged(type, 'created');
       return item;
     } catch (error) {
       setErrorMessage(error.response?.data?.message || `Unable to create ${type}.`);
@@ -93,15 +112,32 @@ export function useEntityManagement(initialItems = [], type = null) {
 
     setIsSaving(true);
     setErrorMessage('');
+    setSuccessMessage('');
     try {
       const item = await userManagementService.update(type, id, payload);
       setItems((current) => current.map((entry) => (entry.id === id ? item : entry)));
+      setSuccessMessage(`${type === 'curriculum' ? 'Curriculum' : type === 'teacher' ? 'Teacher' : 'Student'} updated successfully.`);
+      notifyDataChanged(type, 'updated');
       return item;
     } catch (error) {
       setErrorMessage(error.response?.data?.message || `Unable to update ${type}.`);
       throw error;
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const viewItem = async (id) => {
+    if (!isApiBacked) {
+      return items.find((item) => item.id === id) || null;
+    }
+
+    setErrorMessage('');
+    try {
+      return await userManagementService.get(type, id);
+    } catch (error) {
+      setErrorMessage(error.response?.data?.message || `Unable to load ${type} details.`);
+      throw error;
     }
   };
 
@@ -113,9 +149,12 @@ export function useEntityManagement(initialItems = [], type = null) {
 
     setIsSaving(true);
     setErrorMessage('');
+    setSuccessMessage('');
     try {
       await userManagementService.remove(type, id);
-      setItems((current) => current.filter((item) => item.id !== id));
+      await fetchItems();
+      setSuccessMessage(`${type === 'curriculum' ? 'Curriculum' : type === 'teacher' ? 'Teacher' : 'Student'} deleted successfully.`);
+      notifyDataChanged(type, 'deleted');
     } catch (error) {
       setErrorMessage(error.response?.data?.message || `Unable to delete ${type}.`);
       throw error;
@@ -126,15 +165,25 @@ export function useEntityManagement(initialItems = [], type = null) {
 
   return {
     items,
-    filteredItems,
     isLoading,
     isSaving,
     errorMessage,
+    successMessage,
     loadItems,
     query,
     setQuery,
     statusFilter,
     setStatusFilter,
+    page,
+    totalPages: Math.max(1, Math.ceil(total / limit)),
+    total,
+    limit,
+    sortField,
+    setSortField,
+    sortDirection,
+    setSortDirection,
+    setPage,
+    viewItem,
     createItem,
     updateItem,
     deleteItem,

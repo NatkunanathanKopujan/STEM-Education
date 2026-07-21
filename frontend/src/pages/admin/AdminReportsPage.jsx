@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { FiDownload } from 'react-icons/fi';
 import { PageHeader } from '../../components/super-admin/PageHeader';
+import { ErrorAlert, SuccessAlert } from '../../components/ui/Alerts';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { EmptyState } from '../../components/ui/EmptyState';
@@ -13,6 +14,7 @@ export function AdminReportsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [exportMessage, setExportMessage] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -49,11 +51,20 @@ export function AdminReportsPage() {
   }, []);
 
   const handleExport = async (format) => {
-    const data = await reportsService.exportReport(format, {
-      reportType: 'students',
-      scope: 'filtered_data',
-    });
-    setExportMessage(`${data.fileName} generated successfully.`);
+    setIsExporting(true);
+    setError('');
+    setExportMessage('');
+    try {
+      const data = await reportsService.exportReport(format, {
+        reportType: 'students',
+        scope: 'filtered_data',
+      });
+      setExportMessage(`${data.fileName} generated successfully.`);
+    } catch (apiError) {
+      setError(apiError.response?.data?.message || `Unable to export ${format.toUpperCase()} report.`);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   if (isLoading) {
@@ -71,14 +82,15 @@ export function AdminReportsPage() {
         title="Reports"
         description="Teacher statistics, student performance, curriculum activity, materials, quizzes, and exports."
       />
+      <ErrorAlert message={error} />
+      <SuccessAlert message={exportMessage} />
       <div className="flex flex-wrap gap-3">
-        <Button onClick={() => handleExport('pdf')}>
+        <Button disabled={isExporting} isLoading={isExporting} onClick={() => handleExport('pdf')}>
           <FiDownload />
           Export PDF
         </Button>
-        <Button variant="secondary" onClick={() => handleExport('excel')}>Export Excel</Button>
-        <Button variant="secondary" onClick={() => handleExport('csv')}>Export CSV</Button>
-        {exportMessage ? <span className="text-sm font-semibold text-primary">{exportMessage}</span> : null}
+        <Button variant="secondary" disabled={isExporting} onClick={() => handleExport('excel')}>Export Excel</Button>
+        <Button variant="secondary" disabled={isExporting} onClick={() => handleExport('csv')}>Export CSV</Button>
       </div>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Card className="p-5"><p className="text-2xl font-bold text-ink">{reports.dashboard.cards.totalTeachers}</p><p className="text-sm text-muted">Teachers</p></Card>

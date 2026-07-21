@@ -75,7 +75,7 @@ export function UserOverviewPage() {
             </thead>
             <tbody className="divide-y divide-line bg-white">
               {filteredUsers.map((user) => (
-                <tr key={`${user.role}-${user.id}`} className="hover:bg-orange-50/40">
+                <tr key={`${user.role}-${user.id}`} className="hover:bg-slate-50">
                   <td className="px-4 py-3 font-semibold text-ink">{user.fullName}</td>
                   <td className="px-4 py-3 text-muted">{user.username}</td>
                   <td className="px-4 py-3 text-muted">{user.email}</td>

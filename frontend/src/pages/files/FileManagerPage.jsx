@@ -24,7 +24,7 @@ import { Button } from '../../components/ui/Button';
 import { Card, DashboardCard } from '../../components/ui/Card';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Loader } from '../../components/ui/Loader';
-import { Modal } from '../../components/ui/Modal';
+import { ConfirmationDialog, Modal } from '../../components/ui/Modal';
 import { fileService } from '../../services/fileService';
 
 const acceptedTypes = '.pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx,.zip,.jpg,.jpeg,.png,.webp,.mp4,.mov,.avi,.mp3,.wav';
@@ -68,6 +68,7 @@ export function FileManagerPage() {
   const [previewUrl, setPreviewUrl] = useState('');
   const [previewFileMeta, setPreviewFileMeta] = useState(null);
   const [editingFile, setEditingFile] = useState(null);
+  const [archiveTarget, setArchiveTarget] = useState(null);
   const [editForm, setEditForm] = useState(buildDefaultMetadata);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -184,12 +185,13 @@ export function FileManagerPage() {
     }
   };
 
-  const removeFile = async (file) => {
-    if (!window.confirm(`Archive ${file.originalFileName}?`)) return;
+  const removeFile = async () => {
+    if (!archiveTarget) return;
     setError('');
     try {
-      await fileService.remove(file.id);
-      setMessage(`${file.originalFileName} archived.`);
+      await fileService.remove(archiveTarget.id);
+      setMessage(`${archiveTarget.originalFileName} archived.`);
+      setArchiveTarget(null);
       await loadData();
     } catch (apiError) {
       setError(apiErrorMessage(apiError, 'Archive failed.'));
@@ -470,7 +472,7 @@ export function FileManagerPage() {
                         <Button variant="ghost" className="min-h-9 px-2" aria-label={`Download ${file.originalFileName}`} onClick={() => downloadFile(file)}><FiDownload /></Button>
                         <Button variant="ghost" className="min-h-9 px-2" aria-label={`View version history for ${file.originalFileName}`} onClick={() => loadVersions(file)}><FiRefreshCw /></Button>
                         <Button variant="ghost" className="min-h-9 px-2" aria-label="Upload new version" onClick={() => { setVersionTarget(file); window.scrollTo({ top: 0, behavior: 'smooth' }); }}><FiUploadCloud /></Button>
-                        <Button variant="ghost" className="min-h-9 px-2 text-red-600" aria-label={`Delete ${file.originalFileName}`} onClick={() => removeFile(file)}><FiTrash2 /></Button>
+                        <Button variant="ghost" className="min-h-9 px-2 text-red-600" aria-label={`Delete ${file.originalFileName}`} onClick={() => setArchiveTarget(file)}><FiTrash2 /></Button>
                       </div>
                     </td>
                   </tr>
@@ -594,6 +596,15 @@ export function FileManagerPage() {
           />
         </label>
       </Modal>
+      <ConfirmationDialog
+        open={Boolean(archiveTarget)}
+        title="Archive file"
+        message={`Archive ${archiveTarget?.originalFileName}? The file will be removed from active file lists.`}
+        confirmLabel="Archive"
+        isDanger
+        onClose={() => setArchiveTarget(null)}
+        onConfirm={removeFile}
+      />
     </div>
   );
 }

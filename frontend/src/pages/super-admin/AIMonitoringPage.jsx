@@ -109,7 +109,7 @@ export function AIMonitoringPage() {
                   <span className="text-primary">{provider.totalRequests} requests</span>
                 </div>
                 <p className="mt-2 text-muted">
-                  Monthly {provider.monthlyRequests} • Tokens {provider.estimatedTokenUsage} • Cost ${Number(provider.estimatedCost || 0).toFixed(4)}
+                  Monthly {provider.monthlyRequests} | Tokens {provider.estimatedTokenUsage} | Cost ${Number(provider.estimatedCost || 0).toFixed(4)}
                 </p>
               </div>
             ))}

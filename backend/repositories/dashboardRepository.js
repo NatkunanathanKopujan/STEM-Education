@@ -1,13 +1,21 @@
 import { db } from '../config/database.js';
 
-export async function getDashboardSummary() {
-  const [[userCounts]] = await db.query(
+export async function getDashboardSummary(user = null) {
+  const [[profileCounts]] = await db.query(
     `SELECT
-       SUM(role = 'admin') AS admins,
-       SUM(role = 'teacher') AS teachers,
-       SUM(role = 'student') AS students,
-       SUM(status = 'active') AS activeUsers
-     FROM users`,
+       (SELECT COUNT(*)
+        FROM admins a
+        INNER JOIN users u ON u.id = a.user_id
+        WHERE u.role = 'admin' AND u.status = 'active') AS admins,
+       (SELECT COUNT(*)
+        FROM teachers t
+        INNER JOIN users u ON u.id = t.user_id
+        WHERE u.role = 'teacher' AND u.status = 'active') AS teachers,
+       (SELECT COUNT(*)
+        FROM students s
+        INNER JOIN users u ON u.id = s.user_id
+        WHERE u.role = 'student' AND u.status = 'active') AS students,
+       (SELECT COUNT(*) FROM users WHERE status = 'active') AS activeUsers`,
   );
   const [[totals]] = await db.query(
     `SELECT
@@ -20,36 +28,86 @@ export async function getDashboardSummary() {
   );
   const [monthlyRegistrations] = await db.query(
     `SELECT
-       DATE_FORMAT(created_at, '%b') AS month,
-       SUM(role = 'admin') AS admins,
-       SUM(role = 'teacher') AS teachers,
-       SUM(role = 'student') AS students
-     FROM users
-     WHERE created_at >= DATE_SUB(CURRENT_DATE(), INTERVAL 6 MONTH)
-     GROUP BY YEAR(created_at), MONTH(created_at), DATE_FORMAT(created_at, '%b')
-     ORDER BY YEAR(created_at), MONTH(created_at)`,
+       DATE_FORMAT(month_start, '%b') AS month,
+       SUM(admins) AS admins,
+       SUM(teachers) AS teachers,
+       SUM(students) AS students
+     FROM (
+       SELECT DATE_FORMAT(a.created_at, '%Y-%m-01') AS month_start,
+        COUNT(*) AS admins, 0 AS teachers, 0 AS students
+       FROM admins a
+       INNER JOIN users u ON u.id = a.user_id
+       WHERE u.status = 'active'
+       GROUP BY DATE_FORMAT(a.created_at, '%Y-%m-01')
+       UNION ALL
+       SELECT DATE_FORMAT(t.created_at, '%Y-%m-01') AS month_start,
+        0 AS admins, COUNT(*) AS teachers, 0 AS students
+       FROM teachers t
+       INNER JOIN users u ON u.id = t.user_id
+       WHERE u.status = 'active'
+       GROUP BY DATE_FORMAT(t.created_at, '%Y-%m-01')
+       UNION ALL
+       SELECT DATE_FORMAT(s.created_at, '%Y-%m-01') AS month_start,
+        0 AS admins, 0 AS teachers, COUNT(*) AS students
+       FROM students s
+       INNER JOIN users u ON u.id = s.user_id
+       WHERE u.status = 'active'
+       GROUP BY DATE_FORMAT(s.created_at, '%Y-%m-01')
+     ) registration_months
+     GROUP BY month_start
+     ORDER BY month_start`,
   );
+  const activityFilters = [];
+  const activityParams = [];
+
+  if (user?.role === 'admin') {
+    activityFilters.push('a.user_id = ?');
+    activityParams.push(user.id);
+  }
+
+  const activityWhere = activityFilters.length ? `WHERE ${activityFilters.join(' AND ')}` : '';
   const [recentActivities] = await db.query(
     `SELECT a.id, a.action, a.module, a.description, a.status, a.role,
       a.created_at AS createdAt, COALESCE(u.full_name, 'System') AS userName
      FROM audit_logs a
      LEFT JOIN users u ON u.id = a.user_id
+     ${activityWhere}
      ORDER BY a.created_at DESC
-     LIMIT 5`,
+     LIMIT 8`,
+    activityParams,
   );
-  const [notifications] = await db.query(
-    `SELECT title, message, notification_type AS type, priority, created_at AS createdAt
-     FROM notifications
-     ORDER BY created_at DESC
+  const [announcements] = await db.query(
+    `SELECT DISTINCT a.id, a.title, a.body AS message, a.priority, a.publish_at AS publishDate,
+       a.created_at AS createdAt
+     FROM announcements a
+     LEFT JOIN announcement_targets at ON at.announcement_id = a.id
+     LEFT JOIN teachers t ON t.user_id = ?
+     LEFT JOIN students s ON s.user_id = ?
+     WHERE a.status = 'published'
+       AND (a.publish_at IS NULL OR a.publish_at <= NOW())
+       AND (a.expiry_at IS NULL OR a.expiry_at > NOW())
+       AND (a.audience_role IS NULL OR a.audience_role = ?)
+       AND (
+        at.id IS NULL
+        OR at.target_type = 'all_users'
+        OR (at.target_type = 'role' AND at.target_role = ?)
+        OR (at.target_type = 'teacher' AND (at.target_id = ? OR at.target_id = t.id))
+        OR (at.target_type = 'student' AND (at.target_id = ? OR at.target_id = s.id))
+        OR (at.target_type = 'curriculum' AND EXISTS (
+          SELECT 1 FROM courses c WHERE c.curriculum_id = at.target_id AND c.teacher_id = t.id
+        ))
+       )
+     ORDER BY COALESCE(a.publish_at, a.created_at) DESC, a.created_at DESC
      LIMIT 5`,
+    [user?.id || 0, user?.id || 0, user?.role || '', user?.role || '', user?.id || 0, user?.id || 0],
   );
 
   return {
     counts: {
-      admins: Number(userCounts.admins || 0),
-      teachers: Number(userCounts.teachers || 0),
-      students: Number(userCounts.students || 0),
-      activeUsers: Number(userCounts.activeUsers || 0),
+      admins: Number(profileCounts.admins || 0),
+      teachers: Number(profileCounts.teachers || 0),
+      students: Number(profileCounts.students || 0),
+      activeUsers: Number(profileCounts.activeUsers || 0),
       curriculums: Number(totals.curriculums || 0),
       courses: Number(totals.courses || 0),
       subjects: Number(totals.courses || 0),
@@ -65,7 +123,8 @@ export async function getDashboardSummary() {
       students: Number(row.students || 0),
     })),
     recentActivities,
-    notifications,
+    announcements,
+    notifications: announcements,
   };
 }
 

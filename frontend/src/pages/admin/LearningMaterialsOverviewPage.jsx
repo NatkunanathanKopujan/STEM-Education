@@ -1,16 +1,21 @@
 import { useCallback, useEffect, useState } from 'react';
 import { PageHeader } from '../../components/super-admin/PageHeader';
+import { ErrorAlert } from '../../components/ui/Alerts';
 import { Card } from '../../components/ui/Card';
 import { fileService } from '../../services/fileService';
 
 export function LearningMaterialsOverviewPage() {
   const [statistics, setStatistics] = useState({ byType: [], recentUploads: [] });
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   const loadStatistics = useCallback(async () => {
     setLoading(true);
+    setError('');
     try {
       setStatistics(await fileService.statistics());
+    } catch (apiError) {
+      setError(apiError.response?.data?.message || 'Unable to load learning material statistics.');
     } finally {
       setLoading(false);
     }
@@ -23,6 +28,7 @@ export function LearningMaterialsOverviewPage() {
   return (
     <div className="space-y-6">
       <PageHeader eyebrow="Admin" title="Learning Materials Overview" description="Review learning material statistics and recently uploaded files from the database." />
+      <ErrorAlert message={error} />
       {loading ? <Card className="p-5 text-sm text-muted">Loading material statistics...</Card> : null}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {(statistics.byType || []).map((item) => (

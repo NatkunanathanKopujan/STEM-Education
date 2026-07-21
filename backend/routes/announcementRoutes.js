@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import {
+  announcementDetailsController,
   announcementsController,
   createAnnouncementController,
   deleteAnnouncementController,
@@ -19,6 +20,7 @@ const router = Router();
 router.use(authenticate);
 
 router.get('/', announcementQueryValidator, validateRequest, announcementsController);
+router.get('/:id', announcementIdValidator, validateRequest, announcementDetailsController);
 router.post('/', announcementValidator, validateRequest, createAnnouncementController);
 router.put('/:id', announcementIdValidator, announcementUpdateValidator, validateRequest, updateAnnouncementController);
 router.delete('/:id', announcementIdValidator, validateRequest, deleteAnnouncementController);

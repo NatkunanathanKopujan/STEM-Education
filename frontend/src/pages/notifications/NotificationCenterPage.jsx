@@ -5,6 +5,7 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Loader } from '../../components/ui/Loader';
+import { ConfirmationDialog } from '../../components/ui/Modal';
 import { NotificationList } from '../../components/notifications/NotificationList';
 import { notificationService } from '../../services/notificationService';
 
@@ -22,6 +23,8 @@ export function NotificationCenterPage() {
   const [data, setData] = useState({ unreadCount: 0, notifications: [], total: 0, limit: pageSize, offset: 0 });
   const [filters, setFilters] = useState(initialFilters);
   const [selectedIds, setSelectedIds] = useState([]);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -105,20 +108,21 @@ export function NotificationCenterPage() {
     await handleRead(selectedUnreadIds);
   };
 
-  const handleDelete = async (id) => {
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
     setError('');
     setMessage('');
     try {
-      const target = data.notifications.find((notification) => notification.id === id);
-      await notificationService.deleteNotification(id);
+      await notificationService.deleteNotification(deleteTarget.id);
       setData((current) => ({
         ...current,
-        unreadCount: target && !target.isRead ? Math.max(Number(current.unreadCount || 0) - 1, 0) : current.unreadCount,
+        unreadCount: !deleteTarget.isRead ? Math.max(Number(current.unreadCount || 0) - 1, 0) : current.unreadCount,
         total: Math.max(Number(current.total || 0) - 1, 0),
-        notifications: current.notifications.filter((notification) => notification.id !== id),
+        notifications: current.notifications.filter((notification) => notification.id !== deleteTarget.id),
       }));
-      setSelectedIds((current) => current.filter((selectedId) => selectedId !== id));
+      setSelectedIds((current) => current.filter((selectedId) => selectedId !== deleteTarget.id));
       setMessage('Notification deleted.');
+      setDeleteTarget(null);
       await loadNotifications(filters);
     } catch (apiError) {
       setError(apiError.response?.data?.message || 'Unable to delete notification.');
@@ -132,6 +136,7 @@ export function NotificationCenterPage() {
     try {
       await Promise.all(selectedIds.map((id) => notificationService.deleteNotification(id)));
       setMessage(`${selectedIds.length} notification${selectedIds.length === 1 ? '' : 's'} deleted.`);
+      setBulkDeleteOpen(false);
       await loadNotifications(filters);
     } catch (apiError) {
       setError(apiError.response?.data?.message || 'Unable to delete selected notifications.');
@@ -234,7 +239,7 @@ export function NotificationCenterPage() {
             <Button variant="secondary" disabled={!selectedUnreadIds.length} onClick={handleBulkRead}>
               Mark Selected Read
             </Button>
-            <Button variant="secondary" disabled={!selectedIds.length} onClick={handleBulkDelete}>
+            <Button variant="secondary" disabled={!selectedIds.length} onClick={() => setBulkDeleteOpen(true)}>
               Delete Selected
             </Button>
             <Button variant="secondary" disabled={!data.unreadCount} onClick={handleMarkAllRead}>
@@ -261,7 +266,7 @@ export function NotificationCenterPage() {
           selectedIds={selectedIds}
           onToggleSelect={toggleSelect}
           onRead={handleRead}
-          onDelete={handleDelete}
+          onDelete={(id) => setDeleteTarget(data.notifications.find((notification) => notification.id === id))}
         />
       )}
 
@@ -274,6 +279,24 @@ export function NotificationCenterPage() {
           Next
         </Button>
       </div>
+      <ConfirmationDialog
+        open={Boolean(deleteTarget)}
+        title="Delete notification"
+        message={`Delete "${deleteTarget?.title}"? This action cannot be undone.`}
+        confirmLabel="Delete"
+        isDanger
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+      />
+      <ConfirmationDialog
+        open={bulkDeleteOpen}
+        title="Delete selected notifications"
+        message={`Delete ${selectedIds.length} selected notification${selectedIds.length === 1 ? '' : 's'}? This action cannot be undone.`}
+        confirmLabel="Delete"
+        isDanger
+        onClose={() => setBulkDeleteOpen(false)}
+        onConfirm={handleBulkDelete}
+      />
     </div>
   );
 }

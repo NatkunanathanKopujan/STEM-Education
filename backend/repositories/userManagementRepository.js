@@ -1,5 +1,7 @@
 import { randomUUID } from 'crypto';
 import { db } from '../config/database.js';
+import { ensureStudentCurriculumSchema } from './curriculumRepository.js';
+import { ensureDepartmentSchema } from './departmentRepository.js';
 
 const roleConfig = {
   admin: {
@@ -52,7 +54,9 @@ function mapRow(role, row) {
   if (role === 'teacher') {
     return {
       ...base,
-      department: row.department || '',
+      employeeNo: row.profileCode || '',
+      departmentId: row.departmentId || null,
+      department: row.departmentName || row.department || '',
       qualification: row.specialization || '',
     };
   }
@@ -61,7 +65,8 @@ function mapRow(role, row) {
     ...base,
     studentId: row.profileCode || '',
     batch: row.enrollmentYear ? String(row.enrollmentYear) : '',
-    curriculum: row.program || '',
+    curriculumId: row.curriculumId || null,
+    curriculum: row.curriculumName || row.program || '',
   };
 }
 
@@ -73,17 +78,51 @@ function getConfig(role) {
   return config;
 }
 
-export async function listManagedUsers(role, { search = '', status = '' } = {}) {
+function getSortClause(role, sort = 'createdDate', direction = 'desc') {
+  const sortColumns = {
+    createdDate: 'p.created_at',
+    fullName: 'u.full_name',
+    username: 'u.username',
+    email: 'u.email',
+    status: 'u.status',
+    code: role === 'student' ? 'p.student_no' : 'p.employee_no',
+  };
+  const column = sortColumns[sort] || sortColumns.createdDate;
+  const normalizedDirection = String(direction).toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+
+  return `${column} ${normalizedDirection}, p.id ${normalizedDirection}`;
+}
+
+export async function listManagedUsers(
+  role,
+  { search = '', status = '', page = 1, limit = 10, sort = 'createdDate', direction = 'desc' } = {},
+) {
+  if (role === 'teacher') {
+    await ensureDepartmentSchema();
+  } else if (role === 'student') {
+    await ensureStudentCurriculumSchema();
+  }
   const config = getConfig(role);
+  const safePage = Math.max(Number(page) || 1, 1);
+  const safeLimit = Math.min(Math.max(Number(limit) || 10, 1), 100);
+  const offset = (safePage - 1) * safeLimit;
+  const orderBy = getSortClause(role, sort, direction);
   const filters = [`u.role = ?`];
   const params = [role];
 
   if (search) {
-    filters.push(
-      `(u.full_name LIKE ? OR u.username LIKE ? OR u.email LIKE ? OR p.${config.profileIdColumn} LIKE ? OR p.${config.extraColumn} LIKE ?)`,
-    );
+    filters.push(role === 'teacher'
+      ? `(u.full_name LIKE ? OR u.username LIKE ? OR u.email LIKE ? OR p.${config.profileIdColumn} LIKE ? OR p.${config.extraColumn} LIKE ? OR d.name LIKE ? OR p.department LIKE ?)`
+      : role === 'student'
+        ? `(u.full_name LIKE ? OR u.username LIKE ? OR u.email LIKE ? OR p.${config.profileIdColumn} LIKE ? OR p.${config.extraColumn} LIKE ? OR c.title LIKE ?)`
+        : `(u.full_name LIKE ? OR u.username LIKE ? OR u.email LIKE ? OR p.${config.profileIdColumn} LIKE ? OR p.${config.extraColumn} LIKE ?)`);
     const term = `%${search}%`;
     params.push(term, term, term, term, term);
+    if (role === 'teacher') {
+      params.push(term, term);
+    } else if (role === 'student') {
+      params.push(term);
+    }
   }
 
   if (status && status !== 'All') {
@@ -93,10 +132,17 @@ export async function listManagedUsers(role, { search = '', status = '' } = {}) 
 
   const selectExtra =
     role === 'student'
-      ? `p.student_no AS profileCode, p.enrollment_year AS enrollmentYear, p.program`
+      ? `p.student_no AS profileCode, p.enrollment_year AS enrollmentYear, p.program,
+        p.curriculum_id AS curriculumId, c.title AS curriculumName`
       : role === 'teacher'
-        ? `p.employee_no AS profileCode, p.department, p.specialization`
+        ? `p.employee_no AS profileCode, p.department_id AS departmentId, p.department, d.name AS departmentName, p.specialization`
         : `p.employee_no AS profileCode, p.department`;
+
+  const baseFrom = `FROM ${config.table} p
+     INNER JOIN users u ON u.id = p.user_id
+     ${role === 'teacher' ? 'LEFT JOIN departments d ON d.id = p.department_id' : ''}
+     ${role === 'student' ? 'LEFT JOIN curriculums c ON c.id = p.curriculum_id' : ''}
+     WHERE ${filters.join(' AND ')}`;
 
   const [rows] = await db.query(
     `SELECT
@@ -109,23 +155,38 @@ export async function listManagedUsers(role, { search = '', status = '' } = {}) 
        u.status,
        DATE_FORMAT(p.created_at, '%Y-%m-%d') AS createdDate,
        ${selectExtra}
-     FROM ${config.table} p
-     INNER JOIN users u ON u.id = p.user_id
-     WHERE ${filters.join(' AND ')}
-     ORDER BY p.created_at DESC`,
+     ${baseFrom}
+     ORDER BY ${orderBy}
+     LIMIT ? OFFSET ?`,
+    [...params, safeLimit, offset],
+  );
+
+  const [[countRow]] = await db.query(
+    `SELECT COUNT(*) AS total ${baseFrom}`,
     params,
   );
 
-  return rows.map((row) => mapRow(role, row));
+  return {
+    users: rows.map((row) => mapRow(role, row)),
+    total: Number(countRow.total || 0),
+    page: safePage,
+    limit: safeLimit,
+  };
 }
 
 export async function findManagedUserById(role, id) {
+  if (role === 'teacher') {
+    await ensureDepartmentSchema();
+  } else if (role === 'student') {
+    await ensureStudentCurriculumSchema();
+  }
   const config = getConfig(role);
   const selectExtra =
     role === 'student'
-      ? `p.student_no AS profileCode, p.enrollment_year AS enrollmentYear, p.program`
+      ? `p.student_no AS profileCode, p.enrollment_year AS enrollmentYear, p.program,
+        p.curriculum_id AS curriculumId, c.title AS curriculumName`
       : role === 'teacher'
-        ? `p.employee_no AS profileCode, p.department, p.specialization`
+        ? `p.employee_no AS profileCode, p.department_id AS departmentId, p.department, d.name AS departmentName, p.specialization`
         : `p.employee_no AS profileCode, p.department`;
 
   const [rows] = await db.query(
@@ -138,9 +199,11 @@ export async function findManagedUserById(role, id) {
        u.phone,
        u.status,
        DATE_FORMAT(p.created_at, '%Y-%m-%d') AS createdDate,
-       ${selectExtra}
+     ${selectExtra}
      FROM ${config.table} p
      INNER JOIN users u ON u.id = p.user_id
+     ${role === 'teacher' ? 'LEFT JOIN departments d ON d.id = p.department_id' : ''}
+     ${role === 'student' ? 'LEFT JOIN curriculums c ON c.id = p.curriculum_id' : ''}
      WHERE p.id = ? AND u.role = ?
      LIMIT 1`,
     [id, role],
@@ -150,6 +213,11 @@ export async function findManagedUserById(role, id) {
 }
 
 export async function createManagedUser(role, payload) {
+  if (role === 'teacher') {
+    await ensureDepartmentSchema();
+  } else if (role === 'student') {
+    await ensureStudentCurriculumSchema();
+  }
   const config = getConfig(role);
   const connection = await db.getConnection();
 
@@ -173,8 +241,14 @@ export async function createManagedUser(role, payload) {
 
     if (role === 'student') {
       const [profileResult] = await connection.query(
-        `INSERT INTO students (user_id, student_no, enrollment_year, program) VALUES (?, ?, ?, ?)`,
-        [userResult.insertId, payload.studentId || null, payload.batch || null, payload.curriculum || null],
+        `INSERT INTO students (user_id, student_no, enrollment_year, program, curriculum_id) VALUES (?, ?, ?, ?, ?)`,
+        [
+          userResult.insertId,
+          payload.studentId || null,
+          payload.batch || null,
+          payload.curriculum || null,
+          payload.curriculumId || null,
+        ],
       );
       await connection.commit();
       return findManagedUserById(role, profileResult.insertId);
@@ -183,11 +257,12 @@ export async function createManagedUser(role, payload) {
     const [profileResult] =
       role === 'teacher'
         ? await connection.query(
-            `INSERT INTO teachers (user_id, employee_no, department, specialization) VALUES (?, ?, ?, ?)`,
+            `INSERT INTO teachers (user_id, employee_no, department, department_id, specialization) VALUES (?, ?, ?, ?, ?)`,
             [
               userResult.insertId,
               payload.employeeNo || null,
               payload.department || null,
+              payload.departmentId || null,
               payload.qualification || null,
             ],
           )
@@ -207,6 +282,11 @@ export async function createManagedUser(role, payload) {
 }
 
 export async function updateManagedUser(role, id, payload) {
+  if (role === 'teacher') {
+    await ensureDepartmentSchema();
+  } else if (role === 'student') {
+    await ensureStudentCurriculumSchema();
+  }
   const existing = await findManagedUserById(role, id);
   if (!existing) {
     return null;
@@ -237,16 +317,29 @@ export async function updateManagedUser(role, id, payload) {
 
     if (role === 'student') {
       await connection.query(
-        `UPDATE students SET student_no = ?, enrollment_year = ?, program = ? WHERE id = ?`,
-        [payload.studentId || null, payload.batch || null, payload.curriculum || null, id],
+        `UPDATE students SET student_no = ?, enrollment_year = ?, program = ?, curriculum_id = ? WHERE id = ?`,
+        [
+          payload.studentId || null,
+          payload.batch || null,
+          payload.curriculum || null,
+          payload.curriculumId || null,
+          id,
+        ],
       );
     } else if (role === 'teacher') {
       await connection.query(
-        `UPDATE teachers SET department = ?, specialization = ? WHERE id = ?`,
-        [payload.department || null, payload.qualification || null, id],
+        `UPDATE teachers SET employee_no = ?, department = ?, department_id = ?, specialization = ? WHERE id = ?`,
+        [
+          payload.employeeNo || null,
+          payload.department || null,
+          payload.departmentId || null,
+          payload.qualification || null,
+          id,
+        ],
       );
     } else {
-      await connection.query(`UPDATE ${config.table} SET department = ? WHERE id = ?`, [
+      await connection.query(`UPDATE ${config.table} SET employee_no = ?, department = ? WHERE id = ?`, [
+        payload.employeeNo || null,
         payload.department || null,
         id,
       ]);

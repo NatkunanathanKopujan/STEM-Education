@@ -48,7 +48,7 @@ class LocalStorageProvider {
   }
 }
 
-class FutureStorageProvider {
+class ExternalStorageProvider {
   constructor(name) {
     this.providerName = name;
   }
@@ -58,7 +58,7 @@ class FutureStorageProvider {
   }
 
   unsupported() {
-    throw new Error(`${this.providerName} storage provider is configured but not implemented yet`);
+    throw new Error(`${this.providerName} storage provider requires a configured storage integration`);
   }
 
   exists() {
@@ -87,5 +87,5 @@ export function getStorageProvider() {
     return new LocalStorageProvider();
   }
 
-  return new FutureStorageProvider(env.storage.provider);
+  return new ExternalStorageProvider(env.storage.provider);
 }

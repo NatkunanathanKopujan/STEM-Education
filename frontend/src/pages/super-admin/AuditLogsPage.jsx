@@ -186,7 +186,7 @@ export function AuditLogsPage() {
                 </thead>
                 <tbody className="divide-y divide-line bg-white">
                   {result.logs.map((log) => (
-                    <tr key={log.id} className="hover:bg-orange-50/40">
+                    <tr key={log.id} className="hover:bg-slate-50">
                       <td className="px-4 py-3 font-semibold text-ink">{log.action}</td>
                       <td className="px-4 py-3 text-muted">{log.userName || 'System'}<span className="block text-xs capitalize">{log.role || '-'}</span></td>
                       <td className="px-4 py-3 text-muted">{log.module}</td>

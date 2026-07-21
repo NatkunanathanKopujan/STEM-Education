@@ -56,7 +56,7 @@ class MemoryCacheProvider {
   }
 }
 
-class FutureCacheProvider extends MemoryCacheProvider {
+class ConfiguredCacheFallbackProvider extends MemoryCacheProvider {
   getStats() {
     return {
       ...super.getStats(),
@@ -68,7 +68,9 @@ class FutureCacheProvider extends MemoryCacheProvider {
 }
 
 const provider =
-  env.performance.cacheProvider === 'memory' ? new MemoryCacheProvider() : new FutureCacheProvider();
+  env.performance.cacheProvider === 'memory'
+    ? new MemoryCacheProvider()
+    : new ConfiguredCacheFallbackProvider();
 
 export const cacheService = {
   get: (key) => provider.get(key),

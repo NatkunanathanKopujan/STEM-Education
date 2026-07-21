@@ -36,8 +36,7 @@ function handleDuplicate(error) {
 
 export const curriculumService = {
   async list(filters) {
-    const curriculums = await listCurriculums(filters);
-    return { curriculums, total: curriculums.length };
+    return listCurriculums(filters);
   },
 
   async findById(id) {

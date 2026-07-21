@@ -2,6 +2,8 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { db } from '../config/database.js';
+import { ensureStudentCurriculumSchema } from './curriculumRepository.js';
+import { ensureDepartmentSchema } from './departmentRepository.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -9,13 +11,21 @@ const profileUploadDirectory = path.resolve(__dirname, '..', 'uploads', 'profile
 
 const profileSelect = `SELECT u.id, u.uuid, u.full_name AS fullName, u.username, u.email,
   u.phone, u.role, u.status, u.profile_photo AS profilePhoto, u.last_login AS lastLogin,
-  u.created_at AS joinedDate, up.address, up.bio, up.department, up.qualification,
-  up.curriculum, up.employee_id AS employeeId, up.student_id AS studentId,
+  u.created_at AS joinedDate, up.address, up.bio,
+  CASE WHEN u.role = 'teacher' THEN COALESCE(d.name, t.department, up.department) ELSE up.department END AS department,
+  CASE WHEN u.role = 'teacher' THEN COALESCE(t.specialization, up.qualification) ELSE up.qualification END AS qualification,
+  CASE WHEN u.role = 'student' THEN COALESCE(sc.title, s.program, up.curriculum) ELSE up.curriculum END AS curriculum,
+  up.employee_id AS employeeId,
+  CASE WHEN u.role = 'student' THEN COALESCE(s.student_no, up.student_id) ELSE up.student_id END AS studentId,
   up.phone_visibility AS phoneVisibility, up.email_visibility AS emailVisibility,
   up.profile_visibility AS profileVisibility, up.password_changed_at AS passwordChangedAt,
   up.last_failed_login AS lastFailedLogin
  FROM users u
- LEFT JOIN user_profiles up ON up.user_id = u.id`;
+ LEFT JOIN user_profiles up ON up.user_id = u.id
+ LEFT JOIN teachers t ON t.user_id = u.id
+ LEFT JOIN departments d ON d.id = t.department_id
+ LEFT JOIN students s ON s.user_id = u.id
+ LEFT JOIN curriculums sc ON sc.id = s.curriculum_id`;
 
 export async function ensureUserProfile(userId) {
   await db.execute('INSERT IGNORE INTO user_profiles (user_id) VALUES (?)', [userId]);
@@ -23,6 +33,8 @@ export async function ensureUserProfile(userId) {
 }
 
 export async function getProfile(userId) {
+  await ensureDepartmentSchema();
+  await ensureStudentCurriculumSchema();
   await ensureUserProfile(userId);
   const [rows] = await db.execute(`${profileSelect} WHERE u.id = ? LIMIT 1`, [userId]);
   return rows[0] || null;

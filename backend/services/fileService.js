@@ -23,6 +23,7 @@ import {
 } from '../repositories/fileRepository.js';
 import { getStorageProvider } from './storageProviderService.js';
 import { performanceMetricsService } from './performanceMetricsService.js';
+import { auditAction } from './securityService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -125,14 +126,23 @@ export async function uploadManagedFile(user, file, body = {}) {
     const parent = await findFileById(Number(body.parentFileId));
     ensureManageAllowed(user, parent);
     const versionId = await createFileVersion(parent.id, metadata);
+    const parentRecord = await findFileById(parent.id);
     performanceMetricsService.recordUpload({
       fileSize: file.size,
       durationMs: Date.now() - startedAt,
       speedMbps: Number(((file.size / 1024 / 1024) / Math.max((Date.now() - startedAt) / 1000, 0.001)).toFixed(2)),
     });
 
+    await auditAction({
+      user,
+      action: 'file_version_uploaded',
+      module: 'files',
+      description: `New version uploaded for ${parentRecord.originalFileName || parentRecord.id}`,
+      metadata: { fileId: parentRecord.id, versionId },
+    });
+
     return {
-      file: await findFileById(parent.id),
+      file: parentRecord,
       versionId,
       duplicate: false,
       message: 'New file version uploaded',
@@ -150,14 +160,22 @@ export async function uploadManagedFile(user, file, body = {}) {
 
   const fileId = await createFileRecord(metadata);
   const versionId = await createFileVersion(fileId, metadata);
+  const fileRecord = await findFileById(fileId);
   performanceMetricsService.recordUpload({
     fileSize: file.size,
     durationMs: Date.now() - startedAt,
     speedMbps: Number(((file.size / 1024 / 1024) / Math.max((Date.now() - startedAt) / 1000, 0.001)).toFixed(2)),
   });
+  await auditAction({
+    user,
+    action: 'file_uploaded',
+    module: 'files',
+    description: `File ${fileRecord.originalFileName || fileRecord.id} uploaded`,
+    metadata: { fileId: fileRecord.id, versionId },
+  });
 
   return {
-    file: await findFileById(fileId),
+    file: fileRecord,
     versionId,
     duplicate: false,
     message: 'File uploaded',
@@ -191,13 +209,28 @@ export async function updateFile(user, id, payload) {
   const file = await getFile(user, id);
   ensureManageAllowed(user, file);
   await updateFileRecord(file.id, payload);
-  return findFileById(file.id);
+  const updated = await findFileById(file.id);
+  await auditAction({
+    user,
+    action: 'file_updated',
+    module: 'files',
+    description: `File ${updated.originalFileName || updated.id} updated`,
+    metadata: { fileId: updated.id },
+  });
+  return updated;
 }
 
 export async function removeFile(user, id) {
   const file = await getFile(user, id);
   ensureManageAllowed(user, file);
   await deleteFileRecord(file.id);
+  await auditAction({
+    user,
+    action: 'file_archived',
+    module: 'files',
+    description: `File ${file.originalFileName || file.id} archived`,
+    metadata: { fileId: file.id },
+  });
   return { deleted: true };
 }
 
@@ -262,7 +295,15 @@ export async function restoreFileVersion(user, versionId) {
   const file = await getFile(user, fileId);
   ensureManageAllowed(user, file);
   await restoreVersion(Number(versionId));
-  return findFileById(file.id);
+  const restored = await findFileById(file.id);
+  await auditAction({
+    user,
+    action: 'file_version_restored',
+    module: 'files',
+    description: `File ${restored.originalFileName || restored.id} version restored`,
+    metadata: { fileId: restored.id, versionId: Number(versionId) },
+  });
+  return restored;
 }
 
 export async function getFileStatistics(user) {

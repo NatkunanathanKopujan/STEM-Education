@@ -2,9 +2,10 @@ import { dashboardService } from '../services/dashboardService.js';
 import { sendSuccess } from '../utils/apiResponse.js';
 
 export const dashboardController = {
-  summary: async (_req, res, next) => {
+  summary: async (req, res, next) => {
     try {
-      return sendSuccess(res, await dashboardService.getSummary(), 'Dashboard summary fetched');
+      res.setHeader('Cache-Control', 'no-store');
+      return sendSuccess(res, await dashboardService.getSummary(req.user), 'Dashboard summary fetched');
     } catch (error) {
       return next(error);
     }

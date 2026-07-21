@@ -122,6 +122,11 @@ const PeopleManagementPage = lazy(() =>
     default: module.PeopleManagementPage,
   })),
 );
+const DepartmentManagementPage = lazy(() =>
+  import('../pages/admin/DepartmentManagementPage').then((module) => ({
+    default: module.DepartmentManagementPage,
+  })),
+);
 const CurriculumManagementPage = lazy(() =>
   import('../pages/admin/CurriculumManagementPage').then((module) => ({
     default: module.CurriculumManagementPage,
@@ -267,6 +272,7 @@ export function AppRoutes() {
               />
               <Route path="/admin/teachers" element={<PeopleManagementPage type="teacher" />} />
               <Route path="/admin/students" element={<PeopleManagementPage type="student" />} />
+              <Route path="/admin/departments" element={<DepartmentManagementPage />} />
               <Route path="/admin/curriculums" element={<CurriculumManagementPage />} />
               <Route path="/admin/curriculum" element={<Navigate to="/admin/curriculums" replace />} />
               <Route path="/admin/materials" element={<LearningMaterialsOverviewPage />} />

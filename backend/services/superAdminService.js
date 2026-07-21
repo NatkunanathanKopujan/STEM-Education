@@ -47,8 +47,7 @@ function handleDuplicate(error) {
 
 export const superAdminService = {
   async list(filters) {
-    const admins = await listAdmins(filters);
-    return { admins, total: admins.length };
+    return listAdmins(filters);
   },
 
   async findById(id) {

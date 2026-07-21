@@ -12,9 +12,6 @@ const notificationKeys = [
   ['materialUploadNotifications', 'Learning Material Notifications'],
   ['reminderNotifications', 'Reminder Notifications'],
   ['securityNotifications', 'Security Notifications'],
-  ['emailNotifications', 'Future Email Notifications'],
-  ['smsNotifications', 'Future SMS Notifications'],
-  ['pushNotifications', 'Future Push Notifications'],
 ];
 
 export function UserSettingsPage() {
@@ -133,7 +130,7 @@ export function UserSettingsPage() {
             >
               <option value="private">Private</option>
               <option value="role_members">Role Members</option>
-              <option value="public">Future Public Profile</option>
+              <option value="public">Public Profile</option>
             </select>
           </label>
           {[

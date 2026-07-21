@@ -1,6 +1,14 @@
 import { AppError } from '../utils/appError.js';
 import { hashPassword } from '../utils/password.js';
 import {
+  findActiveCurriculumById,
+  findActiveCurriculumByName,
+} from '../repositories/curriculumRepository.js';
+import {
+  findActiveDepartmentById,
+  findActiveDepartmentByName,
+} from '../repositories/departmentRepository.js';
+import {
   createManagedUser,
   deleteManagedUser,
   findManagedUserById,
@@ -26,6 +34,12 @@ function validatePayload(role, payload, { requirePassword = false } = {}) {
   if (!payload.email?.trim()) {
     throw new AppError('Email is required', 422);
   }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.email.trim())) {
+    throw new AppError('Enter a valid email address', 422);
+  }
+  if (payload.phone && !/^[+()\-\s0-9]{6,30}$/.test(payload.phone)) {
+    throw new AppError('Enter a valid phone number', 422);
+  }
   if (requirePassword && !payload.password) {
     throw new AppError('Password is required', 422);
   }
@@ -43,11 +57,54 @@ function validatePayload(role, payload, { requirePassword = false } = {}) {
     phone: payload.phone?.trim() || '',
     status: normalizeStatus(payload.status),
     department: payload.department?.trim() || '',
+    departmentId: payload.departmentId ? Number(payload.departmentId) : null,
     qualification: payload.qualification?.trim() || '',
+    employeeNo: payload.employeeNo?.trim() || '',
     studentId: payload.studentId?.trim() || '',
     batch: payload.batch ? String(payload.batch).trim() : '',
+    curriculumId: payload.curriculumId ? Number(payload.curriculumId) : null,
     curriculum: payload.curriculum?.trim() || '',
   };
+}
+
+async function resolveTeacherDepartment(payload) {
+  if (payload.departmentId) {
+    const department = await findActiveDepartmentById(payload.departmentId);
+    if (!department) {
+      throw new AppError('Select a valid active department', 422);
+    }
+    return { departmentId: department.id, department: department.name };
+  }
+
+  if (payload.department) {
+    const department = await findActiveDepartmentByName(payload.department);
+    if (!department) {
+      throw new AppError('Select a valid active department', 422);
+    }
+    return { departmentId: department.id, department: department.name };
+  }
+
+  throw new AppError('Department is required', 422);
+}
+
+async function resolveStudentCurriculum(payload) {
+  if (payload.curriculumId) {
+    const curriculum = await findActiveCurriculumById(payload.curriculumId);
+    if (!curriculum) {
+      throw new AppError('Select a valid active curriculum', 422);
+    }
+    return { curriculumId: curriculum.id, curriculum: curriculum.name };
+  }
+
+  if (payload.curriculum) {
+    const curriculum = await findActiveCurriculumByName(payload.curriculum);
+    if (!curriculum) {
+      throw new AppError('Select a valid active curriculum', 422);
+    }
+    return { curriculumId: curriculum.id, curriculum: curriculum.name };
+  }
+
+  throw new AppError('Curriculum is required', 422);
 }
 
 function handleDuplicate(error) {
@@ -63,8 +120,7 @@ export function createUserManagementService(role) {
 
   return {
     async list(filters) {
-      const users = await listManagedUsers(role, filters);
-      return { users, total: users.length };
+      return listManagedUsers(role, filters);
     },
 
     async findById(id) {
@@ -76,7 +132,12 @@ export function createUserManagementService(role) {
     },
 
     async create(payload) {
-      const userPayload = validatePayload(role, payload, { requirePassword: true });
+      let userPayload = validatePayload(role, payload, { requirePassword: true });
+      if (role === 'teacher') {
+        userPayload = { ...userPayload, ...(await resolveTeacherDepartment(userPayload)) };
+      } else if (role === 'student') {
+        userPayload = { ...userPayload, ...(await resolveStudentCurriculum(userPayload)) };
+      }
       const passwordHash = await hashPassword(payload.password);
 
       try {
@@ -88,7 +149,12 @@ export function createUserManagementService(role) {
 
     async update(id, payload) {
       const current = await this.findById(id);
-      const userPayload = validatePayload(role, { ...current, ...payload });
+      let userPayload = validatePayload(role, { ...current, ...payload });
+      if (role === 'teacher') {
+        userPayload = { ...userPayload, ...(await resolveTeacherDepartment(userPayload)) };
+      } else if (role === 'student' && ('curriculumId' in payload || 'curriculum' in payload)) {
+        userPayload = { ...userPayload, ...(await resolveStudentCurriculum(userPayload)) };
+      }
       const passwordHash = payload.password ? await hashPassword(payload.password) : null;
 
       try {

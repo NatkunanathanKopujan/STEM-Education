@@ -35,7 +35,8 @@ export const notificationQueryValidator = [
 export const announcementQueryValidator = [
   query('search').optional(optionalField).trim(),
   query('priority').optional(optionalField).isIn(['normal', 'important', 'urgent']),
-  query('status').optional(optionalField).isIn(['draft', 'published', 'expired']),
+  query('status').optional(optionalField).isIn(['draft', 'published', 'scheduled', 'expired']),
+  query('sort').optional(optionalField).isIn(['newest', 'oldest', 'publishDate', 'priority', 'status']),
   query('limit').optional(optionalField).isInt({ min: 1, max: 100 }),
   query('offset').optional(optionalField).isInt({ min: 0 }),
 ];
@@ -59,6 +60,13 @@ export const announcementValidator = [
   body('status').optional(optionalField).isIn(['draft', 'published', 'expired']),
   body('publishDate').optional({ nullable: true, values: 'falsy' }).isISO8601(),
   body('expiryDate').optional({ nullable: true, values: 'falsy' }).isISO8601(),
+  body('expiryDate').custom((expiryDate, { req }) => {
+    if (!expiryDate || !req.body.publishDate) return true;
+    if (new Date(expiryDate) <= new Date(req.body.publishDate)) {
+      throw new Error('Expiry date must be after publish date');
+    }
+    return true;
+  }),
   body('targets').optional().isArray().custom(validateAnnouncementTargets),
   body('targets.*.targetType')
     .optional(optionalField)
@@ -79,6 +87,13 @@ export const announcementUpdateValidator = [
   body('status').optional(optionalField).isIn(['draft', 'published', 'expired']),
   body('publishDate').optional({ nullable: true, values: 'falsy' }).isISO8601(),
   body('expiryDate').optional({ nullable: true, values: 'falsy' }).isISO8601(),
+  body('expiryDate').custom((expiryDate, { req }) => {
+    if (!expiryDate || !req.body.publishDate) return true;
+    if (new Date(expiryDate) <= new Date(req.body.publishDate)) {
+      throw new Error('Expiry date must be after publish date');
+    }
+    return true;
+  }),
   body('targets').optional().isArray().custom(validateAnnouncementTargets),
   body('targets.*.targetType')
     .optional(optionalField)

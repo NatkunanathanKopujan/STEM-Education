@@ -7,7 +7,7 @@ export function MobileSidebar({ open, role, onClose }) {
     <AnimatePresence>
       {open ? (
         <motion.div
-          className="fixed inset-0 z-50 bg-slate-950/55 lg:hidden"
+          className="fixed inset-0 z-50 bg-[#171411]/65 lg:hidden"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -22,7 +22,7 @@ export function MobileSidebar({ open, role, onClose }) {
             <div className="absolute left-[calc(min(86vw,20rem)-3.25rem)] top-3 z-10">
               <button
                 type="button"
-                className="focus-ring rounded-lg p-2 text-muted hover:bg-slate-100 hover:text-primary"
+                className="focus-ring rounded-lg p-2 text-muted hover:bg-orange-50 hover:text-primary"
                 onClick={onClose}
                 aria-label="Close sidebar"
               >

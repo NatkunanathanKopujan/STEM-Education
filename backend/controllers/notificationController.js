@@ -1,5 +1,6 @@
 import {
   editAnnouncement,
+  getAnnouncement,
   getAnnouncements,
   getNotifications,
   getPreferences,
@@ -56,6 +57,18 @@ export async function deleteNotificationController(req, res, next) {
 export async function announcementsController(req, res, next) {
   try {
     return sendSuccess(res, await getAnnouncements(req.user, req.query), 'Announcements fetched');
+  } catch (error) {
+    return next(error);
+  }
+}
+
+export async function announcementDetailsController(req, res, next) {
+  try {
+    return sendSuccess(
+      res,
+      await getAnnouncement(req.user, Number(req.params.id)),
+      'Announcement fetched',
+    );
   } catch (error) {
     return next(error);
   }

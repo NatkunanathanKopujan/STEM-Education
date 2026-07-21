@@ -566,7 +566,7 @@ export function SystemSettingsPage() {
     if (field.key === 'branding.logoUrl') {
       return (
         <div className="space-y-3">
-          <label className="focus-within:ring-primary flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-line bg-white px-4 text-sm font-semibold text-ink transition hover:border-primary hover:bg-orange-50/40 focus-within:ring-2">
+          <label className="focus-within:ring-primary flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-line bg-white px-4 text-sm font-semibold text-ink transition hover:border-primary hover:bg-slate-50 focus-within:ring-2">
             <input
               type="file"
               className="sr-only"

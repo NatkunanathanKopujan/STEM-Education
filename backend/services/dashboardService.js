@@ -5,7 +5,7 @@ import {
 } from '../repositories/dashboardRepository.js';
 
 export const dashboardService = {
-  getSummary: getDashboardSummary,
+  getSummary: (user) => getDashboardSummary(user),
   listUsers: async () => ({ users: await listDashboardUsers() }),
   listCurriculums: async () => ({ curriculums: await listDashboardCurriculums() }),
 };

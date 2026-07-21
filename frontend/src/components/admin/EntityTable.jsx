@@ -1,10 +1,22 @@
-import { FiEdit2, FiEye, FiKey, FiPower, FiTrash2 } from 'react-icons/fi';
+import { FiEdit2, FiEye, FiPower, FiTrash2 } from 'react-icons/fi';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { Pagination } from '../ui/Pagination';
 import { StatusBadge } from '../super-admin/StatusBadge';
 
-export function EntityTable({ type, items, isLoading = false, isSaving = false, onEdit, onDelete, onToggleStatus }) {
+export function EntityTable({
+  type,
+  items,
+  isLoading = false,
+  isSaving = false,
+  page = 1,
+  totalPages = 1,
+  onPageChange,
+  onView,
+  onEdit,
+  onDelete,
+  onToggleStatus,
+}) {
   const isTeacher = type === 'teacher';
   const isStudent = type === 'student';
 
@@ -33,6 +45,13 @@ export function EntityTable({ type, items, isLoading = false, isSaving = false, 
             </tr>
           </thead>
           <tbody className="divide-y divide-line bg-white">
+            {isLoading ? (
+              <tr>
+                <td className="px-4 py-8 text-center text-sm font-semibold text-muted" colSpan={isStudent ? 10 : 9}>
+                  Loading {isTeacher ? 'teachers' : 'students'}...
+                </td>
+              </tr>
+            ) : null}
             {!isLoading && items.map((item) => (
               <tr key={item.id} className="hover:bg-slate-50">
                 <td className="px-4 py-3"><span className="grid size-10 place-items-center rounded-xl bg-orange-50 text-sm font-bold text-primary">{item.photo}</span></td>
@@ -46,9 +65,8 @@ export function EntityTable({ type, items, isLoading = false, isSaving = false, 
                 <td className="px-4 py-3 text-muted">{item.createdDate || '-'}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
-                    <Button disabled={isSaving} variant="ghost" className="px-2" aria-label="View"><FiEye /></Button>
+                    <Button disabled={isSaving} variant="ghost" className="px-2" onClick={() => onView(item)} aria-label="View"><FiEye /></Button>
                     <Button disabled={isSaving} variant="ghost" className="px-2" onClick={() => onEdit(item)} aria-label="Edit"><FiEdit2 /></Button>
-                    <Button disabled={isSaving} variant="ghost" className="px-2" aria-label="Reset password"><FiKey /></Button>
                     <Button disabled={isSaving} variant="ghost" className="px-2" onClick={() => onToggleStatus(item)} aria-label="Toggle status"><FiPower /></Button>
                     <Button disabled={isSaving} variant="ghost" className="px-2 text-red-600" onClick={() => onDelete(item)} aria-label="Delete"><FiTrash2 /></Button>
                   </div>
@@ -65,7 +83,9 @@ export function EntityTable({ type, items, isLoading = false, isSaving = false, 
           </tbody>
         </table>
       </div>
-      <div className="border-t border-line p-4"><Pagination page={1} totalPages={1} /></div>
+      <div className="border-t border-line p-4">
+        <Pagination page={page} totalPages={totalPages} onPageChange={onPageChange} />
+      </div>
     </Card>
   );
 }

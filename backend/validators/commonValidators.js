@@ -10,6 +10,14 @@ export const paginationValidator = [
     .optional()
     .isInt({ min: 1, max: 100 })
     .withMessage('Limit must be between 1 and 100'),
+  query('sort')
+    .optional({ values: 'falsy' })
+    .isIn(['createdDate', 'fullName', 'username', 'email', 'status', 'code'])
+    .withMessage('Sort field is invalid'),
+  query('direction')
+    .optional({ values: 'falsy' })
+    .isIn(['asc', 'desc'])
+    .withMessage('Sort direction must be asc or desc'),
 ];
 
 export const emptyBodyValidator = [];

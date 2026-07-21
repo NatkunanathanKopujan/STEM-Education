@@ -31,6 +31,7 @@ const toStats = (counts = {}) => [
 export function SuperAdminDashboardPage() {
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     let mounted = true;
@@ -38,14 +39,18 @@ export function SuperAdminDashboardPage() {
       if (initial) {
         setIsLoading(true);
       }
+      setError('');
       const summary = await dashboardService.summary();
       if (mounted) {
         setData(summary);
         setIsLoading(false);
       }
     }
-    loadDashboard({ initial: true }).catch(() => {
-      if (mounted) setIsLoading(false);
+    loadDashboard({ initial: true }).catch((apiError) => {
+      if (mounted) {
+        setError(apiError.response?.data?.message || 'Unable to load dashboard data.');
+        setIsLoading(false);
+      }
     });
     const intervalId = window.setInterval(() => {
       loadDashboard().catch(() => {});
@@ -68,6 +73,11 @@ export function SuperAdminDashboardPage() {
         title="Super Admin Dashboard"
         description="Control the entire LMS platform using live database counts."
       />
+      {error ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
+          {error}
+        </div>
+      ) : null}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {stats.map((stat, index) => (
           <motion.div

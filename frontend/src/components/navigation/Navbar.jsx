@@ -29,7 +29,7 @@ export function Navbar({ user, onMenuClick, onLogout }) {
         <div className="flex min-w-0 items-center gap-3">
           <button
             type="button"
-            className="focus-ring rounded-lg p-2 text-muted hover:bg-slate-100 hover:text-primary lg:hidden"
+            className="focus-ring rounded-lg p-2 text-muted hover:bg-orange-50 hover:text-primary lg:hidden"
             onClick={onMenuClick}
             aria-label="Open sidebar"
           >

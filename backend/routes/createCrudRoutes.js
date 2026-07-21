@@ -29,7 +29,13 @@ export function createCrudRoutes({
     readPermissions.length ? checkPermissions(...readPermissions) : (_req, _res, next) => next(),
     controller.index,
   );
-  router.get('/:id', idParamValidator, validateRequest, controller.show);
+  router.get(
+    '/:id',
+    idParamValidator,
+    validateRequest,
+    readPermissions.length ? checkPermissions(...readPermissions) : (_req, _res, next) => next(),
+    controller.show,
+  );
   router.post(
     '/',
     emptyBodyValidator,
@@ -37,8 +43,20 @@ export function createCrudRoutes({
     writePermissions.length ? checkPermissions(...writePermissions) : (_req, _res, next) => next(),
     controller.create,
   );
-  router.put('/:id', idParamValidator, validateRequest, controller.update);
-  router.delete('/:id', idParamValidator, validateRequest, controller.remove);
+  router.put(
+    '/:id',
+    idParamValidator,
+    validateRequest,
+    writePermissions.length ? checkPermissions(...writePermissions) : (_req, _res, next) => next(),
+    controller.update,
+  );
+  router.delete(
+    '/:id',
+    idParamValidator,
+    validateRequest,
+    writePermissions.length ? checkPermissions(...writePermissions) : (_req, _res, next) => next(),
+    controller.remove,
+  );
 
   return router;
 }

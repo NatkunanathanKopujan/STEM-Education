@@ -15,6 +15,22 @@ const preferenceByType = {
   security: 'security_notifications',
 };
 
+function toMysqlDateTime(value) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  const pad = (part) => String(part).padStart(2, '0');
+
+  return [
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
+    `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`,
+  ].join(' ');
+}
+
 async function isNotificationEnabled(userId, notificationType) {
   const preferenceColumn = preferenceByType[notificationType];
 
@@ -243,9 +259,9 @@ export async function createAnnouncement(payload) {
       payload.audienceRole || null,
       payload.priority || 'normal',
       payload.status || 'draft',
-      payload.expiryDate || null,
+      toMysqlDateTime(payload.expiryDate),
       payload.createdBy || null,
-      payload.publishDate || null,
+      toMysqlDateTime(payload.publishDate),
     ],
   );
 
@@ -295,7 +311,9 @@ export async function updateAnnouncement(id, payload) {
   }
 
   const assignments = entries.map(([key]) => `${allowed[key]} = ?`).join(', ');
-  const values = entries.map(([, value]) => value);
+  const values = entries.map(([key, value]) =>
+    ['expiryDate', 'publishDate'].includes(key) ? toMysqlDateTime(value) : value,
+  );
   const [result] = await db.execute(`UPDATE announcements SET ${assignments} WHERE id = ?`, [
     ...values,
     id,
@@ -332,18 +350,82 @@ async function listAnnouncementAttachments(announcementId) {
   return rows;
 }
 
-export async function listAnnouncements({ user, search, priority, status, limit = 30, offset = 0 }) {
-  const safeLimit = Math.min(Math.max(Number(limit) || 30, 1), 100);
-  const safeOffset = Math.max(Number(offset) || 0, 0);
-  const where = [];
-  const values = [user.id, user.id, user.role, user.role, user.id, user.id];
+function getAnnouncementOrderBy(sort) {
+  const options = {
+    oldest: 'a.created_at ASC',
+    publishDate: 'a.publish_at DESC, a.created_at DESC',
+    priority: "FIELD(a.priority, 'urgent', 'important', 'normal'), a.created_at DESC",
+    status: 'a.status ASC, a.created_at DESC',
+    newest: 'a.created_at DESC',
+  };
 
-  if (['super-admin', 'admin', 'teacher'].includes(user.role) && status) {
+  return options[sort] || options.newest;
+}
+
+function getAnnouncementVisibilitySql(user, canManage = false) {
+  if (canManage) {
+    return { targetSql: '1 = 1', targetValues: [user.id, user.id] };
+  }
+
+  const targetValues = [user.id, user.id, user.role, user.role, user.id, user.id];
+  const targetSql = `
+    (a.audience_role IS NULL OR a.audience_role = ?)
+    AND (
+      at.id IS NULL
+      OR at.target_type = 'all_users'
+      OR (at.target_type = 'role' AND at.target_role = ?)
+      OR (at.target_type = 'teacher' AND (at.target_id = ? OR at.target_id = t.id))
+      OR (at.target_type = 'student' AND (at.target_id = ? OR at.target_id = s.id))
+      OR (at.target_type = 'curriculum' AND EXISTS (
+        SELECT 1 FROM courses c WHERE c.curriculum_id = at.target_id AND c.teacher_id = t.id
+      ))
+    )`;
+
+  return { targetSql, targetValues };
+}
+
+function appendAnnouncementStatusFilter({ where, values, status, canManage }) {
+  if (!canManage) {
+    where.push("a.status = 'published'");
+    where.push('(a.publish_at IS NULL OR a.publish_at <= NOW())');
+    where.push('(a.expiry_at IS NULL OR a.expiry_at > NOW())');
+    return;
+  }
+
+  if (status === 'scheduled') {
+    where.push("a.status = 'published'");
+    where.push('a.publish_at > NOW()');
+    return;
+  }
+
+  if (status === 'expired') {
+    where.push("(a.status = 'expired' OR a.expiry_at <= NOW())");
+    return;
+  }
+
+  if (status) {
     where.push('a.status = ?');
     values.push(status);
-  } else {
-    where.push("a.status = 'published'");
   }
+}
+
+export async function listAnnouncements({
+  user,
+  search,
+  priority,
+  status,
+  sort = 'newest',
+  limit = 30,
+  offset = 0,
+}) {
+  const safeLimit = Math.min(Math.max(Number(limit) || 30, 1), 100);
+  const safeOffset = Math.max(Number(offset) || 0, 0);
+  const canManage = ['super-admin', 'admin', 'teacher'].includes(user.role);
+  const { targetSql, targetValues } = getAnnouncementVisibilitySql(user, canManage);
+  const where = [];
+  const values = [];
+
+  appendAnnouncementStatusFilter({ where, values, status, canManage });
 
   if (priority) {
     where.push('a.priority = ?');
@@ -356,6 +438,7 @@ export async function listAnnouncements({ user, search, priority, status, limit 
   }
 
   const whereSql = where.length ? `AND ${where.join(' AND ')}` : '';
+  const orderBy = getAnnouncementOrderBy(sort);
   const [rows] = await db.query(
     `SELECT DISTINCT a.id, a.uuid, a.title, a.body AS description, a.attachment_path AS attachmentPath,
       audience_role AS audienceRole, priority, status, expiry_at AS expiryDate,
@@ -365,22 +448,11 @@ export async function listAnnouncements({ user, search, priority, status, limit 
      LEFT JOIN announcement_targets at ON at.announcement_id = a.id
      LEFT JOIN teachers t ON t.user_id = ?
      LEFT JOIN students s ON s.user_id = ?
-     WHERE (a.audience_role IS NULL OR a.audience_role = ?)
-       AND (a.expiry_at IS NULL OR a.expiry_at > NOW())
-       AND (
-        at.id IS NULL
-        OR at.target_type = 'all_users'
-        OR (at.target_type = 'role' AND at.target_role = ?)
-        OR (at.target_type = 'teacher' AND (at.target_id = ? OR at.target_id = t.id))
-        OR (at.target_type = 'student' AND (at.target_id = ? OR at.target_id = s.id))
-        OR (at.target_type = 'curriculum' AND EXISTS (
-          SELECT 1 FROM courses c WHERE c.curriculum_id = at.target_id AND c.teacher_id = t.id
-        ))
-       )
+     WHERE ${targetSql}
        ${whereSql}
-     ORDER BY a.priority DESC, a.publish_at DESC, a.created_at DESC
+     ORDER BY ${orderBy}
      LIMIT ? OFFSET ?`,
-    [...values, safeLimit, safeOffset],
+    [...targetValues, ...values, safeLimit, safeOffset],
   );
   const [countRows] = await db.query(
     `SELECT COUNT(DISTINCT a.id) AS total
@@ -388,20 +460,9 @@ export async function listAnnouncements({ user, search, priority, status, limit 
      LEFT JOIN announcement_targets at ON at.announcement_id = a.id
      LEFT JOIN teachers t ON t.user_id = ?
      LEFT JOIN students s ON s.user_id = ?
-     WHERE (a.audience_role IS NULL OR a.audience_role = ?)
-       AND (a.expiry_at IS NULL OR a.expiry_at > NOW())
-       AND (
-        at.id IS NULL
-        OR at.target_type = 'all_users'
-        OR (at.target_type = 'role' AND at.target_role = ?)
-        OR (at.target_type = 'teacher' AND (at.target_id = ? OR at.target_id = t.id))
-        OR (at.target_type = 'student' AND (at.target_id = ? OR at.target_id = s.id))
-        OR (at.target_type = 'curriculum' AND EXISTS (
-          SELECT 1 FROM courses c WHERE c.curriculum_id = at.target_id AND c.teacher_id = t.id
-        ))
-       )
+     WHERE ${targetSql}
        ${whereSql}`,
-    values,
+    [...targetValues, ...values],
   );
 
   const announcements = await Promise.all(
@@ -417,6 +478,46 @@ export async function listAnnouncements({ user, search, priority, status, limit 
     total: countRows[0]?.total || 0,
     limit: safeLimit,
     offset: safeOffset,
+  };
+}
+
+export async function findAnnouncementById({ user, id }) {
+  const canManage = ['super-admin', 'admin', 'teacher'].includes(user.role);
+  const { targetSql, targetValues } = getAnnouncementVisibilitySql(user, canManage);
+  const where = ['a.id = ?'];
+  const values = [id];
+
+  if (!canManage) {
+    where.push("a.status = 'published'");
+    where.push('(a.publish_at IS NULL OR a.publish_at <= NOW())');
+    where.push('(a.expiry_at IS NULL OR a.expiry_at > NOW())');
+  }
+
+  const [rows] = await db.query(
+    `SELECT DISTINCT a.id, a.uuid, a.title, a.body AS description, a.attachment_path AS attachmentPath,
+      audience_role AS audienceRole, priority, status, expiry_at AS expiryDate,
+      created_by AS createdBy, publish_at AS publishDate, a.created_at AS createdAt,
+      a.updated_at AS updatedAt
+     FROM announcements a
+     LEFT JOIN announcement_targets at ON at.announcement_id = a.id
+     LEFT JOIN teachers t ON t.user_id = ?
+     LEFT JOIN students s ON s.user_id = ?
+     WHERE ${targetSql}
+       AND ${where.join(' AND ')}
+     LIMIT 1`,
+    [...targetValues, ...values],
+  );
+
+  const announcement = rows[0];
+
+  if (!announcement) {
+    return null;
+  }
+
+  return {
+    ...announcement,
+    targets: await listAnnouncementTargets(announcement.id),
+    attachments: await listAnnouncementAttachments(announcement.id),
   };
 }
 
