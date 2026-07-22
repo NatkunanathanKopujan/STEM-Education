@@ -10,6 +10,7 @@ import { ErrorAlert } from '../../components/ui/Alerts';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Loader } from '../../components/ui/Loader';
 import { dashboardService } from '../../services/dashboardService';
+import { countAxisDomain, getChartColor } from '../../utils/chartTheme';
 
 const toAdminStats = (counts = {}) => [
   { title: 'Teacher Registrations', count: counts.teachers || 0, trend: 'Active Live DB' },
@@ -99,10 +100,10 @@ export function AdminDashboardPage() {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={data.monthlyRegistrations}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                  <XAxis dataKey="month" /><YAxis allowDecimals={false} /><Tooltip />
+                  <XAxis dataKey="month" /><YAxis allowDecimals={false} domain={countAxisDomain} /><Tooltip />
                   <Legend />
-                  <Bar dataKey="teachers" name="Teachers" fill="#2563EB" />
-                  <Bar dataKey="students" name="Students" fill="#F97316" />
+                  <Bar dataKey="teachers" name="Teachers" fill={getChartColor(1)} radius={[8, 8, 0, 0]} />
+                  <Bar dataKey="students" name="Students" fill={getChartColor(0)} radius={[8, 8, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>

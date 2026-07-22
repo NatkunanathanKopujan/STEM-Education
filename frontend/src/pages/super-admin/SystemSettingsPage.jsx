@@ -34,6 +34,20 @@ const settingFields = [
     description: 'SMTP host used by notification email jobs.',
   },
   {
+    key: 'support.email',
+    label: 'Support Email',
+    group: 'Support',
+    type: 'email',
+    description: 'Support email shown across LMS pages.',
+  },
+  {
+    key: 'support.phone',
+    label: 'Support Phone Number',
+    group: 'Support',
+    type: 'tel',
+    description: 'Support phone number shown across LMS pages.',
+  },
+  {
     key: 'backup.schedule',
     label: 'Backup Schedule',
     group: 'Backup',
@@ -54,6 +68,10 @@ const settingFields = [
     description: 'When enabled, the app can show maintenance behavior.',
   },
 ];
+
+const supportSettingKeys = ['support.email', 'support.phone'];
+const editableSettingFields = settingFields.filter((field) => !supportSettingKeys.includes(field.key));
+const supportSettingFields = settingFields.filter((field) => supportSettingKeys.includes(field.key));
 
 function getApiErrorMessage(apiError, fallback) {
   const errors = apiError.response?.data?.errors || [];
@@ -166,6 +184,8 @@ export function SystemSettingsPage() {
     () => settingFields.filter((field) => settings[field.key]).length,
     [settings],
   );
+  const supportFields = supportSettingFields;
+  const hasSupportChange = supportFields.some((field) => hasPendingChange(field));
   const logoPreviewUrl = useMemo(
     () => pendingLogoPreview || appendVersion(resolveAssetUrl(form['branding.logoUrl']), logoPreviewVersion),
     [form, logoPreviewVersion, pendingLogoPreview],
@@ -303,6 +323,54 @@ export function SystemSettingsPage() {
     } finally {
       setSavingKey('');
     }
+  }
+
+  async function saveSupportSettings() {
+    setSavingKey('support.contact');
+    setMessage('');
+    setError('');
+    try {
+      const savedSettings = supportFields.map((field) => ({
+        settingKey: field.key,
+        settingValue: form[field.key],
+        description: field.description,
+      }));
+      await settingsService.saveMany(savedSettings);
+      setSettings((current) => ({
+        ...current,
+        ...Object.fromEntries(
+          savedSettings.map((setting) => [
+            setting.settingKey,
+            {
+              ...(current[setting.settingKey] || {}),
+              settingKey: setting.settingKey,
+              settingValue: setting.settingValue,
+              description: setting.description,
+              updatedAt: new Date().toISOString(),
+            },
+          ]),
+        ),
+      }));
+      window.dispatchEvent(
+        new CustomEvent('support-settings-changed', {
+          detail: {
+            email: form['support.email'] || '',
+            phone: form['support.phone'] || '',
+          },
+        }),
+      );
+      setMessage('Support contact changed.');
+    } catch (apiError) {
+      setError(getApiErrorMessage(apiError, 'Unable to change support contact.'));
+    } finally {
+      setSavingKey('');
+    }
+  }
+
+  function cancelSupportSettings() {
+    supportFields.forEach((field) => updateField(field.key, getSavedValue(field)));
+    setMessage('');
+    setError('');
   }
 
   function cancelField(field) {
@@ -949,7 +1017,79 @@ export function SystemSettingsPage() {
         </Card>
       ) : (
         <div className="grid gap-5 xl:grid-cols-2">
-          {settingFields.map((field) => {
+          <Card className="p-5 xl:col-span-2">
+            <div className="mb-4 flex items-start justify-between gap-4 border-b border-line pb-4">
+              <div className="min-w-0">
+                <span className="mb-2 inline-flex rounded-full bg-orange-50 px-2.5 py-1 text-xs font-semibold text-primary">
+                  Support
+                </span>
+                <h3 className="text-lg font-bold text-ink">Support Contact</h3>
+                <p className="mt-1 text-sm text-muted">
+                  Email and phone number shown in the support calendar panel across LMS pages.
+                </p>
+              </div>
+              <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${supportFields.some((field) => settings[field.key]) ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-muted'}`}>
+                {supportFields.some((field) => settings[field.key]) ? 'Configured' : 'Not set'}
+              </span>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              {supportFields.map((field) => (
+                <Input
+                  key={field.key}
+                  label={field.label}
+                  type={field.type}
+                  value={form[field.key] || ''}
+                  onChange={(event) => updateField(field.key, event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      if (hasSupportChange && !savingKey) {
+                        saveSupportSettings();
+                      }
+                    }
+                  }}
+                />
+              ))}
+            </div>
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4 text-xs text-muted">
+              <span>
+                {supportFields.some((field) => settings[field.key]?.updatedAt)
+                  ? `Updated ${new Date(
+                      supportFields
+                        .map((field) => settings[field.key]?.updatedAt)
+                        .filter(Boolean)
+                        .sort()
+                        .at(-1),
+                    ).toLocaleString()}`
+                  : 'Not configured'}
+              </span>
+              {hasSupportChange ? (
+                <div className="flex shrink-0 gap-2">
+                  <Button
+                    type="button"
+                    className="min-h-9 px-3"
+                    isLoading={savingKey === 'support.contact'}
+                    onClick={saveSupportSettings}
+                  >
+                    <FiCheck />
+                    Change
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="min-h-9 px-3"
+                    disabled={savingKey === 'support.contact'}
+                    onClick={cancelSupportSettings}
+                  >
+                    <FiX />
+                    Cancel
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+          </Card>
+
+          {editableSettingFields.map((field) => {
             const isDirty = hasPendingChange(field);
             return (
               <Card

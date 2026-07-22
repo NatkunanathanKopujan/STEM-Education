@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import { Outlet } from 'react-router-dom';
 import { BrandLogo } from '../components/BrandLogo';
+import authLmsIllustration from '../assets/auth-lms-illustration.png';
 
 export function AuthLayout() {
   return (
@@ -14,17 +15,13 @@ export function AuthLayout() {
         >
           <section className="hidden bg-primary p-10 text-white lg:flex lg:flex-col lg:justify-between">
             <BrandLogo inverse />
-            <div>
-              <p className="mb-4 text-xs font-bold uppercase tracking-widest text-orange-200">
-                Official Academic Portal
-              </p>
-              <h1 className="text-4xl font-bold leading-tight">
-                AI Smart Learning Management System
-              </h1>
-              <p className="mt-4 max-w-md text-sm leading-6 text-slate-200">
-                A scalable foundation for modern university learning, teaching,
-                assessments, content, and analytics.
-              </p>
+            <div className="flex flex-1 items-center justify-center py-8">
+              <img
+                src={authLmsIllustration}
+                alt=""
+                aria-hidden="true"
+                className="w-full max-w-md rounded-2xl object-contain drop-shadow-2xl"
+              />
             </div>
             <div className="border-t border-white/20 pt-5 text-xs font-semibold uppercase tracking-wide text-slate-300">
               Secure access for students, teachers, and staff

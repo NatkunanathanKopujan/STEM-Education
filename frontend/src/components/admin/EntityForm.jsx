@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { FiRefreshCcw, FiZap } from 'react-icons/fi';
+import { FiRefreshCcw, FiX, FiZap } from 'react-icons/fi';
 import { Button, SecondaryButton } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { PasswordInput, SelectBox, Textarea } from '../ui/FormControls';
@@ -35,9 +35,11 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
   const [departmentsLoading, setDepartmentsLoading] = useState(false);
   const [departmentError, setDepartmentError] = useState('');
   const [curriculumOptions, setCurriculumOptions] = useState([]);
-  const [curriculumSearch, setCurriculumSearch] = useState(item?.curriculum || '');
   const [curriculumsLoading, setCurriculumsLoading] = useState(false);
   const [curriculumError, setCurriculumError] = useState('');
+  const [teacherOptions, setTeacherOptions] = useState([]);
+  const [teachersLoading, setTeachersLoading] = useState(false);
+  const [teacherError, setTeacherError] = useState('');
   const {
     register,
     handleSubmit,
@@ -51,29 +53,32 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
       departmentId: '',
       curriculum: '',
       curriculumId: '',
-      semester: 'Semester 1',
       academicYear: '',
       duration: '',
-      assignedTeachers: '',
-      assignedStudents: '',
+      assignedTeacherIds: [],
     },
   });
 
   useEffect(() => {
     if (item) {
       for (const [key, value] of Object.entries(item)) {
-        setValue(key, Array.isArray(value) ? value.join(', ') : value);
+        if (key !== 'teachers') {
+          setValue(key, Array.isArray(value) ? value.join(', ') : value);
+        }
+      }
+      if (isCurriculum) {
+        setValue('assignedTeacherIds', (item.teachers || []).map((teacher) => teacher.id));
       }
       if (isTeacher) {
         setDepartmentSearch(item.department || '');
         setValue('departmentId', item.departmentId || '');
       }
       if (isStudent) {
-        setCurriculumSearch(item.curriculum || '');
         setValue('curriculumId', item.curriculumId || '');
+        setValue('curriculum', item.curriculum || '');
       }
     }
-  }, [isStudent, isTeacher, item, setValue]);
+  }, [isCurriculum, isStudent, isTeacher, item, setValue]);
 
   useEffect(() => {
     if (!isCurriculum) return;
@@ -98,6 +103,47 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
 
     return () => {
       isMounted = false;
+    };
+  }, [isCurriculum]);
+
+  useEffect(() => {
+    if (!isCurriculum) return undefined;
+
+    let isMounted = true;
+    const loadTeachers = async () => {
+      setTeachersLoading(true);
+      setTeacherError('');
+      try {
+        const data = await userManagementService.list('teacher', {
+          status: 'Active',
+          limit: 100,
+          sort: 'fullName',
+          direction: 'asc',
+        });
+        if (!isMounted) return;
+        setTeacherOptions(data.users || []);
+      } catch {
+        if (isMounted) {
+          setTeacherOptions([]);
+          setTeacherError('Unable to load active teachers.');
+        }
+      } finally {
+        if (isMounted) setTeachersLoading(false);
+      }
+    };
+
+    loadTeachers();
+
+    const reloadTeachers = (event) => {
+      if (!event.detail || event.detail.type === 'teacher') {
+        loadTeachers();
+      }
+    };
+    window.addEventListener('lms:data-changed', reloadTeachers);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('lms:data-changed', reloadTeachers);
     };
   }, [isCurriculum]);
 
@@ -164,24 +210,12 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
       try {
         const data = await userManagementService.list('curriculum', {
           status: 'Active',
-          search: curriculumSearch,
           limit: 100,
           sort: 'name',
           direction: 'asc',
         });
         if (!isMounted) return;
-        const activeCurriculums = data.curriculums || [];
-        setCurriculumOptions(activeCurriculums);
-        const selected = activeCurriculums.find(
-          (curriculum) => curriculum.name.toLowerCase() === curriculumSearch.trim().toLowerCase(),
-        );
-        if (selected) {
-          setValue('curriculumId', selected.id, { shouldValidate: true });
-          setValue('curriculum', selected.name);
-        } else if (!item?.curriculumId || curriculumSearch !== item.curriculum) {
-          setValue('curriculumId', '', { shouldValidate: true });
-          setValue('curriculum', curriculumSearch);
-        }
+        setCurriculumOptions(data.curriculums || []);
       } catch {
         if (isMounted) {
           setCurriculumOptions([]);
@@ -205,9 +239,36 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
       isMounted = false;
       window.removeEventListener('lms:data-changed', reloadCurriculums);
     };
-  }, [curriculumSearch, isStudent, item, setValue]);
+  }, [isStudent]);
 
   const password = watch('password');
+  const selectedTeacherIds = (watch('assignedTeacherIds') || []).map(Number);
+  const selectedCurriculumId = watch('curriculumId') || '';
+  const selectedTeachers = teacherOptions.filter((teacher) => selectedTeacherIds.includes(Number(teacher.id)));
+  const availableTeacherOptions = teacherOptions.filter((teacher) => !selectedTeacherIds.includes(Number(teacher.id)));
+
+  const toggleAssignedTeacher = (teacherId) => {
+    const normalizedId = Number(teacherId);
+    const nextIds = selectedTeacherIds.includes(normalizedId)
+      ? selectedTeacherIds.filter((id) => id !== normalizedId)
+      : [...selectedTeacherIds, normalizedId];
+    setValue('assignedTeacherIds', nextIds, { shouldDirty: true, shouldValidate: true });
+  };
+
+  const addAssignedTeacher = (event) => {
+    const teacherId = Number(event.target.value);
+    if (teacherId && !selectedTeacherIds.includes(teacherId)) {
+      setValue('assignedTeacherIds', [...selectedTeacherIds, teacherId], { shouldDirty: true, shouldValidate: true });
+    }
+    event.target.value = '';
+  };
+
+  const selectStudentCurriculum = (event) => {
+    const curriculumId = event.target.value;
+    const selected = curriculumOptions.find((curriculum) => String(curriculum.id) === String(curriculumId));
+    setValue('curriculumId', curriculumId, { shouldDirty: true, shouldValidate: true });
+    setValue('curriculum', selected?.name || '', { shouldDirty: true });
+  };
 
   if (isCurriculum) {
     return (
@@ -215,15 +276,75 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
         <Input label="Curriculum Name" error={errors.name?.message} {...register('name', { required: 'Curriculum name is required' })} />
         <Input label="Duration" {...register('duration', { required: 'Duration is required' })} />
         <Textarea label="Description" className="md:col-span-2" {...register('description')} />
-        <SelectBox label="Semester" options={[{ label: 'Semester 1', value: 'Semester 1' }, { label: 'Semester 2', value: 'Semester 2' }]} {...register('semester')} />
+        <div>
+          <Input
+            label="Academic Year"
+            list="curriculum-academic-year-options"
+            placeholder="Select or type academic year"
+            error={errors.academicYear?.message}
+            {...register('academicYear', { required: 'Academic year is required' })}
+          />
+          <datalist id="curriculum-academic-year-options">
+            {academicYearOptions.map((academicYear) => (
+              <option key={academicYear.value} value={academicYear.value}>
+                {academicYear.label}
+              </option>
+            ))}
+          </datalist>
+          <p className="mt-1 text-xs text-muted">Select an existing academic year or type a new one.</p>
+        </div>
+        <div className="md:col-span-2">
+          <input type="hidden" {...register('assignedTeacherIds')} />
+          <SelectBox
+            label="Assigned Teachers"
+            value=""
+            onChange={addAssignedTeacher}
+            disabled={teachersLoading || !availableTeacherOptions.length}
+            options={[
+              {
+                label: teachersLoading
+                  ? 'Loading teachers...'
+                  : selectedTeacherIds.length
+                    ? `${selectedTeacherIds.length} teacher${selectedTeacherIds.length === 1 ? '' : 's'} selected`
+                    : 'Select teacher',
+                value: '',
+              },
+              ...availableTeacherOptions.map((teacher) => ({
+                label: `${teacher.fullName}${teacher.employeeNo || teacher.email ? ` - ${teacher.employeeNo || teacher.email}` : ''}`,
+                value: teacher.id,
+              })),
+            ]}
+          />
+          {selectedTeachers.length ? (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {selectedTeachers.map((teacher) => (
+                <span
+                  key={teacher.id}
+                  className="inline-flex items-center gap-2 rounded-full border border-line bg-white px-3 py-1.5 text-xs font-semibold text-ink shadow-sm"
+                >
+                  {teacher.fullName}
+                  <button
+                    type="button"
+                    className="text-muted transition hover:text-red-600"
+                    onClick={() => toggleAssignedTeacher(teacher.id)}
+                    aria-label={`Remove ${teacher.fullName}`}
+                  >
+                    <FiX />
+                  </button>
+                </span>
+              ))}
+            </div>
+          ) : null}
+          {!teachersLoading && !teacherOptions.length ? (
+            <p className="mt-1 text-xs text-muted">No active teachers found. Create active teachers first.</p>
+          ) : null}
+          {teacherError ? <p className="mt-1 text-xs text-red-600">{teacherError}</p> : null}
+        </div>
         <SelectBox
-          label="Academic Year"
-          options={[{ label: 'Select academic year', value: '' }, ...academicYearOptions]}
-          {...register('academicYear', { required: 'Academic year is required' })}
+          label="Status"
+          options={[{ label: 'Active', value: 'Active' }, { label: 'Archived', value: 'Archived' }]}
+          {...register('status')}
         />
-        <Input label="Assigned Teachers" placeholder="Comma separated teacher names" {...register('assignedTeachers')} />
-        <Input label="Assigned Students" placeholder="Total assigned students" type="number" {...register('students')} />
-        <SelectBox label="Status" options={[{ label: 'Active', value: 'Active' }, { label: 'Archived', value: 'Archived' }]} {...register('status')} />
         <div className="flex justify-end gap-3 md:col-span-2">
           <SecondaryButton onClick={onCancel}>Cancel</SecondaryButton>
           <Button type="submit">{item ? 'Save Curriculum' : 'Create Curriculum'}</Button>
@@ -285,19 +406,27 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
         <>
           <Input label="Batch" {...register('batch', { required: 'Batch is required' })} />
           <div>
-            <Input
+            <SelectBox
               label="Curriculum / Course"
-              list="student-curriculum-options"
-              value={curriculumSearch}
-              onChange={(event) => setCurriculumSearch(event.target.value)}
-              placeholder={curriculumsLoading ? 'Loading curriculums...' : 'Search active curriculums'}
+              value={selectedCurriculumId}
+              onChange={selectStudentCurriculum}
+              disabled={curriculumsLoading || !curriculumOptions.length}
               error={errors.curriculumId?.message || curriculumError}
+              options={[
+                {
+                  label: curriculumsLoading
+                    ? 'Loading curriculums...'
+                    : curriculumOptions.length
+                      ? 'Select curriculum / course'
+                      : 'No active curriculums found',
+                  value: '',
+                },
+                ...curriculumOptions.map((curriculum) => ({
+                  label: curriculum.code ? `${curriculum.code} - ${curriculum.name}` : curriculum.name,
+                  value: curriculum.id,
+                })),
+              ]}
             />
-            <datalist id="student-curriculum-options">
-              {curriculumOptions.map((curriculum) => (
-                <option key={curriculum.id} value={curriculum.name} />
-              ))}
-            </datalist>
             <input type="hidden" {...register('curriculumId', { required: 'Curriculum is required' })} />
             <input type="hidden" {...register('curriculum')} />
             <p className="mt-1 text-xs text-muted">

@@ -1,6 +1,7 @@
 import {
   addSetting,
   getSetting,
+  getPublicSupportSettings,
   getSettings,
   removeSetting,
   saveSetting,
@@ -13,6 +14,14 @@ export const settingsController = {
   index: async (req, res, next) => {
     try {
       return sendSuccess(res, await getSettings(req.query), 'Settings fetched');
+    } catch (error) {
+      return next(error);
+    }
+  },
+
+  publicSupport: async (req, res, next) => {
+    try {
+      return sendSuccess(res, await getPublicSupportSettings(), 'Support settings fetched');
     } catch (error) {
       return next(error);
     }

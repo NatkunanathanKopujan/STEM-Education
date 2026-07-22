@@ -15,6 +15,7 @@ import { Card } from '../../components/ui/Card';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Loader } from '../../components/ui/Loader';
 import { dashboardService } from '../../services/dashboardService';
+import { countAxisDomain, getChartColor, getChartFill } from '../../utils/chartTheme';
 
 const toStats = (counts = {}) => [
   { title: 'Total Admins', count: counts.admins || 0, trend: 'Live DB', icon: 'admins' },
@@ -99,10 +100,10 @@ export function SuperAdminDashboardPage() {
                 <AreaChart data={data.monthlyRegistrations}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                   <XAxis dataKey="month" />
-                  <YAxis allowDecimals={false} />
+                  <YAxis allowDecimals={false} domain={countAxisDomain} />
                   <Tooltip />
-                  <Area type="monotone" dataKey="students" stroke="#F97316" fill="#FDBA74" />
-                  <Area type="monotone" dataKey="teachers" stroke="#2563EB" fill="#BFDBFE" />
+                  <Area type="monotone" dataKey="students" stroke={getChartColor(0)} fill={getChartFill(0)} />
+                  <Area type="monotone" dataKey="teachers" stroke={getChartColor(1)} fill={getChartFill(1)} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>

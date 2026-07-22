@@ -13,11 +13,14 @@ import {
 import { FiAward, FiDownload, FiTarget, FiTrendingUp } from 'react-icons/fi';
 import { PageHeader } from '../../components/super-admin/PageHeader';
 import { ProgressBar } from '../../components/student/ProgressBar';
+import { ErrorAlert, SuccessAlert } from '../../components/ui/Alerts';
 import { Card } from '../../components/ui/Card';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Loader } from '../../components/ui/Loader';
 import { Button } from '../../components/ui/Button';
 import { reportsService } from '../../services/reportsService';
+import { getChartColor, getChartFill, percentAxisDomain } from '../../utils/chartTheme';
+import { downloadReportExport } from '../../utils/reportDownload';
 
 function ReportCard({ title, value, icon: Icon }) {
   return (
@@ -34,6 +37,8 @@ export function StudentReportsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [exportMessage, setExportMessage] = useState('');
+  const [exportError, setExportError] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -68,11 +73,21 @@ export function StudentReportsPage() {
   }, []);
 
   const handleExport = async (format) => {
-    const data = await reportsService.exportReport(format, {
-      reportType: 'quizzes',
-      scope: 'current_page',
-    });
-    setExportMessage(`${data.fileName} generated successfully.`);
+    try {
+      setIsExporting(true);
+      setExportError('');
+      setExportMessage('');
+      const data = await reportsService.exportReport(format, {
+        reportType: 'quizzes',
+        scope: 'current_page',
+      });
+      downloadReportExport(data);
+      setExportMessage(`${data.fileName} downloaded successfully.`);
+    } catch (apiError) {
+      setExportError(apiError.response?.data?.message || apiError.message || `Unable to export ${format.toUpperCase()} report.`);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   if (isLoading) {
@@ -94,14 +109,15 @@ export function StudentReportsPage() {
         title="My Reports"
         description="Quiz history, average percentage, highest and lowest score, completed topics, learning progress, and exports."
       />
+      <ErrorAlert message={exportError} />
+      <SuccessAlert message={exportMessage} />
       <div className="flex flex-wrap gap-3">
-        <Button onClick={() => handleExport('pdf')}>
+        <Button disabled={isExporting} isLoading={isExporting} onClick={() => handleExport('pdf')}>
           <FiDownload />
           Export PDF
         </Button>
-        <Button variant="secondary" onClick={() => handleExport('excel')}>Export Excel</Button>
-        <Button variant="secondary" onClick={() => handleExport('csv')}>Export CSV</Button>
-        {exportMessage ? <span className="text-sm font-semibold text-primary">{exportMessage}</span> : null}
+        <Button variant="secondary" disabled={isExporting} onClick={() => handleExport('excel')}>Export Excel</Button>
+        <Button variant="secondary" disabled={isExporting} onClick={() => handleExport('csv')}>Export CSV</Button>
       </div>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <ReportCard title="Quiz Attempts" value={profile.quizAttempts} icon={FiTrendingUp} />
@@ -117,9 +133,9 @@ export function StudentReportsPage() {
               <LineChart data={[...attempts].reverse()}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                 <XAxis dataKey="quizNumber" />
-                <YAxis domain={[0, 100]} />
+                <YAxis allowDecimals={false} domain={percentAxisDomain} />
                 <Tooltip />
-                <Line type="monotone" dataKey="percentage" stroke="#F97316" strokeWidth={3} />
+                <Line type="monotone" dataKey="percentage" stroke={getChartColor(1)} strokeWidth={3} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -134,9 +150,9 @@ export function StudentReportsPage() {
               <AreaChart data={reports.quizzes.difficultyAnalysis || []}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                 <XAxis dataKey="difficulty" />
-                <YAxis />
+                <YAxis allowDecimals={false} domain={percentAxisDomain} />
                 <Tooltip />
-                <Area dataKey="correctRate" fill="#FDBA74" stroke="#F97316" />
+                <Area dataKey="correctRate" fill={getChartFill(2)} stroke={getChartColor(2)} />
               </AreaChart>
             </ResponsiveContainer>
           </div>

@@ -3,6 +3,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -15,6 +16,7 @@ import { Card, DashboardCard } from '../../components/ui/Card';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Loader } from '../../components/ui/Loader';
 import { securityService } from '../../services/securityService';
+import { countAxisDomain, getChartColor } from '../../utils/chartTheme';
 
 function formatBytes(value = 0) {
   if (!value) return '0 B';
@@ -180,9 +182,13 @@ export function SecurityDashboardPage() {
               <BarChart data={auditChart}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                 <XAxis dataKey="module" />
-                <YAxis allowDecimals={false} />
+                <YAxis allowDecimals={false} domain={countAxisDomain} />
                 <Tooltip />
-                <Bar dataKey="total" fill="#F97316" radius={[8, 8, 0, 0]} />
+                <Bar dataKey="total" radius={[8, 8, 0, 0]}>
+                  {auditChart.map((item, index) => (
+                    <Cell key={item.module || index} fill={getChartColor(index)} />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>

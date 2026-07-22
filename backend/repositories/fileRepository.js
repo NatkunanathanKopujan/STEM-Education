@@ -6,11 +6,34 @@ const fileSelect = `SELECT f.id, f.uuid, f.file_name AS fileName, f.original_fil
   f.file_type AS fileType, f.mime_type AS mimeType, f.file_size AS fileSize, f.file_path AS filePath,
   f.storage_provider AS storageProvider, f.uploaded_by AS uploadedBy, f.uploaded_role AS uploadedRole,
   f.curriculum, f.subject, f.week_no AS weekNo, f.topic, f.logical_folder AS logicalFolder,
-  f.version, f.current_version_id AS currentVersionId, f.description, f.visibility, f.status,
+  f.version, f.current_version_id AS currentVersionId, f.description, f.visibility, f.audience, f.status,
   f.tags, f.download_count AS downloadCount, f.view_count AS viewCount, f.created_at AS createdAt,
   f.updated_at AS updatedAt, u.full_name AS owner
  FROM files f
  LEFT JOIN users u ON u.id = f.uploaded_by`;
+
+let fileAudienceSchemaReady = false;
+
+export async function ensureFileAudienceSchema() {
+  if (fileAudienceSchemaReady) return;
+
+  const [columns] = await db.query(
+    `SELECT COLUMN_NAME
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'files'
+      AND COLUMN_NAME = 'audience'`,
+  );
+
+  if (!columns.length) {
+    await db.query(
+      "ALTER TABLE files ADD COLUMN audience ENUM('all', 'super-admin', 'admin', 'teacher', 'student') NOT NULL DEFAULT 'all' AFTER visibility",
+    );
+    await db.query('CREATE INDEX idx_files_audience_status ON files (audience, status)');
+  }
+
+  fileAudienceSchemaReady = true;
+}
 
 function getUserId(user) {
   return user?.id || user?.userId;
@@ -20,19 +43,20 @@ function applyRoleScope(user, where, values) {
   if (user.role === ROLES.SUPER_ADMIN) return;
 
   if (user.role === ROLES.ADMIN) {
-    where.push("f.uploaded_role <> 'student'");
+    where.push("(f.uploaded_by = ? OR (f.uploaded_role <> 'student' AND f.audience IN (?, ?)))");
+    values.push(getUserId(user), 'all', ROLES.ADMIN);
     return;
   }
 
   if (user.role === ROLES.TEACHER) {
-    where.push('(f.uploaded_by = ? OR (f.visibility = ? AND f.status = ? AND f.uploaded_role <> ?))');
-    values.push(getUserId(user), 'public', 'active', ROLES.STUDENT);
+    where.push('(f.uploaded_by = ? OR (f.visibility = ? AND f.status = ? AND f.uploaded_role <> ? AND f.audience IN (?, ?)))');
+    values.push(getUserId(user), 'public', 'active', ROLES.STUDENT, 'all', ROLES.TEACHER);
     return;
   }
 
   if (user.role === ROLES.STUDENT) {
-    where.push('((f.visibility = ? AND f.status = ? AND f.uploaded_role <> ?) OR f.uploaded_by = ?)');
-    values.push('public', 'active', ROLES.STUDENT, getUserId(user));
+    where.push('((f.visibility = ? AND f.status = ? AND f.uploaded_role <> ? AND f.audience IN (?, ?)) OR f.uploaded_by = ?)');
+    values.push('public', 'active', ROLES.STUDENT, 'all', ROLES.STUDENT, getUserId(user));
   }
 }
 
@@ -49,6 +73,7 @@ function applyFilters(filters, where, values) {
     ['fileType', 'f.file_type'],
     ['status', 'f.status'],
     ['visibility', 'f.visibility'],
+    ['audience', 'f.audience'],
     ['teacher', 'u.full_name'],
     ['subject', 'f.subject'],
     ['curriculum', 'f.curriculum'],
@@ -101,6 +126,7 @@ function sortClause(sort = 'newest') {
 }
 
 export async function listFiles(user, filters = {}) {
+  await ensureFileAudienceSchema();
   const limit = Math.min(Number(filters.limit || 20), 100);
   const page = Math.max(Number(filters.page || 1), 1);
   const offset = (page - 1) * limit;
@@ -136,6 +162,7 @@ export async function listFiles(user, filters = {}) {
 }
 
 export async function findFileById(id) {
+  await ensureFileAudienceSchema();
   const [rows] = await db.execute(`${fileSelect} WHERE f.id = ? LIMIT 1`, [id]);
   return rows[0] || null;
 }
@@ -143,12 +170,17 @@ export async function findFileById(id) {
 export function canAccessFile(user, file, action = 'read') {
   if (!file) return false;
   if (user.role === ROLES.SUPER_ADMIN) return true;
-  if (user.role === ROLES.ADMIN) return file.uploadedRole !== ROLES.STUDENT || action === 'read';
+  if (user.role === ROLES.ADMIN) {
+    if (file.uploadedBy === getUserId(user)) return true;
+    return file.uploadedRole !== ROLES.STUDENT && ['all', ROLES.ADMIN].includes(file.audience);
+  }
   if (user.role === ROLES.TEACHER) {
-    return file.uploadedBy === getUserId(user) || (action === 'read' && file.visibility === 'public' && file.status === 'active');
+    return file.uploadedBy === getUserId(user) ||
+      (action === 'read' && file.visibility === 'public' && file.status === 'active' && ['all', ROLES.TEACHER].includes(file.audience));
   }
   if (user.role === ROLES.STUDENT) {
-    return file.uploadedBy === getUserId(user) || (action === 'read' && file.visibility === 'public' && file.status === 'active');
+    return file.uploadedBy === getUserId(user) ||
+      (action === 'read' && file.visibility === 'public' && file.status === 'active' && ['all', ROLES.STUDENT].includes(file.audience));
   }
   return false;
 }
@@ -171,12 +203,13 @@ export async function findDuplicate({ originalFileName, fileSize, uploadedBy, cu
 }
 
 export async function createFileRecord(payload) {
+  await ensureFileAudienceSchema();
   const [result] = await db.execute(
     `INSERT INTO files
       (uuid, file_name, original_file_name, file_type, mime_type, file_size, file_path,
        storage_provider, uploaded_by, uploaded_role, curriculum, subject, week_no, topic,
-       logical_folder, version, description, visibility, status, tags, checksum)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       logical_folder, version, description, visibility, audience, status, tags, checksum)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       generateId(),
       payload.fileName,
@@ -196,6 +229,7 @@ export async function createFileRecord(payload) {
       payload.version || 1,
       payload.description || null,
       payload.visibility || 'private',
+      payload.audience || 'all',
       payload.status || 'active',
       payload.tags || null,
       payload.checksum || null,
@@ -258,7 +292,8 @@ export async function createFileVersion(fileId, payload) {
 }
 
 export async function updateFileRecord(id, payload) {
-  const allowed = ['curriculum', 'subject', 'weekNo', 'topic', 'description', 'visibility', 'status', 'tags'];
+  await ensureFileAudienceSchema();
+  const allowed = ['curriculum', 'subject', 'weekNo', 'topic', 'description', 'visibility', 'audience', 'status', 'tags'];
   const columns = {
     weekNo: 'week_no',
   };
@@ -347,6 +382,7 @@ export async function recordPreview({ fileId, userId, ipAddress, deviceInfo }) {
 }
 
 export async function getStorageStatistics(user, providerName = 'local') {
+  await ensureFileAudienceSchema();
   const where = [];
   const values = [];
   applyRoleScope(user, where, values);

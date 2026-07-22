@@ -17,6 +17,7 @@ import {
 const router = Router();
 
 router.use(authenticate);
+router.get('/public/support', settingsController.publicSupport);
 router.use(authorize(ROLES.SUPER_ADMIN, ROLES.ADMIN));
 
 router.get('/', settingsListValidator, validateRequest, settingsController.index);

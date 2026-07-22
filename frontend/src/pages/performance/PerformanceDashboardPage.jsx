@@ -3,6 +3,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -18,6 +19,7 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { Loader } from '../../components/ui/Loader';
 import { VirtualizedList } from '../../components/ui/VirtualizedList';
 import { performanceService } from '../../services/performanceService';
+import { countAxisDomain, getChartColor } from '../../utils/chartTheme';
 
 function formatMs(value = 0) {
   return `${Number(value || 0).toLocaleString()} ms`;
@@ -105,9 +107,13 @@ export function PerformanceDashboardPage() {
               <BarChart data={statusData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                 <XAxis dataKey="status" />
-                <YAxis allowDecimals={false} />
+                <YAxis allowDecimals={false} domain={countAxisDomain} />
                 <Tooltip />
-                <Bar dataKey="total" fill="#F97316" radius={[8, 8, 0, 0]} />
+                <Bar dataKey="total" radius={[8, 8, 0, 0]}>
+                  {statusData.map((item, index) => (
+                    <Cell key={item.status || index} fill={getChartColor(index)} />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -122,7 +128,7 @@ export function PerformanceDashboardPage() {
                 <XAxis dataKey="name" />
                 <YAxis allowDecimals={false} domain={[0, 1]} />
                 <Tooltip />
-                <Line type="monotone" dataKey="ready" stroke="#F97316" strokeWidth={3} dot />
+                <Line type="monotone" dataKey="ready" stroke={getChartColor(1)} strokeWidth={3} dot />
               </LineChart>
             </ResponsiveContainer>
           </div>

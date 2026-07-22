@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { FiDownload } from 'react-icons/fi';
 import { PageHeader } from '../../components/super-admin/PageHeader';
 import { ErrorAlert, SuccessAlert } from '../../components/ui/Alerts';
@@ -8,12 +8,15 @@ import { Card } from '../../components/ui/Card';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Loader } from '../../components/ui/Loader';
 import { reportsService } from '../../services/reportsService';
+import { countAxisDomain, getChartColor } from '../../utils/chartTheme';
+import { downloadReportExport } from '../../utils/reportDownload';
 
 export function AdminReportsPage() {
   const [reports, setReports] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [exportMessage, setExportMessage] = useState('');
+  const [exportError, setExportError] = useState('');
   const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
@@ -52,16 +55,17 @@ export function AdminReportsPage() {
 
   const handleExport = async (format) => {
     setIsExporting(true);
-    setError('');
+    setExportError('');
     setExportMessage('');
     try {
       const data = await reportsService.exportReport(format, {
         reportType: 'students',
         scope: 'filtered_data',
       });
-      setExportMessage(`${data.fileName} generated successfully.`);
+      downloadReportExport(data);
+      setExportMessage(`${data.fileName} downloaded successfully.`);
     } catch (apiError) {
-      setError(apiError.response?.data?.message || `Unable to export ${format.toUpperCase()} report.`);
+      setExportError(apiError.response?.data?.message || apiError.message || `Unable to export ${format.toUpperCase()} report.`);
     } finally {
       setIsExporting(false);
     }
@@ -82,7 +86,7 @@ export function AdminReportsPage() {
         title="Reports"
         description="Teacher statistics, student performance, curriculum activity, materials, quizzes, and exports."
       />
-      <ErrorAlert message={error} />
+      <ErrorAlert message={exportError} />
       <SuccessAlert message={exportMessage} />
       <div className="flex flex-wrap gap-3">
         <Button disabled={isExporting} isLoading={isExporting} onClick={() => handleExport('pdf')}>
@@ -106,9 +110,9 @@ export function AdminReportsPage() {
               <LineChart data={reports.dashboard.charts.monthlyActivity}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                 <XAxis dataKey="month" />
-                <YAxis />
+                <YAxis allowDecimals={false} domain={countAxisDomain} />
                 <Tooltip />
-                <Line type="monotone" dataKey="students" stroke="#F97316" strokeWidth={3} />
+                <Line type="monotone" dataKey="students" stroke={getChartColor(1)} strokeWidth={3} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -120,9 +124,13 @@ export function AdminReportsPage() {
               <BarChart data={reports.materials.materialTypes || reports.materials.materials || []}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                 <XAxis dataKey="materialType" />
-                <YAxis />
+                <YAxis allowDecimals={false} domain={countAxisDomain} />
                 <Tooltip />
-                <Bar dataKey="total" fill="#F97316" />
+                <Bar dataKey="total" radius={[8, 8, 0, 0]}>
+                  {(reports.materials.materialTypes || reports.materials.materials || []).map((item, index) => (
+                    <Cell key={item.materialType || index} fill={getChartColor(index)} />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>

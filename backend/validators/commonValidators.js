@@ -12,7 +12,7 @@ export const paginationValidator = [
     .withMessage('Limit must be between 1 and 100'),
   query('sort')
     .optional({ values: 'falsy' })
-    .isIn(['createdDate', 'fullName', 'username', 'email', 'status', 'code'])
+    .isIn(['createdDate', 'fullName', 'username', 'email', 'status', 'code', 'name'])
     .withMessage('Sort field is invalid'),
   query('direction')
     .optional({ values: 'falsy' })

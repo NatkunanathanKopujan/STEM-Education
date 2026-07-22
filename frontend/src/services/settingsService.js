@@ -10,6 +10,7 @@ function compactValues(values = {}) {
 
 export const settingsService = {
   list: async (params) => unwrap(await apiClient.get('/settings', { params: compactValues(params) })),
+  publicSupport: async () => unwrap(await apiClient.get('/settings/public/support')),
   get: async (settingKey) => unwrap(await apiClient.get(`/settings/${settingKey}`)),
   create: async (payload) => unwrap(await apiClient.post('/settings', payload)),
   update: async (settingKey, payload) => unwrap(await apiClient.put(`/settings/${settingKey}`, payload)),

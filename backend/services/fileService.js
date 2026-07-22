@@ -62,6 +62,7 @@ function normalizeMetadata(user, file, body = {}) {
   const fileType = getFileCategory(originalFileName);
   const uploadedRole = user.role;
   const visibility = uploadedRole === ROLES.STUDENT ? 'private' : body.visibility || 'private';
+  const audience = uploadedRole === ROLES.STUDENT ? ROLES.TEACHER : body.audience || 'all';
   const status = uploadedRole === ROLES.STUDENT ? 'active' : body.status || 'active';
 
   return {
@@ -80,6 +81,7 @@ function normalizeMetadata(user, file, body = {}) {
     description: body.description,
     versionNote: body.versionNote,
     visibility,
+    audience,
     status,
     tags: body.tags,
     logicalFolder: buildLogicalFolder({ ...body, uploadedRole }),
@@ -101,8 +103,9 @@ function ensureStudentUploadAllowed(user, body = {}) {
   }
 
   const allowedVisibility = !body.visibility || body.visibility === 'private';
+  const allowedAudience = !body.audience || body.audience === ROLES.TEACHER;
   const allowedStatus = !body.status || body.status === 'active';
-  if (!allowedVisibility || !allowedStatus) {
+  if (!allowedVisibility || !allowedAudience || !allowedStatus) {
     throw new AppError('Student uploads must remain private assignment or presentation submissions', 403);
   }
 }

@@ -3,6 +3,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -28,6 +29,32 @@ import { ConfirmationDialog, Modal } from '../../components/ui/Modal';
 import { fileService } from '../../services/fileService';
 
 const acceptedTypes = '.pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx,.zip,.jpg,.jpeg,.png,.webp,.mp4,.mov,.avi,.mp3,.wav';
+const audienceOptions = [
+  { label: 'All Users', value: 'all' },
+  { label: 'Students Only', value: 'student' },
+  { label: 'Teachers Only', value: 'teacher' },
+  { label: 'Admins Only', value: 'admin' },
+  { label: 'Super Admin Only', value: 'super-admin' },
+];
+
+const audienceLabels = Object.fromEntries(audienceOptions.map((option) => [option.value, option.label]));
+const fileTypeColors = {
+  pdf: '#DC2626',
+  ppt: '#EA580C',
+  presentations: '#EA580C',
+  documents: '#2563EB',
+  spreadsheets: '#16A34A',
+  archives: '#7C3AED',
+  images: '#0891B2',
+  videos: '#DB2777',
+  audio: '#9333EA',
+  zip: '#7C3AED',
+};
+const fallbackFileTypeColors = ['#0EA5E9', '#22C55E', '#A855F7', '#F59E0B', '#EF4444', '#14B8A6'];
+
+function getFileTypeColor(fileType = '', index = 0) {
+  return fileTypeColors[String(fileType).toLowerCase()] || fallbackFileTypeColors[index % fallbackFileTypeColors.length];
+}
 
 function formatBytes(value = 0) {
   if (!value) return '0 B';
@@ -44,6 +71,7 @@ function buildDefaultMetadata() {
     topic: '',
     description: '',
     visibility: 'private',
+    audience: 'all',
     status: 'active',
     tags: '',
   };
@@ -57,7 +85,11 @@ function apiErrorMessage(error, fallback) {
   return error.response?.data?.message || fallback;
 }
 
-export function FileManagerPage() {
+export function FileManagerPage({
+  eyebrow = 'Storage',
+  title = 'File Management',
+  description = 'Manage LMS files, storage usage, previews, secure downloads, and version history.',
+} = {}) {
   const [files, setFiles] = useState([]);
   const [stats, setStats] = useState(null);
   const [filters, setFilters] = useState({ search: '', fileType: '', visibility: '', status: '', sort: 'newest', page: 1 });
@@ -229,6 +261,7 @@ export function FileManagerPage() {
       description: file.description || '',
       visibility: file.visibility || 'private',
       status: file.status || 'active',
+      audience: file.audience || 'all',
       tags: file.tags || '',
     });
   };
@@ -253,9 +286,9 @@ export function FileManagerPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Storage"
-        title="File Management"
-        description="Manage LMS files, storage usage, previews, secure downloads, and version history."
+        eyebrow={eyebrow}
+        title={title}
+        description={description}
       />
       <div className="flex justify-end">
         <Button variant="secondary" onClick={loadData}>
@@ -283,7 +316,11 @@ export function FileManagerPage() {
                 <XAxis dataKey="fileType" />
                 <YAxis tickFormatter={formatBytes} />
                 <Tooltip formatter={(value) => formatBytes(value)} />
-                <Bar dataKey="storageUsed" fill="#F97316" radius={[8, 8, 0, 0]} />
+                <Bar dataKey="storageUsed" radius={[8, 8, 0, 0]}>
+                  {(stats?.byType || []).map((entry, index) => (
+                    <Cell key={entry.fileType || index} fill={getFileTypeColor(entry.fileType, index)} />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -339,7 +376,10 @@ export function FileManagerPage() {
               <option value="restricted">Restricted</option>
               <option value="draft">Draft</option>
             </select>
-            <input value={metadata.tags} onChange={(event) => setMetadata((current) => ({ ...current, tags: event.target.value }))} placeholder="Tags" className="min-h-11 rounded-xl border border-line px-3 text-sm" />
+            <select value={metadata.audience} onChange={(event) => setMetadata((current) => ({ ...current, audience: event.target.value }))} className="min-h-11 rounded-xl border border-line px-3 text-sm">
+              {audienceOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+            <input value={metadata.tags} onChange={(event) => setMetadata((current) => ({ ...current, tags: event.target.value }))} placeholder="Tags" className="min-h-11 rounded-xl border border-line px-3 text-sm sm:col-span-2" />
           </div>
           <div className="mt-4 space-y-2">
             {queue.map((item) => (
@@ -364,91 +404,139 @@ export function FileManagerPage() {
         </Card>
       </div>
 
-      <Card className="p-5">
-        <div className="grid gap-3 lg:grid-cols-[1fr_repeat(4,12rem)]">
-          <label className="relative">
-            <FiSearch className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
-            <input value={filters.search} onChange={(event) => updateFilter('search', event.target.value)} placeholder="Search by file, topic, teacher, curriculum" className="min-h-11 w-full rounded-xl border border-line pl-10 pr-3 text-sm outline-none focus:border-primary" />
-          </label>
-          <select value={filters.fileType} onChange={(event) => updateFilter('fileType', event.target.value)} className="min-h-11 rounded-xl border border-line px-3 text-sm">
-            <option value="">All Types</option>
-            {['pdf', 'ppt', 'documents', 'spreadsheets', 'archives', 'images', 'videos', 'audio'].map((type) => <option key={type} value={type}>{type}</option>)}
-          </select>
-          <select value={filters.visibility} onChange={(event) => updateFilter('visibility', event.target.value)} className="min-h-11 rounded-xl border border-line px-3 text-sm">
-            <option value="">Visibility</option>
-            <option value="public">Public</option>
-            <option value="private">Private</option>
-            <option value="restricted">Restricted</option>
-            <option value="draft">Draft</option>
-          </select>
-          <select value={filters.status} onChange={(event) => updateFilter('status', event.target.value)} className="min-h-11 rounded-xl border border-line px-3 text-sm">
-            <option value="">Status</option>
-            <option value="active">Active</option>
-            <option value="archived">Archived</option>
-            <option value="draft">Draft</option>
-            <option value="deleted">Deleted</option>
-          </select>
-          <select value={filters.sort} onChange={(event) => updateFilter('sort', event.target.value)} className="min-h-11 rounded-xl border border-line px-3 text-sm">
-            <option value="newest">Newest</option>
-            <option value="oldest">Oldest</option>
-            <option value="az">A-Z</option>
-            <option value="largest">Largest</option>
-            <option value="mostDownloaded">Most Downloaded</option>
-            <option value="mostViewed">Most Viewed</option>
-          </select>
+      <Card className="overflow-hidden">
+        <div className="border-b border-line bg-gradient-to-r from-primary/10 via-card to-primary/5 px-6 py-5">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-primary">Material Finder</p>
+              <h2 className="mt-1 text-xl font-bold text-ink">Search and filter learning files</h2>
+            </div>
+            <p className="text-sm font-semibold text-muted">{Number(files.total || 0).toLocaleString()} records</p>
+          </div>
         </div>
-        <div className="mt-3 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
-          {[
-            ['curriculum', 'Curriculum'],
-            ['subject', 'Subject'],
-            ['teacher', 'Teacher'],
-            ['topic', 'Topic'],
-            ['weekNo', 'Week'],
-          ].map(([key, label]) => (
+        <div className="p-6">
+          <label className="relative block">
+            <FiSearch className="absolute left-5 top-1/2 size-6 -translate-y-1/2 text-primary" />
             <input
-              key={key}
-              value={filters[key] || ''}
-              onChange={(event) => updateFilter(key, event.target.value)}
-              placeholder={label}
-              className="min-h-11 rounded-xl border border-line px-3 text-sm outline-none focus:border-primary"
+              value={filters.search}
+              onChange={(event) => updateFilter('search', event.target.value)}
+              placeholder="Search by file name, topic, teacher, curriculum"
+              className="min-h-16 w-full rounded-3xl border border-primary/20 bg-card pl-14 pr-5 text-base font-semibold text-ink shadow-[0_18px_45px_rgba(15,23,42,0.08)] outline-none transition placeholder:text-muted focus:border-primary focus:ring-4 focus:ring-primary/10"
             />
-          ))}
-          <input
-            value={filters.minSize || ''}
-            onChange={(event) => updateFilter('minSize', event.target.value)}
-            placeholder="Min size bytes"
-            className="min-h-11 rounded-xl border border-line px-3 text-sm outline-none focus:border-primary"
-          />
-          <input
-            value={filters.maxSize || ''}
-            onChange={(event) => updateFilter('maxSize', event.target.value)}
-            placeholder="Max size bytes"
-            className="min-h-11 rounded-xl border border-line px-3 text-sm outline-none focus:border-primary"
-          />
-          <input
-            value={filters.dateFrom || ''}
-            onChange={(event) => updateFilter('dateFrom', event.target.value)}
-            type="date"
-            className="min-h-11 rounded-xl border border-line px-3 text-sm outline-none focus:border-primary"
-          />
-          <input
-            value={filters.dateTo || ''}
-            onChange={(event) => updateFilter('dateTo', event.target.value)}
-            type="date"
-            className="min-h-11 rounded-xl border border-line px-3 text-sm outline-none focus:border-primary"
-          />
+          </label>
+          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <label className="rounded-2xl border border-line bg-page/70 p-3 shadow-sm">
+              <span className="mb-2 block text-[11px] font-bold uppercase tracking-wide text-muted">File Type</span>
+              <select value={filters.fileType} onChange={(event) => updateFilter('fileType', event.target.value)} className="min-h-11 w-full rounded-xl border border-line bg-card px-3 text-sm font-semibold text-ink outline-none transition focus:border-primary">
+                <option value="">All Types</option>
+                {['pdf', 'ppt', 'documents', 'spreadsheets', 'archives', 'images', 'videos', 'audio'].map((type) => <option key={type} value={type}>{type}</option>)}
+              </select>
+            </label>
+            <label className="rounded-2xl border border-line bg-page/70 p-3 shadow-sm">
+              <span className="mb-2 block text-[11px] font-bold uppercase tracking-wide text-muted">Visibility</span>
+              <select value={filters.visibility} onChange={(event) => updateFilter('visibility', event.target.value)} className="min-h-11 w-full rounded-xl border border-line bg-card px-3 text-sm font-semibold text-ink outline-none transition focus:border-primary">
+                <option value="">Visibility</option>
+                <option value="public">Public</option>
+                <option value="private">Private</option>
+                <option value="restricted">Restricted</option>
+                <option value="draft">Draft</option>
+              </select>
+            </label>
+            <label className="rounded-2xl border border-line bg-page/70 p-3 shadow-sm">
+              <span className="mb-2 block text-[11px] font-bold uppercase tracking-wide text-muted">Audience</span>
+              <select value={filters.audience || ''} onChange={(event) => updateFilter('audience', event.target.value)} className="min-h-11 w-full rounded-xl border border-line bg-card px-3 text-sm font-semibold text-ink outline-none transition focus:border-primary">
+                <option value="">Audience</option>
+                {audienceOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </label>
+            <label className="rounded-2xl border border-line bg-page/70 p-3 shadow-sm">
+              <span className="mb-2 block text-[11px] font-bold uppercase tracking-wide text-muted">Status</span>
+              <select value={filters.status} onChange={(event) => updateFilter('status', event.target.value)} className="min-h-11 w-full rounded-xl border border-line bg-card px-3 text-sm font-semibold text-ink outline-none transition focus:border-primary">
+                <option value="">Status</option>
+                <option value="active">Active</option>
+                <option value="archived">Archived</option>
+                <option value="draft">Draft</option>
+                <option value="deleted">Deleted</option>
+              </select>
+            </label>
+            <label className="rounded-2xl border border-line bg-page/70 p-3 shadow-sm">
+              <span className="mb-2 block text-[11px] font-bold uppercase tracking-wide text-muted">Sort By</span>
+              <select value={filters.sort} onChange={(event) => updateFilter('sort', event.target.value)} className="min-h-11 w-full rounded-xl border border-line bg-card px-3 text-sm font-semibold text-ink outline-none transition focus:border-primary">
+                <option value="newest">Newest</option>
+                <option value="oldest">Oldest</option>
+                <option value="az">A-Z</option>
+                <option value="largest">Largest</option>
+                <option value="mostDownloaded">Most Downloaded</option>
+                <option value="mostViewed">Most Viewed</option>
+              </select>
+            </label>
+          </div>
+          <div className="mt-6 border-t border-line pt-5">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <p className="text-xs font-bold uppercase tracking-wide text-muted">Advanced filters</p>
+            <button
+              type="button"
+              onClick={() => setFilters({ search: '', fileType: '', visibility: '', status: '', sort: 'newest', page: 1 })}
+              className="text-xs font-bold text-primary transition hover:text-primary-dark"
+            >
+              Clear filters
+            </button>
+          </div>
+            <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-5">
+              {[
+                ['curriculum', 'Curriculum'],
+                ['subject', 'Subject'],
+                ['teacher', 'Teacher'],
+                ['topic', 'Topic'],
+                ['weekNo', 'Week'],
+              ].map(([key, label]) => (
+                <input
+                  key={key}
+                  value={filters[key] || ''}
+                  onChange={(event) => updateFilter(key, event.target.value)}
+                  placeholder={label}
+                  className="min-h-12 rounded-2xl border border-line bg-card px-4 text-sm text-ink outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
+                />
+              ))}
+              <input
+                value={filters.minSize || ''}
+                onChange={(event) => updateFilter('minSize', event.target.value)}
+                placeholder="Min size bytes"
+                className="min-h-12 rounded-2xl border border-line bg-card px-4 text-sm text-ink outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
+              />
+              <input
+                value={filters.maxSize || ''}
+                onChange={(event) => updateFilter('maxSize', event.target.value)}
+                placeholder="Max size bytes"
+                className="min-h-12 rounded-2xl border border-line bg-card px-4 text-sm text-ink outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
+              />
+              <input
+                value={filters.dateFrom || ''}
+                onChange={(event) => updateFilter('dateFrom', event.target.value)}
+                type="date"
+                className="min-h-12 rounded-2xl border border-line bg-card px-4 text-sm text-ink outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
+              />
+              <input
+                value={filters.dateTo || ''}
+                onChange={(event) => updateFilter('dateTo', event.target.value)}
+                type="date"
+                className="min-h-12 rounded-2xl border border-line bg-card px-4 text-sm text-ink outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
+              />
+            </div>
+          </div>
         </div>
       </Card>
 
       {isLoading ? <Loader label="Loading files" /> : null}
       {!isLoading && !files.files?.length ? <EmptyState title="No files found" description="Upload a file or adjust filters to see managed resources." /> : null}
       {!isLoading && files.files?.length ? (
-        <Card className="overflow-hidden">
-          <div className="overflow-x-auto">
+        <Card className="p-4">
+          <div className="overflow-hidden rounded-2xl border border-line bg-card">
+            <div className="overflow-x-auto pt-2">
             <table className="min-w-full divide-y divide-line text-sm">
               <thead className="bg-page text-left text-xs uppercase text-muted">
                 <tr>
-                  {['File', 'Folder', 'Type', 'Size', 'Visibility', 'Usage', 'Actions'].map((heading) => (
+                  {['File', 'Folder', 'Type', 'Size', 'Visibility', 'Audience', 'Usage', 'Actions'].map((heading) => (
                     <th key={heading} className="px-4 py-3">{heading}</th>
                   ))}
                 </tr>
@@ -464,6 +552,7 @@ export function FileManagerPage() {
                     <td className="px-4 py-4 capitalize">{file.fileType}</td>
                     <td className="px-4 py-4">{formatBytes(file.fileSize)}</td>
                     <td className="px-4 py-4 capitalize">{file.visibility}</td>
+                    <td className="px-4 py-4">{audienceLabels[file.audience || 'all'] || file.audience || 'All Users'}</td>
                     <td className="px-4 py-4 text-muted">{file.downloadCount} downloads / {file.viewCount} views</td>
                     <td className="px-4 py-4">
                       <div className="flex flex-wrap gap-2">
@@ -479,6 +568,7 @@ export function FileManagerPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
           <div className="flex items-center justify-end gap-3 border-t border-line p-4">
             <Button variant="secondary" disabled={filters.page <= 1} onClick={() => setFilters((current) => ({ ...current, page: current.page - 1 }))}>Previous</Button>
@@ -576,6 +666,16 @@ export function FileManagerPage() {
               <option value="active">Active</option>
               <option value="archived">Archived</option>
               <option value="draft">Draft</option>
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-xs font-semibold uppercase text-muted">Audience</span>
+            <select
+              value={editForm.audience}
+              onChange={(event) => updateEditField('audience', event.target.value)}
+              className="mt-1 min-h-11 w-full rounded-xl border border-line px-3 text-sm outline-none focus:border-primary"
+            >
+              {audienceOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
           </label>
         </div>

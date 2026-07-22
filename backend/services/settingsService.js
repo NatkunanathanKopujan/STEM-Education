@@ -17,6 +17,16 @@ export function getSettings(filters = {}) {
   return listSettings(filters);
 }
 
+export async function getPublicSupportSettings() {
+  const data = await listSettings({ search: 'support.', limit: 20 });
+  const byKey = Object.fromEntries(data.settings.map((setting) => [setting.settingKey, setting.settingValue]));
+
+  return {
+    email: byKey['support.email'] || '',
+    phone: byKey['support.phone'] || '',
+  };
+}
+
 export async function getSetting(settingKey) {
   const setting = await findSettingByKey(settingKey);
 

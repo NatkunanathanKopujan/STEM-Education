@@ -186,11 +186,22 @@ CREATE TABLE IF NOT EXISTS curriculums (
   title VARCHAR(180) NOT NULL,
   code VARCHAR(60) NOT NULL UNIQUE,
   description TEXT NULL,
+  duration VARCHAR(120) NULL,
+  academic_year VARCHAR(120) NULL,
   created_by BIGINT UNSIGNED NULL,
   is_active TINYINT(1) NOT NULL DEFAULT 1,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_curriculums_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS curriculum_teachers (
+  curriculum_id BIGINT UNSIGNED NOT NULL,
+  teacher_id BIGINT UNSIGNED NOT NULL,
+  assigned_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (curriculum_id, teacher_id),
+  CONSTRAINT fk_curriculum_teachers_curriculum FOREIGN KEY (curriculum_id) REFERENCES curriculums(id) ON DELETE CASCADE,
+  CONSTRAINT fk_curriculum_teachers_teacher FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS courses (
@@ -818,6 +829,7 @@ CREATE TABLE IF NOT EXISTS files (
   current_version_id BIGINT UNSIGNED NULL,
   description TEXT,
   visibility ENUM('public', 'private', 'restricted', 'draft') NOT NULL DEFAULT 'private',
+  audience ENUM('all', 'super-admin', 'admin', 'teacher', 'student') NOT NULL DEFAULT 'all',
   status ENUM('active', 'archived', 'draft', 'deleted') NOT NULL DEFAULT 'active',
   tags VARCHAR(500),
   checksum VARCHAR(128),
@@ -828,6 +840,7 @@ CREATE TABLE IF NOT EXISTS files (
   INDEX idx_files_uploaded_by (uploaded_by),
   INDEX idx_files_type_status (file_type, status),
   INDEX idx_files_visibility_status (visibility, status),
+  INDEX idx_files_audience_status (audience, status),
   INDEX idx_files_curriculum_subject (curriculum, subject),
   INDEX idx_files_week_topic (week_no, topic),
   INDEX idx_files_created_at (created_at),

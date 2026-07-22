@@ -90,7 +90,9 @@ export function useEntityManagement(initialItems = [], type = null) {
     try {
       const item = await userManagementService.create(type, {
         ...payload,
-        username: payload.username || createUsername(payload.fullName),
+        ...(type === 'teacher' || type === 'student'
+          ? { username: payload.username || createUsername(payload.fullName) }
+          : {}),
       });
       await fetchItems({ page: 1 });
       setSuccessMessage(`${type === 'curriculum' ? 'Curriculum' : type === 'teacher' ? 'Teacher' : 'Student'} created successfully.`);

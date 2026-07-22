@@ -3,6 +3,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -12,11 +13,14 @@ import {
 } from 'recharts';
 import { FiDownload, FiTarget, FiTrendingUp, FiUsers } from 'react-icons/fi';
 import { PageHeader } from '../../components/super-admin/PageHeader';
+import { ErrorAlert, SuccessAlert } from '../../components/ui/Alerts';
 import { Card } from '../../components/ui/Card';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Loader } from '../../components/ui/Loader';
 import { Button } from '../../components/ui/Button';
 import { reportsService } from '../../services/reportsService';
+import { getChartColor, percentAxisDomain } from '../../utils/chartTheme';
+import { downloadReportExport } from '../../utils/reportDownload';
 
 function MetricCard({ title, value, icon: Icon }) {
   return (
@@ -33,6 +37,8 @@ export function TeacherReportsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [exportMessage, setExportMessage] = useState('');
+  const [exportError, setExportError] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -69,11 +75,21 @@ export function TeacherReportsPage() {
   }, []);
 
   const handleExport = async (format) => {
-    const data = await reportsService.exportReport(format, {
-      reportType: 'quizzes',
-      scope: 'filtered_data',
-    });
-    setExportMessage(`${data.fileName} generated successfully.`);
+    try {
+      setIsExporting(true);
+      setExportError('');
+      setExportMessage('');
+      const data = await reportsService.exportReport(format, {
+        reportType: 'quizzes',
+        scope: 'filtered_data',
+      });
+      downloadReportExport(data);
+      setExportMessage(`${data.fileName} downloaded successfully.`);
+    } catch (apiError) {
+      setExportError(apiError.response?.data?.message || apiError.message || `Unable to export ${format.toUpperCase()} report.`);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   if (isLoading) {
@@ -94,14 +110,15 @@ export function TeacherReportsPage() {
         title="Reports"
         description="Student progress, quiz results, weak topics, learning material usage, question exposure, and AI generation reports."
       />
+      <ErrorAlert message={exportError} />
+      <SuccessAlert message={exportMessage} />
       <div className="flex flex-wrap gap-3">
-        <Button onClick={() => handleExport('pdf')}>
+        <Button disabled={isExporting} isLoading={isExporting} onClick={() => handleExport('pdf')}>
           <FiDownload />
           Export PDF
         </Button>
-        <Button variant="secondary" onClick={() => handleExport('excel')}>Export Excel</Button>
-        <Button variant="secondary" onClick={() => handleExport('csv')}>Export CSV</Button>
-        {exportMessage ? <span className="text-sm font-semibold text-primary">{exportMessage}</span> : null}
+        <Button variant="secondary" disabled={isExporting} onClick={() => handleExport('excel')}>Export Excel</Button>
+        <Button variant="secondary" disabled={isExporting} onClick={() => handleExport('csv')}>Export CSV</Button>
       </div>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard title="Students" value={reports.students.students.length} icon={FiUsers} />
@@ -117,9 +134,9 @@ export function TeacherReportsPage() {
               <LineChart data={reports.students.students}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                 <XAxis dataKey="studentName" hide />
-                <YAxis />
+                <YAxis allowDecimals={false} domain={percentAxisDomain} />
                 <Tooltip />
-                <Line type="monotone" dataKey="averagePercentage" stroke="#F97316" strokeWidth={3} />
+                <Line type="monotone" dataKey="averagePercentage" stroke={getChartColor(1)} strokeWidth={3} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -131,9 +148,13 @@ export function TeacherReportsPage() {
               <BarChart data={weakTopics}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                 <XAxis dataKey="topic" hide />
-                <YAxis />
+                <YAxis allowDecimals={false} domain={percentAxisDomain} />
                 <Tooltip />
-                <Bar dataKey="averageScore" fill="#F97316" />
+                <Bar dataKey="averageScore" radius={[8, 8, 0, 0]}>
+                  {weakTopics.map((topic, index) => (
+                    <Cell key={topic.topic || index} fill={getChartColor(index)} />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>

@@ -4,6 +4,7 @@ import { PageHeader } from '../../components/super-admin/PageHeader';
 import { TeacherStatCard } from '../../components/teacher/TeacherStatCard';
 import { Card } from '../../components/ui/Card';
 import { teacherLearningService } from '../../services/teacherLearningService';
+import { countAxisDomain, getChartColor } from '../../utils/chartTheme';
 
 export function TeacherDashboardPage() {
   const [dashboard, setDashboard] = useState({ stats: [], weeklyAnalytics: [], announcements: [], activity: [] });
@@ -30,7 +31,17 @@ export function TeacherDashboardPage() {
       <div className="grid gap-6 xl:grid-cols-[1.3fr_0.8fr]">
         <Card className="p-5">
           <h2 className="text-lg font-bold text-ink">Quiz Attempts</h2>
-          <div className="mt-5 h-80"><ResponsiveContainer width="100%" height="100%"><BarChart data={dashboard.weeklyAnalytics}><CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" /><XAxis dataKey="weekNo" /><YAxis /><Tooltip /><Bar dataKey="quizAttempts" fill="#F97316" /></BarChart></ResponsiveContainer></div>
+          <div className="mt-5 h-80">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={dashboard.weeklyAnalytics}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                <XAxis dataKey="weekNo" />
+                <YAxis allowDecimals={false} domain={countAxisDomain} />
+                <Tooltip />
+                <Bar dataKey="quizAttempts" fill={getChartColor(2)} radius={[8, 8, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </Card>
         <div className="space-y-6">
           <Card className="p-5"><h2 className="text-lg font-bold text-ink">Recent Announcements</h2><div className="mt-4 space-y-3">{dashboard.announcements.slice(0, 3).map((item) => <p key={item.id} className="rounded-xl bg-orange-50 p-3 text-sm font-semibold text-primary">{item.title}</p>)}{!dashboard.announcements.length ? <p className="rounded-xl bg-page p-3 text-sm text-muted">No announcements published yet.</p> : null}</div></Card>

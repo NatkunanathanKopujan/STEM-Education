@@ -28,17 +28,20 @@ function ensureAccess(user, reportType) {
   }
 }
 
-function buildCsv(rows) {
-  if (!Array.isArray(rows) || !rows.length) {
+function normalizeCell(value) {
+  if (value === null || value === undefined) {
     return '';
   }
 
-  const headers = Object.keys(rows[0]);
-  const lines = rows.map((row) =>
-    headers.map((header) => JSON.stringify(row[header] ?? '')).join(','),
-  );
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
 
-  return [headers.join(','), ...lines].join('\n');
+  if (typeof value === 'object') {
+    return JSON.stringify(value);
+  }
+
+  return value;
 }
 
 function flattenObject(value, prefix = '', output = {}) {
@@ -81,6 +84,99 @@ function flattenReport(data) {
   return [flattenObject(data)];
 }
 
+function rowsFromObjects(items = []) {
+  return items.map((item) => flattenObject(item));
+}
+
+function createSections(reportType, data, rows) {
+  if (reportType === 'dashboard') {
+    const cards = data.cards || {};
+    return [
+      {
+        title: 'Dashboard Summary',
+        rows: [
+          { metric: 'Total Users', value: cards.totalUsers },
+          { metric: 'Total Admins', value: cards.totalAdmins },
+          { metric: 'Total Teachers', value: cards.totalTeachers },
+          { metric: 'Total Students', value: cards.totalStudents },
+          { metric: 'Total Curriculums', value: cards.totalCurriculums },
+          { metric: 'Learning Materials', value: cards.totalLearningMaterials },
+          { metric: 'AI Questions', value: cards.totalAiQuestions },
+          { metric: 'Quiz Attempts', value: cards.totalQuizAttempts },
+          { metric: 'Monthly Active Users', value: cards.monthlyActiveUsers },
+          { metric: 'Average Score', value: `${formatReportValue(cards.averageScore)}%` },
+          { metric: 'Pass Rate', value: `${formatReportValue(cards.passRate)}%` },
+          { metric: 'System Usage', value: `${formatReportValue(cards.systemUsage)}%` },
+          { metric: 'Storage Usage', value: `${formatReportValue(cards.storageUsage)}%` },
+        ],
+      },
+      {
+        title: 'Monthly Activity',
+        rows: rowsFromObjects(data.charts?.monthlyActivity || []),
+      },
+      {
+        title: 'System Usage',
+        rows: rowsFromObjects(data.charts?.systemUsage || []),
+      },
+      {
+        title: 'Storage Usage',
+        rows: rowsFromObjects(data.charts?.storageUsage || []),
+      },
+    ];
+  }
+
+  if (reportType === 'students') {
+    return [{ title: 'Student Report', rows: rowsFromObjects(data.students || []) }];
+  }
+
+  if (reportType === 'teachers') {
+    return [{ title: 'Teacher Report', rows: rowsFromObjects(data.teachers || []) }];
+  }
+
+  if (reportType === 'quizzes') {
+    return [
+      { title: 'Quiz Attempts', rows: rowsFromObjects(data.attempts || []) },
+      { title: 'Difficulty Analysis', rows: rowsFromObjects(data.difficultyAnalysis || []) },
+      { title: 'Topic Analysis', rows: rowsFromObjects(data.topicAnalysis || []) },
+      { title: 'Quiz Summary', rows: rowsFromObjects([data.summary || {}]) },
+    ];
+  }
+
+  if (reportType === 'materials') {
+    return [
+      { title: 'Uploaded Files', rows: rowsFromObjects(data.files || []) },
+      { title: 'Storage By File Type', rows: rowsFromObjects(data.materialTypes || []) },
+      { title: 'Uploader Activity', rows: rowsFromObjects(data.teacherActivity || []) },
+    ];
+  }
+
+  if (reportType === 'ai') {
+    return [
+      { title: 'AI Provider Usage', rows: rowsFromObjects(data.providerUsage || []) },
+      { title: 'AI Question Quality', rows: rowsFromObjects([data.questionQuality || {}]) },
+    ];
+  }
+
+  return [{ title: humanizeKey(reportType), rows }];
+}
+
+function buildCsvSections(sections) {
+  return sections
+    .map((section) => {
+      const rows = section.rows || [];
+      if (!rows.length) {
+        return `${JSON.stringify(section.title)}\n"No data available"`;
+      }
+
+      const headers = Object.keys(rows[0]);
+      const lines = rows.map((row) =>
+        headers.map((header) => JSON.stringify(normalizeCell(row[header]) ?? '')).join(','),
+      );
+      return [JSON.stringify(section.title), headers.join(','), ...lines].join('\n');
+    })
+    .join('\n\n');
+}
+
 function escapeHtml(value) {
   return String(value ?? '')
     .replaceAll('&', '&amp;')
@@ -90,17 +186,30 @@ function escapeHtml(value) {
     .replaceAll("'", '&#39;');
 }
 
-function buildExcelHtml(rows, title) {
-  const headers = Object.keys(rows[0] || {});
-  const head = headers.map((header) => `<th>${escapeHtml(header)}</th>`).join('');
-  const body = rows
-    .map(
-      (row) =>
-        `<tr>${headers.map((header) => `<td>${escapeHtml(row[header])}</td>`).join('')}</tr>`,
-    )
-    .join('');
+function buildExcelSections(sections, title) {
+  const tables = sections
+    .map((section) => {
+      const rows = section.rows || [];
+      const headers = Object.keys(rows[0] || {});
+      if (!rows.length) {
+        return `<h2>${escapeHtml(section.title)}</h2><p>No data available</p>`;
+      }
 
-  return `<!doctype html><html><head><meta charset="utf-8" /></head><body><h1>${escapeHtml(title)}</h1><table border="1"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></body></html>`;
+      const head = headers.map((header) => `<th>${escapeHtml(humanizeKey(header))}</th>`).join('');
+      const body = rows
+        .map(
+          (row) =>
+            `<tr>${headers
+              .map((header) => `<td>${escapeHtml(normalizeCell(row[header]))}</td>`)
+              .join('')}</tr>`,
+        )
+        .join('');
+
+      return `<h2>${escapeHtml(section.title)}</h2><table border="1"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+    })
+    .join('<br />');
+
+  return `<!doctype html><html><head><meta charset="utf-8" /><style>body{font-family:"Times New Roman",serif;}h1{font-size:22px;}h2{font-size:16px;margin-top:18px;}table{border-collapse:collapse;width:100%;}th,td{padding:6px;border:1px solid #222;}th{background:#f3f4f6;font-weight:bold;}</style></head><body><h1>${escapeHtml(title)}</h1>${tables}</body></html>`;
 }
 
 function escapePdfText(value) {
@@ -138,7 +247,7 @@ function drawRect(x, y, width, height) {
   return `${x} ${y} ${width} ${height} re S`;
 }
 
-function renderPdfTable({ title, columns, rows, x = 40, y, widths, rowHeight = 22 }) {
+function renderPdfTable({ title, columns, rows, x = 40, y, widths, rowHeight = 22, fontSize = 9 }) {
   const commands = [];
   const tableWidth = widths.reduce((total, width) => total + width, 0);
   const tableHeight = rowHeight * (rows.length + 1);
@@ -160,7 +269,7 @@ function renderPdfTable({ title, columns, rows, x = 40, y, widths, rowHeight = 2
 
   currentX = x;
   columns.forEach((column, index) => {
-    commands.push(writePdfText(column, currentX + 5, top - 15, { size: 9, font: 'F2' }));
+    commands.push(writePdfText(column, currentX + 4, top - 14, { size: fontSize, font: 'F2' }));
     currentX += widths[index];
   });
 
@@ -169,8 +278,8 @@ function renderPdfTable({ title, columns, rows, x = 40, y, widths, rowHeight = 2
     row.forEach((cell, cellIndex) => {
       const maxChars = Math.max(Math.floor(widths[cellIndex] / 5.4), 8);
       commands.push(
-        writePdfText(formatReportValue(cell).slice(0, maxChars), currentX + 5, top - 15 - (rowIndex + 1) * rowHeight, {
-          size: 9,
+        writePdfText(formatReportValue(cell).slice(0, maxChars), currentX + 4, top - 14 - (rowIndex + 1) * rowHeight, {
+          size: fontSize,
         }),
       );
       currentX += widths[cellIndex];
@@ -183,9 +292,76 @@ function renderPdfTable({ title, columns, rows, x = 40, y, widths, rowHeight = 2
   };
 }
 
+function createPdfBuffer(pageCommands) {
+  const objects = [
+    { id: 1, body: '<< /Type /Catalog /Pages 2 0 R >>' },
+    {
+      id: 2,
+      body: `<< /Type /Pages /Kids [${pageCommands.map((_, index) => `${5 + index * 2} 0 R`).join(' ')}] /Count ${pageCommands.length} >>`,
+    },
+    { id: 3, body: '<< /Type /Font /Subtype /Type1 /BaseFont /Times-Roman >>' },
+    { id: 4, body: '<< /Type /Font /Subtype /Type1 /BaseFont /Times-Bold >>' },
+  ];
+
+  pageCommands.forEach((commands, index) => {
+    const pageId = 5 + index * 2;
+    const contentId = pageId + 1;
+    const content = commands.join('\n');
+    objects.push({
+      id: pageId,
+      body: `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${contentId} 0 R >>`,
+    });
+    objects.push({
+      id: contentId,
+      body: `<< /Length ${Buffer.byteLength(content)} >> stream\n${content}\nendstream`,
+    });
+  });
+
+  objects.sort((left, right) => left.id - right.id);
+  let pdf = '%PDF-1.4\n';
+  const offsets = [0];
+
+  for (const object of objects) {
+    offsets[object.id] = Buffer.byteLength(pdf);
+    pdf += `${object.id} 0 obj ${object.body} endobj\n`;
+  }
+
+  const xrefOffset = Buffer.byteLength(pdf);
+  const maxObjectId = Math.max(...objects.map((object) => object.id));
+  pdf += `xref\n0 ${maxObjectId + 1}\n0000000000 65535 f \n`;
+
+  for (let id = 1; id <= maxObjectId; id += 1) {
+    pdf += `${String(offsets[id] || 0).padStart(10, '0')} 00000 n \n`;
+  }
+
+  pdf += `trailer << /Size ${maxObjectId + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+  return Buffer.from(pdf);
+}
+
+function chunkArray(items, size) {
+  const chunks = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+}
+
 function buildPdfDocument({ data, rows, reportType, title }) {
-  const commands = [];
+  const pages = [[]];
+  let commands = pages[0];
   let y = 760;
+
+  const addPage = () => {
+    pages.push([]);
+    commands = pages[pages.length - 1];
+    y = 760;
+  };
+
+  const ensureSpace = (height) => {
+    if (y - height < 45) {
+      addPage();
+    }
+  };
 
   commands.push(writePdfText('DBIT Learning Management System', 40, y, { size: 18, font: 'F2' }));
   y -= 24;
@@ -198,99 +374,40 @@ function buildPdfDocument({ data, rows, reportType, title }) {
   commands.push(drawLine(40, y, 560, y));
   y -= 24;
 
-  if (reportType === 'dashboard') {
-    const cards = data.cards || {};
-    const summaryRows = [
-      ['Total Users', cards.totalUsers],
-      ['Total Admins', cards.totalAdmins],
-      ['Total Teachers', cards.totalTeachers],
-      ['Total Students', cards.totalStudents],
-      ['Total Curriculums', cards.totalCurriculums],
-      ['Learning Materials', cards.totalLearningMaterials],
-      ['AI Questions', cards.totalAiQuestions],
-      ['Quiz Attempts', cards.totalQuizAttempts],
-      ['Monthly Active Users', cards.monthlyActiveUsers],
-      ['Average Score', `${formatReportValue(cards.averageScore)}%`],
-      ['Pass Rate', `${formatReportValue(cards.passRate)}%`],
-    ];
+  const sections = createSections(reportType, data, rows);
 
-    const summary = renderPdfTable({
-      title: 'Summary',
-      columns: ['Metric', 'Value'],
-      rows: summaryRows,
-      x: 40,
-      y,
-      widths: [330, 150],
-    });
-    commands.push(...summary.commands);
-    y = summary.nextY;
+  for (const section of sections) {
+    const sectionRows = section.rows?.length ? section.rows : [{ message: 'No data available' }];
+    const headers = Object.keys(sectionRows[0] || {});
+    const headerChunks = chunkArray(headers, 5);
 
-    const monthlyActivity = (data.charts?.monthlyActivity || []).slice(-8);
-    const monthly = renderPdfTable({
-      title: 'Monthly Activity',
-      columns: ['Month', 'Students', 'Teachers', 'Admins'],
-      rows: monthlyActivity.length
-        ? monthlyActivity.map((item) => [item.month, item.students, item.teachers, item.admins])
-        : [['No data', '-', '-', '-']],
-      x: 40,
-      y,
-      widths: [150, 110, 110, 110],
-    });
-    commands.push(...monthly.commands);
-    y = monthly.nextY;
+    for (const [chunkIndex, headerChunk] of headerChunks.entries()) {
+      const pdfRows = sectionRows.map((row) => headerChunk.map((header) => normalizeCell(row[header])));
+      const widths = Array(headerChunk.length).fill(Math.floor(500 / Math.max(headerChunk.length, 1)));
+      const tableTitle = chunkIndex
+        ? `${section.title} - Continued Columns ${chunkIndex + 1}`
+        : section.title;
 
-    const usageRows = [
-      ...(data.charts?.systemUsage || []).map((item) => [`System ${item.name}`, `${formatReportValue(item.value)}%`]),
-      ...(data.charts?.storageUsage || []).map((item) => [`Storage ${item.name}`, `${formatReportValue(item.value)}%`]),
-    ];
-    const usage = renderPdfTable({
-      title: 'Usage Overview',
-      columns: ['Area', 'Value'],
-      rows: usageRows.length ? usageRows : [['No data', '-']],
-      x: 40,
-      y,
-      widths: [330, 150],
-    });
-    commands.push(...usage.commands);
-  } else {
-    const headers = Object.keys(rows[0] || {}).slice(0, 4);
-    const reportTable = renderPdfTable({
-      title: 'Report Data',
-      columns: headers.length ? headers.map(humanizeKey) : ['Message'],
-      rows: headers.length
-        ? rows.slice(0, 18).map((row) => headers.map((header) => row[header]))
-        : [['No report data available']],
-      x: 40,
-      y,
-      widths: headers.length ? [130, 120, 115, 115] : [480],
-    });
-    commands.push(...reportTable.commands);
+      for (let start = 0; start < pdfRows.length; start += 24) {
+        const pageRows = pdfRows.slice(start, start + 24);
+        ensureSpace(44 + pageRows.length * 18);
+        const table = renderPdfTable({
+          title: start ? `${tableTitle} - Continued Rows` : tableTitle,
+          columns: headerChunk.map(humanizeKey),
+          rows: pageRows,
+          x: 40,
+          y,
+          widths,
+          rowHeight: 18,
+          fontSize: 7,
+        });
+        commands.push(...table.commands);
+        y = table.nextY;
+      }
+    }
   }
 
-  const content = commands.join('\n');
-  const objects = [
-    '1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj',
-    '2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj',
-    '3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >> endobj',
-    '4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Times-Roman >> endobj',
-    '5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Times-Bold >> endobj',
-    `6 0 obj << /Length ${Buffer.byteLength(content)} >> stream\n${content}\nendstream endobj`,
-  ];
-
-  let pdf = '%PDF-1.4\n';
-  const offsets = [0];
-  for (const object of objects) {
-    offsets.push(Buffer.byteLength(pdf));
-    pdf += `${object}\n`;
-  }
-  const xrefOffset = Buffer.byteLength(pdf);
-  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
-  pdf += offsets
-    .slice(1)
-    .map((offset) => `${String(offset).padStart(10, '0')} 00000 n \n`)
-    .join('');
-  pdf += `trailer << /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
-  return Buffer.from(pdf);
+  return createPdfBuffer(pages);
 }
 
 export async function getDashboardReport(user, filters = {}) {
@@ -372,17 +489,18 @@ export async function exportReport(user, { reportType = 'dashboard', format = 'c
   const loader = reportLoaders[reportType] || getDashboardReport;
   const data = await loader(user, filters);
   const rows = flattenReport(data);
+  const sections = createSections(reportType, data, rows);
   const normalizedFormat = ['pdf', 'excel', 'csv'].includes(format) ? format : 'csv';
   const title = `${reportType} report`;
   const exportContent = {
     csv: {
-      content: buildCsv(rows),
+      content: buildCsvSections(sections),
       extension: 'csv',
       mimeType: 'text/csv',
       encoding: 'text',
     },
     excel: {
-      content: buildExcelHtml(rows, title),
+      content: buildExcelSections(sections, title),
       extension: 'xls',
       mimeType: 'application/vnd.ms-excel',
       encoding: 'text',

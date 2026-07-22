@@ -7,8 +7,7 @@ import { Card } from '../../components/ui/Card';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Loader } from '../../components/ui/Loader';
 import { searchService } from '../../services/searchService';
-
-const colors = ['#F97316', '#2563EB', '#16A34A', '#EF4444'];
+import { countAxisDomain, getChartColor } from '../../utils/chartTheme';
 
 export function SearchAnalyticsPage() {
   const [analytics, setAnalytics] = useState(null);
@@ -85,9 +84,13 @@ export function SearchAnalyticsPage() {
                 <BarChart data={keywords}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                   <XAxis dataKey="keyword" />
-                  <YAxis />
+                  <YAxis allowDecimals={false} domain={countAxisDomain} />
                   <Tooltip />
-                  <Bar dataKey="searches" fill="#F97316" />
+                  <Bar dataKey="searches" radius={[8, 8, 0, 0]}>
+                    {keywords.map((item, index) => (
+                      <Cell key={item.keyword || index} fill={getChartColor(index)} />
+                    ))}
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -105,7 +108,7 @@ export function SearchAnalyticsPage() {
                 <PieChart>
                   <Pie data={activity} dataKey="searches" nameKey="role" outerRadius={105}>
                     {activity.map((entry, index) => (
-                      <Cell key={entry.role || index} fill={colors[index % colors.length]} />
+                      <Cell key={entry.role || index} fill={getChartColor(index)} />
                     ))}
                   </Pie>
                   <Tooltip />

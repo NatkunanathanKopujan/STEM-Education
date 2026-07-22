@@ -24,6 +24,11 @@ function toPayload(payload, user) {
     name: payload.name.trim(),
     code: (payload.code?.trim() || makeCode(payload.name)) || `CUR-${Date.now()}`,
     description: payload.description?.trim() || '',
+    duration: payload.duration?.trim() || '',
+    academicYear: payload.academicYear?.trim() || '',
+    assignedTeacherIds: Array.isArray(payload.assignedTeacherIds)
+      ? payload.assignedTeacherIds.map(Number).filter(Boolean)
+      : [],
     status: payload.status === 'Archived' ? 'Archived' : 'Active',
     createdBy: user?.id || null,
   };

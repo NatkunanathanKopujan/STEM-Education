@@ -8,6 +8,7 @@ import { Card } from '../../components/ui/Card';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Loader } from '../../components/ui/Loader';
 import { studentQuizService } from '../../services/studentQuizService';
+import { getChartColor, percentAxisDomain } from '../../utils/chartTheme';
 
 export function StudentResultsPage() {
   const navigate = useNavigate();
@@ -102,9 +103,9 @@ export function StudentResultsPage() {
                 <LineChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                   <XAxis dataKey="quiz" />
-                  <YAxis domain={[0, 100]} />
+                  <YAxis allowDecimals={false} domain={percentAxisDomain} />
                   <Tooltip />
-                  <Line type="monotone" dataKey="percentage" stroke="#F97316" strokeWidth={3} />
+                  <Line type="monotone" dataKey="percentage" stroke={getChartColor(1)} strokeWidth={3} />
                 </LineChart>
               </ResponsiveContainer>
             </div>

@@ -17,29 +17,14 @@ import {
 } from 'recharts';
 import { FiDownload, FiPieChart, FiTrendingUp, FiUsers } from 'react-icons/fi';
 import { PageHeader } from '../../components/super-admin/PageHeader';
+import { ErrorAlert, SuccessAlert } from '../../components/ui/Alerts';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Loader } from '../../components/ui/Loader';
 import { reportsService } from '../../services/reportsService';
-
-const colors = ['#F97316', '#2563EB', '#16A34A', '#EF4444'];
-
-function downloadExport(data) {
-  const content =
-    data.encoding === 'base64'
-      ? Uint8Array.from(atob(data.content), (character) => character.charCodeAt(0))
-      : data.content;
-  const blob = new Blob([content], { type: data.mimeType || 'application/octet-stream' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = data.fileName || `report.${data.format || 'csv'}`;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
+import { countAxisDomain, getChartColor, getChartFill, percentAxisDomain } from '../../utils/chartTheme';
+import { downloadReportExport } from '../../utils/reportDownload';
 
 function ReportCard({ title, value, icon: Icon }) {
   return (
@@ -55,6 +40,8 @@ export function ReportsPage() {
   const [report, setReport] = useState(null);
   const [aiReport, setAiReport] = useState(null);
   const [exportMessage, setExportMessage] = useState('');
+  const [exportError, setExportError] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -92,15 +79,19 @@ export function ReportsPage() {
 
   const handleExport = async (format) => {
     try {
+      setIsExporting(true);
+      setExportError('');
       setExportMessage('');
       const data = await reportsService.exportReport(format, {
         reportType: 'dashboard',
         scope: 'complete_report',
       });
-      downloadExport(data);
+      downloadReportExport(data);
       setExportMessage(`${data.fileName} downloaded successfully.`);
     } catch (apiError) {
-      setExportMessage(apiError.response?.data?.message || 'Unable to export report.');
+      setExportError(apiError.response?.data?.message || apiError.message || 'Unable to export report.');
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -125,18 +116,19 @@ export function ReportsPage() {
         title="Reports & Analytics"
         description="System-wide users, AI questions, quiz attempts, activity, usage, storage, and exports."
       />
+      <ErrorAlert message={exportError} />
+      <SuccessAlert message={exportMessage} />
       <div className="flex flex-wrap gap-3">
-        <Button onClick={() => handleExport('pdf')}>
+        <Button disabled={isExporting} isLoading={isExporting} onClick={() => handleExport('pdf')}>
           <FiDownload />
           Export PDF
         </Button>
-        <Button variant="secondary" onClick={() => handleExport('excel')}>
+        <Button variant="secondary" disabled={isExporting} onClick={() => handleExport('excel')}>
           Export Excel
         </Button>
-        <Button variant="secondary" onClick={() => handleExport('csv')}>
+        <Button variant="secondary" disabled={isExporting} onClick={() => handleExport('csv')}>
           Export CSV
         </Button>
-        {exportMessage ? <span className="text-sm font-semibold text-primary">{exportMessage}</span> : null}
       </div>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <ReportCard title="Total Users" value={cards.totalUsers} icon={FiUsers} />
@@ -152,11 +144,11 @@ export function ReportsPage() {
               <BarChart data={report.charts.monthlyActivity}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                 <XAxis dataKey="month" />
-                <YAxis />
+                <YAxis allowDecimals={false} domain={countAxisDomain} />
                 <Tooltip />
-                <Bar dataKey="students" fill="#F97316" />
-                <Bar dataKey="teachers" fill="#2563EB" />
-                <Bar dataKey="admins" fill="#16A34A" />
+                <Bar dataKey="students" fill={getChartColor(0)} radius={[8, 8, 0, 0]} />
+                <Bar dataKey="teachers" fill={getChartColor(1)} radius={[8, 8, 0, 0]} />
+                <Bar dataKey="admins" fill={getChartColor(2)} radius={[8, 8, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -168,9 +160,9 @@ export function ReportsPage() {
               <LineChart data={report.charts.monthlyActivity}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                 <XAxis dataKey="month" />
-                <YAxis />
+                <YAxis allowDecimals={false} domain={countAxisDomain} />
                 <Tooltip />
-                <Line type="monotone" dataKey="students" stroke="#F97316" strokeWidth={3} />
+                <Line type="monotone" dataKey="students" stroke={getChartColor(3)} strokeWidth={3} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -182,7 +174,7 @@ export function ReportsPage() {
               <PieChart>
                 <Pie data={rolePie} dataKey="value" nameKey="name" innerRadius={55} outerRadius={95}>
                   {rolePie.map((entry, index) => (
-                    <Cell key={entry.name} fill={colors[index % colors.length]} />
+                    <Cell key={entry.name} fill={getChartColor(index)} />
                   ))}
                 </Pie>
                 <Tooltip />
@@ -197,9 +189,9 @@ export function ReportsPage() {
               <AreaChart data={report.charts.systemUsage}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                 <XAxis dataKey="name" />
-                <YAxis />
+                <YAxis allowDecimals={false} domain={percentAxisDomain} />
                 <Tooltip />
-                <Area dataKey="value" fill="#FDBA74" stroke="#F97316" />
+                <Area dataKey="value" fill={getChartFill(1)} stroke={getChartColor(1)} />
               </AreaChart>
             </ResponsiveContainer>
           </div>

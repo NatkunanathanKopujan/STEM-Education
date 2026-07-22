@@ -5,6 +5,7 @@ import { Footer } from '../components/navigation/Footer';
 import { MobileSidebar } from '../components/navigation/MobileSidebar';
 import { Navbar } from '../components/navigation/Navbar';
 import { Sidebar } from '../components/navigation/Sidebar';
+import { SupportCalendarPanel } from '../components/navigation/SupportCalendarPanel';
 import { useAuth } from '../hooks/useAuth';
 
 export function DashboardLayout() {
@@ -29,6 +30,7 @@ export function DashboardLayout() {
               <Breadcrumb />
             </div>
             <Outlet />
+            <SupportCalendarPanel />
           </main>
           <Footer />
         </div>

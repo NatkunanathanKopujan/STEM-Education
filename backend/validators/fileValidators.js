@@ -2,6 +2,7 @@ import { body, param, query } from 'express-validator';
 import { allManagedFileExtensions } from '../utils/fileHelper.js';
 
 const optionalField = { values: 'falsy' };
+const audienceValues = ['all', 'super-admin', 'admin', 'teacher', 'student'];
 
 export const fileListValidator = [
   query('search').optional(optionalField).trim().isLength({ max: 255 }),
@@ -11,6 +12,7 @@ export const fileListValidator = [
     .withMessage('Invalid file type'),
   query('status').optional(optionalField).isIn(['active', 'archived', 'draft', 'deleted']),
   query('visibility').optional(optionalField).isIn(['public', 'private', 'restricted', 'draft']),
+  query('audience').optional(optionalField).isIn(audienceValues),
   query('weekNo').optional(optionalField).isInt({ min: 1 }),
   query('teacher').optional(optionalField).trim().isLength({ max: 150 }),
   query('subject').optional(optionalField).trim().isLength({ max: 150 }),
@@ -34,6 +36,7 @@ export const uploadMetadataValidator = [
   body('topic').optional(optionalField).trim().isLength({ max: 255 }),
   body('description').optional(optionalField).trim().isLength({ max: 1000 }),
   body('visibility').optional(optionalField).isIn(['public', 'private', 'restricted', 'draft']),
+  body('audience').optional(optionalField).isIn(audienceValues),
   body('status').optional(optionalField).isIn(['active', 'archived', 'draft']),
   body('tags').optional(optionalField).trim().isLength({ max: 500 }),
   body('versionNote').optional(optionalField).trim().isLength({ max: 1000 }),
@@ -49,6 +52,7 @@ export const fileUpdateValidator = [
   body('topic').optional(optionalField).trim().isLength({ max: 255 }),
   body('description').optional(optionalField).trim().isLength({ max: 1000 }),
   body('visibility').optional(optionalField).isIn(['public', 'private', 'restricted', 'draft']),
+  body('audience').optional(optionalField).isIn(audienceValues),
   body('status').optional(optionalField).isIn(['active', 'archived', 'draft']),
   body('tags').optional(optionalField).trim().isLength({ max: 500 }),
 ];

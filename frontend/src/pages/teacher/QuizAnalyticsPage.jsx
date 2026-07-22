@@ -31,8 +31,9 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { Loader } from '../../components/ui/Loader';
 import { Button } from '../../components/ui/Button';
 import { teacherDashboardService } from '../../services/teacherDashboardService';
+import { countAxisDomain, getChartColor, percentAxisDomain } from '../../utils/chartTheme';
 
-const pieColors = ['#F97316', '#10B981', '#EF4444', '#64748B'];
+const pieColors = [getChartColor(3), getChartColor(2), getChartColor(4)];
 
 function formatNumber(value, suffix = '') {
   return `${Number(value || 0).toLocaleString()}${suffix}`;
@@ -185,12 +186,12 @@ export function QuizAnalyticsPage() {
               <LineChart data={analytics.weeklyAnalytics || []}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                 <XAxis dataKey="weekNo" />
-                <YAxis />
+                <YAxis allowDecimals={false} domain={percentAxisDomain} />
                 <Tooltip />
                 <Line
                   type="monotone"
                   dataKey="averageQuizPercentage"
-                  stroke="#F97316"
+                  stroke={getChartColor(1)}
                   strokeWidth={3}
                 />
               </LineChart>
@@ -204,9 +205,13 @@ export function QuizAnalyticsPage() {
               <BarChart data={analytics.weeklyAnalytics || []}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                 <XAxis dataKey="weekNo" />
-                <YAxis />
+                <YAxis allowDecimals={false} domain={countAxisDomain} />
                 <Tooltip />
-                <Bar dataKey="quizAttempts" fill="#F97316" />
+                <Bar dataKey="quizAttempts" radius={[8, 8, 0, 0]}>
+                  {(analytics.weeklyAnalytics || []).map((item, index) => (
+                    <Cell key={item.weekNo || index} fill={getChartColor(index)} />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>

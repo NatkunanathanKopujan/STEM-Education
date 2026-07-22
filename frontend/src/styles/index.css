@@ -3,20 +3,20 @@
 @tailwind utilities;
 
 :root {
-  --color-primary: 184 138 61;
-  --color-primary-dark: 129 87 31;
-  --color-primary-light: 200 164 93;
-  --color-surface: 255 252 246;
-  --color-page: 250 246 237;
-  --color-elevated: 255 253 248;
-  --color-subtle: 242 232 213;
+  --color-primary: 17 171 154;
+  --color-primary-dark: 12 121 112;
+  --color-primary-light: 111 220 198;
+  --color-surface: 252 255 253;
+  --color-page: 238 248 242;
+  --color-elevated: 255 255 255;
+  --color-subtle: 220 239 228;
   --color-ink: 41 37 36;
-  --color-muted: 94 83 73;
-  --color-line: 220 205 176;
-  --color-accent-soft: 247 239 219;
-  --shadow-soft: 0 16px 36px rgba(59, 42, 33, 0.11);
+  --color-muted: 91 104 96;
+  --color-line: 199 218 207;
+  --color-accent-soft: 224 246 233;
+  --shadow-soft: 0 18px 42px rgba(38, 75, 55, 0.1);
   color: #292524;
-  background: #faf6ed;
+  background: #eef8f2;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -62,7 +62,8 @@ body {
   min-width: 320px;
   min-height: 100vh;
   background:
-    radial-gradient(circle at top left, rgb(var(--color-accent-soft) / 0.62), transparent 34rem),
+    radial-gradient(circle at top left, rgb(208 238 219 / 0.72), transparent 34rem),
+    radial-gradient(circle at bottom right, rgb(244 250 246 / 0.86), transparent 30rem),
     linear-gradient(135deg, rgb(var(--color-page)), rgb(var(--color-surface)));
   color: rgb(var(--color-ink));
   font-family:
@@ -103,6 +104,26 @@ input,
 textarea,
 select {
   min-height: 2.75rem;
+}
+
+* {
+  scrollbar-color: rgb(var(--color-primary) / 0.55) rgb(var(--color-subtle) / 0.75);
+  scrollbar-width: thin;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: rgb(var(--color-subtle) / 0.75);
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 2px solid rgb(var(--color-subtle));
+  border-radius: 999px;
+  background: rgb(var(--color-primary) / 0.58);
 }
 
 button,
@@ -223,6 +244,44 @@ select {
 
   tr:hover {
     background-color: rgb(var(--color-accent-soft) / 0.58);
+  }
+
+  .recharts-cartesian-grid line {
+    stroke: rgb(var(--color-line));
+  }
+
+  .recharts-text {
+    fill: rgb(var(--color-muted));
+  }
+
+  .recharts-default-tooltip {
+    border: 1px solid rgb(var(--color-line)) !important;
+    border-radius: 8px !important;
+    background: rgb(var(--color-surface) / 0.96) !important;
+    box-shadow: var(--shadow-soft) !important;
+    color: rgb(var(--color-ink)) !important;
+  }
+
+  .recharts-tooltip-label,
+  .recharts-tooltip-item {
+    color: rgb(var(--color-ink)) !important;
+  }
+
+  .recharts-legend-item-text {
+    color: rgb(var(--color-muted)) !important;
+  }
+
+  .recharts-bar-rectangle path,
+  .recharts-area-area {
+    filter: drop-shadow(0 8px 12px rgb(var(--color-primary) / 0.12));
+  }
+
+  .rounded-xl {
+    border-radius: 10px;
+  }
+
+  .rounded-2xl {
+    border-radius: 14px;
   }
 
   .theme-dark .bg-white,

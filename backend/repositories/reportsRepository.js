@@ -84,7 +84,7 @@ export async function getDashboardCounts(user) {
   const [contentRows] = await db.execute(
     `SELECT
       (SELECT COUNT(*) FROM curriculums) AS totalCurriculums,
-      (SELECT COUNT(*) FROM materials) AS totalLearningMaterials,
+      (SELECT COUNT(*) FROM files WHERE status <> 'deleted') AS totalLearningMaterials,
       (SELECT COUNT(*) FROM question_bank) AS totalAiQuestions`,
   );
   const [quizRows] = await db.execute(
@@ -97,13 +97,24 @@ export async function getDashboardCounts(user) {
      WHERE qa.status = 'graded' ${teacherScope.clause} ${studentWhere}`,
     values,
   );
+  const [healthRows] = await db.execute(
+    'SELECT memory_usage AS memoryUsage FROM system_health ORDER BY recorded_at DESC LIMIT 1',
+  );
+  const [storageRows] = await db.execute(
+    "SELECT COALESCE(SUM(file_size), 0) AS storageUsed FROM files WHERE status <> 'deleted'",
+  );
+  const storageLimitBytes = 1024 * 1024 * 1024;
+  const storageUsage = Math.min(
+    Math.round((Number(storageRows[0]?.storageUsed || 0) / storageLimitBytes) * 10000) / 100,
+    100,
+  );
 
   return {
     ...(userRows[0] || {}),
     ...(contentRows[0] || {}),
     ...(quizRows[0] || {}),
-    systemUsage: 72,
-    storageUsage: 48,
+    systemUsage: Number(healthRows[0]?.memoryUsage || 0),
+    storageUsage,
   };
 }
 
@@ -130,7 +141,7 @@ export async function getQuizReport(user, filters = {}) {
   const values = [];
 
   if (studentId) {
-    where.push('qa.student_id = ?');
+    where.push('s.id = ?');
     values.push(studentId);
   }
 
@@ -202,7 +213,7 @@ export async function getStudentReport(user, filters = {}) {
   const values = [];
 
   if (studentId) {
-    where.push('qa.student_id = ?');
+    where.push('s.id = ?');
     values.push(studentId);
   }
 
@@ -213,6 +224,10 @@ export async function getStudentReport(user, filters = {}) {
 
   const [rows] = await db.execute(
     `SELECT s.id AS studentId, s.student_no AS studentNo, u.full_name AS studentName,
+      u.username, u.email, u.phone, u.status,
+      COALESCE(c.title, s.program) AS curriculum,
+      s.enrollment_year AS enrollmentYear,
+      s.created_at AS registeredAt,
       COUNT(qa.id) AS quizAttempts,
       COALESCE(ROUND(AVG(qa.percentage), 2), 0) AS averagePercentage,
       COALESCE(MAX(qa.percentage), 0) AS highestScore,
@@ -220,9 +235,11 @@ export async function getStudentReport(user, filters = {}) {
       MAX(qa.submitted_at) AS lastQuizDate
      FROM students s
      INNER JOIN users u ON u.id = s.user_id
+     LEFT JOIN curriculums c ON c.id = s.curriculum_id
      LEFT JOIN quiz_attempts qa ON qa.student_id = s.id AND qa.status = 'graded'
      ${where.length ? `WHERE ${where.join(' AND ')}` : 'WHERE 1 = 1'} ${teacherScope.clause}
-     GROUP BY s.id, s.student_no, u.full_name
+     GROUP BY s.id, s.student_no, u.full_name, u.username, u.email, u.phone, u.status,
+      c.title, s.program, s.enrollment_year, s.created_at
      ORDER BY averagePercentage DESC
      LIMIT 100`,
     [...values, ...teacherScope.values],
@@ -233,16 +250,24 @@ export async function getStudentReport(user, filters = {}) {
 
 export async function getTeacherReport() {
   const [rows] = await db.execute(
-    `SELECT t.id AS teacherId, u.full_name AS teacherName, t.department,
+    `SELECT t.id AS teacherId, t.employee_no AS employeeNo, u.full_name AS teacherName,
+      u.username, u.email, u.phone, u.status,
+      COALESCE(d.name, t.department, up.department) AS department,
+      up.qualification,
+      t.specialization,
+      t.created_at AS registeredAt,
       COUNT(DISTINCT c.id) AS assignedCourses,
-      COUNT(DISTINCT m.id) AS learningMaterials,
+      COUNT(DISTINCT f.id) AS learningMaterials,
       COUNT(DISTINCT qb.id) AS aiQuestions
      FROM teachers t
      INNER JOIN users u ON u.id = t.user_id
+     LEFT JOIN user_profiles up ON up.user_id = u.id
+     LEFT JOIN departments d ON d.id = t.department_id
      LEFT JOIN courses c ON c.teacher_id = t.id
-     LEFT JOIN materials m ON m.uploaded_by = u.id
+     LEFT JOIN files f ON f.uploaded_by = u.id AND f.status <> 'deleted'
      LEFT JOIN question_bank qb ON qb.created_by = u.id
-     GROUP BY t.id, u.full_name, t.department
+     GROUP BY t.id, t.employee_no, u.full_name, u.username, u.email, u.phone, u.status,
+      d.name, t.department, up.department, up.qualification, t.specialization, t.created_at
      ORDER BY learningMaterials DESC`,
   );
 
@@ -250,28 +275,42 @@ export async function getTeacherReport() {
 }
 
 export async function getMaterialReport(user) {
-  const scope = materialScope(user, 'm');
+  const scope = materialScope(user, 'f');
   const [rows] = await db.execute(
-    `SELECT material_type AS materialType, COUNT(*) AS total
-     FROM materials m
-     WHERE 1 = 1 ${scope.clause}
-     GROUP BY material_type
+    `SELECT file_type AS materialType, COUNT(*) AS total
+     FROM files f
+     WHERE f.status <> 'deleted' ${scope.clause}
+     GROUP BY file_type
      ORDER BY total DESC`,
     scope.values,
   );
 
   const [activityRows] = await db.execute(
-    `SELECT u.full_name AS teacherName, COUNT(m.id) AS uploadedMaterials
-     FROM materials m
-     LEFT JOIN users u ON u.id = m.uploaded_by
-     WHERE 1 = 1 ${scope.clause}
+    `SELECT u.full_name AS teacherName, COUNT(f.id) AS uploadedMaterials
+     FROM files f
+     LEFT JOIN users u ON u.id = f.uploaded_by
+     WHERE f.status <> 'deleted' ${scope.clause}
      GROUP BY u.full_name
      ORDER BY uploadedMaterials DESC
      LIMIT 10`,
     scope.values,
   );
 
-  return { materialTypes: rows, teacherActivity: activityRows };
+  const [fileRows] = await db.execute(
+    `SELECT f.id AS fileId, f.original_file_name AS fileName, f.file_type AS fileType,
+      f.mime_type AS mimeType, f.file_size AS fileSizeBytes, f.curriculum, f.subject,
+      f.week_no AS weekNo, f.topic, f.visibility, f.audience, f.status,
+      f.version, f.download_count AS downloads, f.view_count AS views,
+      u.full_name AS uploadedBy, f.uploaded_role AS uploadedRole, f.created_at AS uploadedAt
+     FROM files f
+     LEFT JOIN users u ON u.id = f.uploaded_by
+     WHERE f.status <> 'deleted' ${scope.clause}
+     ORDER BY f.created_at DESC
+     LIMIT 500`,
+    scope.values,
+  );
+
+  return { materialTypes: rows, teacherActivity: activityRows, files: fileRows };
 }
 
 export async function getAiReport(user) {
