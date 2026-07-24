@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { FiCamera, FiLock, FiMonitor, FiShield, FiUser } from 'react-icons/fi';
 import { PageHeader } from '../../components/super-admin/PageHeader';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Loader } from '../../components/ui/Loader';
+import { useAuth } from '../../hooks/useAuth';
 import { profileService } from '../../services/profileService';
 
 const apiOrigin = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api').replace(/\/api\/?$/, '');
@@ -72,12 +74,8 @@ function buildProfileDetails(profile) {
     ['Last Login', profile.lastLogin ? formatDate(profile.lastLogin) : null],
   ];
 
-  if (['admin', 'teacher'].includes(profile.role)) {
-    details.push(['Department', profile.department]);
-    details.push(['Employee ID', profile.employeeId]);
-  }
-
   if (profile.role === 'teacher') {
+    details.push(['Department', profile.department]);
     details.push(['Qualification', profile.qualification]);
   }
 
@@ -96,11 +94,8 @@ function buildEditableFields(role) {
     ['phone', 'Phone Number'],
   ];
 
-  if (['admin', 'teacher'].includes(role)) {
-    fields.push(['department', 'Department']);
-  }
-
   if (role === 'teacher') {
+    fields.push(['department', 'Department']);
     fields.push(['qualification', 'Qualification']);
   }
 
@@ -178,6 +173,8 @@ function getSessionRawDetails(session) {
 }
 
 export function ProfilePage() {
+  const { logout, updateCurrentUser } = useAuth();
+  const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [form, setForm] = useState({});
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
@@ -255,7 +252,14 @@ export function ProfilePage() {
     setMessage('');
 
     try {
-      await profileService.updateProfile(form);
+      const updatedProfile = await profileService.updateProfile(form);
+      updateCurrentUser?.({
+        fullName: updatedProfile.fullName,
+        name: updatedProfile.fullName,
+        username: updatedProfile.username,
+        email: updatedProfile.email,
+        profilePhoto: updatedProfile.profilePhoto || null,
+      });
       setMessage('Profile updated successfully.');
       await loadProfile();
     } catch (err) {
@@ -304,6 +308,7 @@ export function ProfilePage() {
   const profilePhotoUrl = appendCacheBuster(resolveProfilePhotoUrl(profile.profilePhoto), photoVersion);
   const profileDetails = buildProfileDetails(profile);
   const editableFields = buildEditableFields(profile.role);
+  const otherActiveSessions = data.sessions.filter((session) => session.isActive && !session.isCurrent);
 
   return (
     <div className="space-y-6">
@@ -342,6 +347,13 @@ export function ProfilePage() {
                         const updatedProfile = await profileService.uploadPhoto(file);
                         setData((current) => ({ ...current, profile: updatedProfile }));
                         setForm(updatedProfile || {});
+                        updateCurrentUser?.({
+                          fullName: updatedProfile.fullName,
+                          name: updatedProfile.fullName,
+                          username: updatedProfile.username,
+                          email: updatedProfile.email,
+                          profilePhoto: updatedProfile.profilePhoto || null,
+                        });
                         setPhotoVersion(Date.now());
                         setMessage('Profile photo uploaded successfully.');
                       } catch (err) {
@@ -369,6 +381,7 @@ export function ProfilePage() {
                       profile: { ...current.profile, profilePhoto: null },
                     }));
                     setForm((current) => ({ ...current, profilePhoto: null }));
+                    updateCurrentUser?.({ profilePhoto: null });
                     setPhotoVersion(Date.now());
                     setMessage('Profile photo removed successfully.');
                   } catch (err) {
@@ -499,7 +512,7 @@ export function ProfilePage() {
                     try {
                       await profileService.deleteSession(session.sessionId);
                       setMessage('Session logged out successfully.');
-                      await refreshSessions({ showError: true });
+                      await loadProfile();
                     } catch (err) {
                       setError(getApiErrorMessage(err, 'Unable to logout this session.'));
                     } finally {
@@ -516,7 +529,7 @@ export function ProfilePage() {
           <Button
             className="mt-4"
             variant="secondary"
-            disabled={sessionAction === 'other-sessions'}
+            disabled={sessionAction === 'other-sessions' || otherActiveSessions.length === 0}
             onClick={async () => {
               setSessionAction('other-sessions');
               setError('');
@@ -525,7 +538,7 @@ export function ProfilePage() {
               try {
                 await profileService.deleteSessions({ keepCurrent: true });
                 setMessage('Other sessions logged out successfully.');
-                await refreshSessions({ showError: true });
+                await loadProfile();
               } catch (err) {
                 setError(getApiErrorMessage(err, 'Unable to logout other sessions.'));
               } finally {
@@ -533,7 +546,11 @@ export function ProfilePage() {
               }
             }}
           >
-            {sessionAction === 'other-sessions' ? 'Logging out...' : 'Logout Other Sessions'}
+            {sessionAction === 'other-sessions'
+              ? 'Logging out...'
+              : otherActiveSessions.length === 0
+                ? 'No Other Sessions'
+                : 'Logout Other Sessions'}
           </Button>
           <div className="mt-4 rounded-xl border border-line p-3">
             <label className="text-sm font-semibold text-ink">
@@ -558,7 +575,8 @@ export function ProfilePage() {
                   await profileService.deleteSessions({ keepCurrent: false, password: logoutAllPassword });
                   setLogoutAllPassword('');
                   setMessage('All devices logged out successfully.');
-                  await refreshSessions({ showError: true });
+                  await logout({ remote: false });
+                  navigate('/login', { replace: true });
                 } catch (err) {
                   setError(getApiErrorMessage(err, 'Unable to logout all devices.'));
                 } finally {
@@ -574,12 +592,31 @@ export function ProfilePage() {
           <h2 className="flex items-center gap-2 text-lg font-bold text-ink"><FiShield /> Account Activity</h2>
           <div className="mt-4 space-y-3">
             {data.securityEvents.map((event) => (
-              <div key={`${event.eventType}-${event.createdAt}`} className="rounded-xl bg-page p-3 text-sm">
-                <p className="font-semibold text-ink">{event.description}</p>
-                <p className="text-muted">{new Date(event.createdAt).toLocaleString()}</p>
+              <div key={event.id || `${event.eventType}-${event.createdAt}`} className="rounded-xl border border-line bg-page p-3 text-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-semibold text-ink">{event.description}</p>
+                  {event.module ? (
+                    <span className="rounded-full bg-white px-2 py-0.5 text-xs font-bold uppercase text-muted">
+                      {event.module}
+                    </span>
+                  ) : null}
+                  {event.status ? (
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs font-bold capitalize ${
+                        event.status === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
+                      }`}
+                    >
+                      {event.status}
+                    </span>
+                  ) : null}
+                </div>
+                <p className="mt-1 text-muted">
+                  {event.createdAt ? new Date(event.createdAt).toLocaleString() : 'Time not recorded'}
+                  {event.ipAddress ? ` - ${event.ipAddress}` : ''}
+                </p>
               </div>
             ))}
-            {!data.securityEvents.length ? <p className="text-sm text-muted">No security events yet.</p> : null}
+            {!data.securityEvents.length ? <p className="text-sm text-muted">No account activity found.</p> : null}
           </div>
         </Card>
       </div>

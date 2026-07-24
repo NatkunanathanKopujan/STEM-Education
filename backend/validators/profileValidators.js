@@ -7,7 +7,7 @@ export const updateProfileValidator = [
     .isLength({ min: 2, max: 120 })
     .withMessage('Full name must be 2 to 120 characters'),
   body('email')
-    .optional({ nullable: true, values: 'falsy' })
+    .optional({ nullable: true })
     .trim()
     .isEmail()
     .withMessage('Valid email is required'),

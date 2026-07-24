@@ -1,5 +1,6 @@
 import { db } from '../config/database.js';
 import { generateId } from '../utils/idGenerator.js';
+import { createNotification } from './notificationRepository.js';
 
 const attemptSelect = `SELECT qa.id, qa.uuid, qa.student_id AS studentId, qa.course_id AS courseId,
   qa.curriculum_id AS curriculumId, c.title AS curriculum, qa.subject, qa.quiz_number AS quizNumber,
@@ -304,20 +305,17 @@ export async function createStudentNotification(payload) {
   const userId = students[0]?.userId;
 
   if (userId) {
-    await db.execute(
-      `INSERT INTO notifications
-        (uuid, user_id, role, title, message, notification_type, priority, source_module,
-         action_url, metadata)
-       VALUES (?, ?, 'student', ?, ?, 'quiz', 'important', 'ai_quiz', ?, ?)`,
-      [
-        generateId(),
+    await createNotification({
         userId,
-        payload.title,
-        payload.message,
-        payload.metadata?.quizNumber ? `/student/quiz-result/${payload.metadata.quizNumber}` : null,
-        payload.metadata ? JSON.stringify(payload.metadata) : null,
-      ],
-    );
+        role: 'student',
+        title: payload.title,
+        message: payload.message,
+        notificationType: 'quiz',
+        priority: 'important',
+        sourceModule: 'ai_quiz',
+        actionUrl: payload.metadata?.quizNumber ? `/student/quiz-result/${payload.metadata.quizNumber}` : null,
+        metadata: payload.metadata,
+      });
   }
 }
 

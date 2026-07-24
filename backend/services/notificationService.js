@@ -13,6 +13,7 @@ import {
   listUsersForAnnouncement,
   markNotificationsRead,
   replaceAnnouncementTargets,
+  resetNotificationPreferences,
   updateAnnouncement,
   updateNotificationPreferences,
 } from '../repositories/notificationRepository.js';
@@ -115,6 +116,19 @@ export async function savePreferences(user, payload, requestMeta = {}) {
     ipAddress: requestMeta.ipAddress,
     browser: requestMeta.userAgent,
     metadata: { fields: Object.keys(payload || {}) },
+  });
+  return preferences;
+}
+
+export async function resetPreferences(user, requestMeta = {}) {
+  const preferences = await resetNotificationPreferences(user.id);
+  await auditAction({
+    user,
+    action: 'notification_preferences_reset',
+    module: 'notifications',
+    description: 'Notification preferences reset to defaults',
+    ipAddress: requestMeta.ipAddress,
+    browser: requestMeta.userAgent,
   });
   return preferences;
 }

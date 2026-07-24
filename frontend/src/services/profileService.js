@@ -22,4 +22,5 @@ export const profileService = {
   deleteSessions: async (payload) => unwrap(await apiClient.delete('/profile/sessions', { data: payload })),
   getPreferences: async () => unwrap(await apiClient.get('/profile/preferences')),
   updatePreferences: async (payload) => unwrap(await apiClient.put('/profile/preferences', payload)),
+  resetPreferences: async () => unwrap(await apiClient.delete('/profile/preferences')),
 };

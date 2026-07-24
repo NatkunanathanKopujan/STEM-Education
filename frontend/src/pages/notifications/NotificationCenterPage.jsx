@@ -19,6 +19,10 @@ const initialFilters = {
   offset: 0,
 };
 
+function isNotFoundError(apiError) {
+  return apiError.response?.status === 404;
+}
+
 export function NotificationCenterPage() {
   const [data, setData] = useState({ unreadCount: 0, notifications: [], total: 0, limit: pageSize, offset: 0 });
   const [filters, setFilters] = useState(initialFilters);
@@ -125,6 +129,18 @@ export function NotificationCenterPage() {
       setDeleteTarget(null);
       await loadNotifications(filters);
     } catch (apiError) {
+      if (isNotFoundError(apiError)) {
+        setData((current) => ({
+          ...current,
+          total: Math.max(Number(current.total || 0) - 1, 0),
+          notifications: current.notifications.filter((notification) => notification.id !== deleteTarget.id),
+        }));
+        setSelectedIds((current) => current.filter((selectedId) => selectedId !== deleteTarget.id));
+        setMessage('Notification was already removed.');
+        setDeleteTarget(null);
+        await loadNotifications(filters);
+        return;
+      }
       setError(apiError.response?.data?.message || 'Unable to delete notification.');
     }
   };
@@ -134,7 +150,15 @@ export function NotificationCenterPage() {
     setError('');
     setMessage('');
     try {
-      await Promise.all(selectedIds.map((id) => notificationService.deleteNotification(id)));
+      const results = await Promise.allSettled(
+        selectedIds.map((id) => notificationService.deleteNotification(id)),
+      );
+      const failed = results.filter((result) => result.status === 'rejected' && !isNotFoundError(result.reason));
+
+      if (failed.length) {
+        throw failed[0].reason;
+      }
+
       setMessage(`${selectedIds.length} notification${selectedIds.length === 1 ? '' : 's'} deleted.`);
       setBulkDeleteOpen(false);
       await loadNotifications(filters);
@@ -258,7 +282,7 @@ export function NotificationCenterPage() {
 
       {isLoading ? (
         <Loader label="Loading notifications" />
-      ) : error ? (
+      ) : error && !data.notifications.length ? (
         <EmptyState title="Notifications unavailable" description="Refresh the page or try another filter." />
       ) : (
         <NotificationList

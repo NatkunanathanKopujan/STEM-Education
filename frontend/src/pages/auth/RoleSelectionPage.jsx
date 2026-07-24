@@ -58,7 +58,7 @@ export function RoleSelectionPage() {
         </p>
       </motion.div>
 
-      <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid items-start gap-5 sm:grid-cols-2 xl:grid-cols-4">
         {roleCards.map((card, index) => (
           <motion.div
             key={card.role}

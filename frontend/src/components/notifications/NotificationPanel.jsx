@@ -7,6 +7,7 @@ import { notificationService } from '../../services/notificationService';
 export function NotificationPanel({ open, onClose }) {
   const navigate = useNavigate();
   const [data, setData] = useState({ unreadCount: 0, notifications: [] });
+  const [error, setError] = useState('');
 
   useEffect(() => {
     if (!open) {
@@ -16,10 +17,17 @@ export function NotificationPanel({ open, onClose }) {
     let isMounted = true;
 
     async function loadUnread() {
-      const response = await notificationService.getUnread();
+      try {
+        const response = await notificationService.getUnread();
 
-      if (isMounted) {
-        setData(response);
+        if (isMounted) {
+          setData(response);
+          setError('');
+        }
+      } catch (apiError) {
+        if (isMounted) {
+          setError(apiError.response?.data?.message || 'Unable to load notifications.');
+        }
       }
     }
 
@@ -31,17 +39,43 @@ export function NotificationPanel({ open, onClose }) {
   }, [open]);
 
   const refresh = async () => {
-    setData(await notificationService.getUnread());
+    try {
+      setData(await notificationService.getUnread());
+      setError('');
+    } catch (apiError) {
+      setError(apiError.response?.data?.message || 'Unable to refresh notifications.');
+    }
   };
 
   const handleRead = async (ids) => {
-    await notificationService.markRead(ids);
-    await refresh();
+    try {
+      await notificationService.markRead(ids);
+      await refresh();
+    } catch (apiError) {
+      setError(apiError.response?.data?.message || 'Unable to mark notification as read.');
+    }
   };
 
   const handleDelete = async (id) => {
-    await notificationService.deleteNotification(id);
-    await refresh();
+    try {
+      await notificationService.deleteNotification(id);
+      await refresh();
+    } catch (apiError) {
+      if (apiError.response?.status === 404) {
+        setData((current) => ({
+          ...current,
+          unreadCount: Math.max(
+            Number(current.unreadCount || 0) -
+              (current.notifications.find((notification) => notification.id === id && !notification.isRead) ? 1 : 0),
+            0,
+          ),
+          notifications: current.notifications.filter((notification) => notification.id !== id),
+        }));
+        setError('');
+        return;
+      }
+      setError(apiError.response?.data?.message || 'Unable to delete notification.');
+    }
   };
 
   if (!open) {
@@ -60,6 +94,11 @@ export function NotificationPanel({ open, onClose }) {
         </Button>
       </div>
       <div className="max-h-96 overflow-y-auto pr-1">
+        {error ? (
+          <div className="mb-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">
+            {error}
+          </div>
+        ) : null}
         <NotificationList
           compact
           notifications={data.notifications || []}
@@ -80,8 +119,12 @@ export function NotificationPanel({ open, onClose }) {
         <Button
           variant="secondary"
           onClick={async () => {
-            await notificationService.markAllRead();
-            await refresh();
+            try {
+              await notificationService.markAllRead();
+              await refresh();
+            } catch (apiError) {
+              setError(apiError.response?.data?.message || 'Unable to mark all notifications as read.');
+            }
           }}
         >
           Mark All Read

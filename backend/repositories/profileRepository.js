@@ -154,35 +154,87 @@ export async function touchPasswordChanged(userId) {
 }
 
 export async function listLoginHistory(userId, { limit = 30, offset = 0, search, status } = {}) {
-  const values = [userId];
-  const where = ['user_id = ?'];
+  const safeLimit = Math.min(Math.max(Number(limit) || 30, 1), 100);
+  const safeOffset = Math.max(Number(offset) || 0, 0);
+  const parts = [];
+  const values = [];
 
-  if (status) {
-    where.push('status = ?');
-    values.push(status);
+  if (!status || status === 'successful') {
+    const sessionWhere = ['s.user_id = ?'];
+    const sessionValues = [userId];
+
+    if (search) {
+      sessionWhere.push('(s.ip_address LIKE ? OR s.user_agent LIKE ?)');
+      sessionValues.push(`%${search}%`, `%${search}%`);
+    }
+
+    parts.push(
+      `SELECT CONCAT('session-', s.id) AS id,
+        s.login_time AS loginDate,
+        s.logout_time AS logoutDate,
+        s.ip_address AS ipAddress,
+        s.user_agent AS browser,
+        JSON_UNQUOTE(JSON_EXTRACT(s.device_info, '$.os')) AS operatingSystem,
+        NULL AS location,
+        'successful' AS status,
+        NULL AS failureReason,
+        'user_sessions' AS source
+       FROM user_sessions s
+       WHERE ${sessionWhere.join(' AND ')}`,
+    );
+    values.push(...sessionValues);
   }
 
-  if (search) {
-    where.push('(ip_address LIKE ? OR browser LIKE ? OR operating_system LIKE ? OR location LIKE ?)');
-    values.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+  if (!status || status === 'failed') {
+    const attemptWhere = ['l.user_id = ?', "l.status = 'failed'"];
+    const attemptValues = [userId];
+
+    if (search) {
+      attemptWhere.push('(l.identifier LIKE ? OR l.ip_address LIKE ? OR l.browser LIKE ? OR l.failure_reason LIKE ?)');
+      attemptValues.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+    }
+
+    parts.push(
+      `SELECT CONCAT('attempt-', l.id) AS id,
+        l.attempted_at AS loginDate,
+        NULL AS logoutDate,
+        l.ip_address AS ipAddress,
+        l.browser,
+        l.operating_system AS operatingSystem,
+        NULL AS location,
+        l.status,
+        l.failure_reason AS failureReason,
+        'login_attempts' AS source
+       FROM login_attempts l
+       WHERE ${attemptWhere.join(' AND ')}`,
+    );
+    values.push(...attemptValues);
   }
 
-  const [rows] = await db.execute(
-    `SELECT login_at AS loginDate, logout_at AS logoutDate, ip_address AS ipAddress,
-      browser, operating_system AS operatingSystem, location, status
-     FROM login_history
-     WHERE ${where.join(' AND ')}
-     UNION ALL
-     SELECT login_time AS loginDate, logout_time AS logoutDate, ip_address AS ipAddress,
-      user_agent AS browser, JSON_UNQUOTE(JSON_EXTRACT(device_info, '$.os')) AS operatingSystem,
-      NULL AS location, 'successful' AS status
-     FROM user_sessions
-     WHERE user_id = ? AND NOT EXISTS (SELECT 1 FROM login_history WHERE user_id = ?)
+  if (!parts.length) {
+    return { history: [], total: 0, limit: safeLimit, offset: safeOffset };
+  }
+
+  const unionSql = parts.join(' UNION ALL ');
+  const [rows] = await db.query(
+    `SELECT *
+     FROM (${unionSql}) login_history
      ORDER BY loginDate DESC
      LIMIT ? OFFSET ?`,
-    [...values, userId, userId, limit, offset],
+    [...values, safeLimit, safeOffset],
   );
-  return rows;
+  const [countRows] = await db.query(
+    `SELECT COUNT(*) AS total
+     FROM (${unionSql}) login_history`,
+    values,
+  );
+
+  return {
+    history: rows,
+    total: countRows[0]?.total || 0,
+    limit: safeLimit,
+    offset: safeOffset,
+  };
 }
 
 export async function listSessions(userId) {
@@ -214,14 +266,24 @@ export async function listSessions(userId) {
 }
 
 export async function closeSession({ userId, sessionId }) {
-  const [activeResult] = await db.execute(
-    'UPDATE active_sessions SET revoked_at = COALESCE(revoked_at, NOW()) WHERE user_id = ? AND (id = ? OR session_id = ?)',
-    [userId, sessionId, sessionId],
-  );
   const [result] = await db.execute(
-    'UPDATE user_sessions SET logout_time = COALESCE(logout_time, NOW()) WHERE id = ? AND user_id = ?',
+    'UPDATE user_sessions SET logout_time = COALESCE(logout_time, NOW()) WHERE id = ? AND user_id = ? AND logout_time IS NULL',
     [sessionId, userId],
   );
+
+  if (result.affectedRows > 0) {
+    const [activeResult] = await db.execute(
+      'UPDATE active_sessions SET revoked_at = COALESCE(revoked_at, NOW()) WHERE user_id = ? AND session_id = ? AND revoked_at IS NULL',
+      [userId, sessionId],
+    );
+    return activeResult.affectedRows > 0 || result.affectedRows > 0;
+  }
+
+  const [activeResult] = await db.execute(
+    'UPDATE active_sessions SET revoked_at = COALESCE(revoked_at, NOW()) WHERE user_id = ? AND id = ? AND session_id IS NULL AND revoked_at IS NULL',
+    [userId, sessionId],
+  );
+
   return activeResult.affectedRows > 0 || result.affectedRows > 0;
 }
 
@@ -251,15 +313,49 @@ export async function getUserPreferences(userId) {
   await ensureUserProfile(userId);
   const [rows] = await db.execute(
     `SELECT theme_preference AS themePreference, language_preference AS languagePreference,
-      timezone, preferences
-     FROM user_preferences WHERE user_id = ? LIMIT 1`,
+      timezone, preferences,
+      up.profile_visibility AS profileVisibility,
+      up.phone_visibility AS phoneVisibility,
+      up.email_visibility AS emailVisibility
+     FROM user_preferences pref
+     LEFT JOIN user_profiles up ON up.user_id = pref.user_id
+     WHERE pref.user_id = ? LIMIT 1`,
     [userId],
   );
-  return rows[0] || null;
+  const row = rows[0];
+
+  if (!row) {
+    return null;
+  }
+
+  let preferenceJson = row.preferences || {};
+
+  if (typeof preferenceJson === 'string') {
+    try {
+      preferenceJson = JSON.parse(preferenceJson);
+    } catch {
+      preferenceJson = {};
+    }
+  }
+
+  return {
+    themePreference: row.themePreference,
+    languagePreference: row.languagePreference,
+    timezone: row.timezone,
+    preferences: {
+      ...preferenceJson,
+      profileVisibility: row.profileVisibility || preferenceJson.profileVisibility || 'role_members',
+      phoneVisibility: Boolean(row.phoneVisibility ?? preferenceJson.phoneVisibility ?? true),
+      emailVisibility: Boolean(row.emailVisibility ?? preferenceJson.emailVisibility ?? true),
+    },
+  };
 }
 
 export async function updateUserPreferences(userId, payload) {
   await ensureUserProfile(userId);
+  const privacyPreferences = payload.preferences || {};
+  const nextPreferences = payload.preferences ? JSON.stringify(privacyPreferences) : null;
+
   await db.execute(
     `UPDATE user_preferences
      SET theme_preference = COALESCE(?, theme_preference),
@@ -271,21 +367,89 @@ export async function updateUserPreferences(userId, payload) {
       payload.themePreference || null,
       payload.languagePreference || null,
       payload.timezone || null,
-      payload.preferences ? JSON.stringify(payload.preferences) : null,
+      nextPreferences,
       userId,
     ],
   );
+
+  const profilePrivacyFields = {};
+
+  if (privacyPreferences.profileVisibility !== undefined) {
+    profilePrivacyFields.profile_visibility = privacyPreferences.profileVisibility;
+  }
+
+  if (privacyPreferences.phoneVisibility !== undefined) {
+    profilePrivacyFields.phone_visibility = privacyPreferences.phoneVisibility ? 1 : 0;
+  }
+
+  if (privacyPreferences.emailVisibility !== undefined) {
+    profilePrivacyFields.email_visibility = privacyPreferences.emailVisibility ? 1 : 0;
+  }
+
+  if (Object.keys(profilePrivacyFields).length) {
+    const assignments = Object.keys(profilePrivacyFields).map((key) => `${key} = ?`).join(', ');
+    await db.execute(`UPDATE user_profiles SET ${assignments} WHERE user_id = ?`, [
+      ...Object.values(profilePrivacyFields),
+      userId,
+    ]);
+  }
+
+  return getUserPreferences(userId);
+}
+
+export async function resetUserPreferences(userId) {
+  await ensureUserProfile(userId);
+  await db.execute('DELETE FROM user_preferences WHERE user_id = ?', [userId]);
+  await db.execute('INSERT INTO user_preferences (user_id) VALUES (?)', [userId]);
+  await db.execute(
+    `UPDATE user_profiles
+     SET profile_visibility = 'role_members',
+      phone_visibility = 1,
+      email_visibility = 1
+     WHERE user_id = ?`,
+    [userId],
+  );
+
   return getUserPreferences(userId);
 }
 
 export async function listSecurityEvents(userId) {
-  const [rows] = await db.execute(
-    `SELECT event_type AS eventType, description, ip_address AS ipAddress, metadata, created_at AS createdAt
-     FROM security_events
-     WHERE user_id = ?
-     ORDER BY created_at DESC
+  const [rows] = await db.query(
+    `SELECT *
+     FROM (
+       SELECT
+        CONCAT('security-', id) AS id,
+        event_type AS eventType,
+        'profile' AS module,
+        event_type AS action,
+        description,
+        ip_address AS ipAddress,
+        NULL AS browser,
+        'success' AS status,
+        metadata,
+        created_at AS createdAt,
+        'security_events' AS source
+       FROM security_events
+       WHERE user_id = ?
+       UNION ALL
+       SELECT
+        CONCAT('audit-', id) AS id,
+        action AS eventType,
+        module,
+        action,
+        description,
+        ip_address AS ipAddress,
+        browser,
+        status,
+        metadata,
+        created_at AS createdAt,
+        'audit_logs' AS source
+       FROM audit_logs
+       WHERE user_id = ?
+     ) account_activity
+     ORDER BY createdAt DESC
      LIMIT 50`,
-    [userId],
+    [userId, userId],
   );
   return rows;
 }

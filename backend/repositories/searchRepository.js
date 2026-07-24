@@ -1,5 +1,6 @@
 import { db } from '../config/database.js';
 import { ROLES } from '../config/roles.js';
+import { ensureFileAudienceSchema } from './fileRepository.js';
 import { generateId } from '../utils/idGenerator.js';
 
 const like = (term) => `%${term}%`;
@@ -17,10 +18,10 @@ const CATEGORY_ALIASES = {
 
 const MATERIAL_CATEGORY_TYPES = {
   pdf_files: ['pdf'],
-  ppt_files: ['ppt'],
-  doc_files: ['doc', 'docx'],
-  videos: ['video'],
-  teacher_notes: ['note'],
+  ppt_files: ['ppt', 'pptx', 'presentation'],
+  doc_files: ['doc', 'docx', 'document', 'word'],
+  videos: ['video', 'mp4', 'mov', 'avi', 'mkv'],
+  teacher_notes: ['note', 'notes', 'txt', 'text'],
 };
 
 function normalizeCategory(category) {
@@ -336,40 +337,55 @@ export async function runRoleSearch(user, filters) {
     results,
   );
 
+  await ensureFileAudienceSchema();
   const materialTypes = MATERIAL_CATEGORY_TYPES[selectedCategory] || (filters.fileType ? [String(filters.fileType).toLowerCase()] : []);
   const materialTypePlaceholders = materialTypes.length ? materialTypes.map(() => '?').join(', ') : 'NULL';
   await executeSearch(
     'materials',
     selectedCategory,
     user,
-    `SELECT m.id, m.title,
+    `SELECT f.id, f.original_file_name AS title,
       CASE
-        WHEN m.material_type = 'pdf' THEN 'pdf_files'
-        WHEN m.material_type = 'ppt' THEN 'ppt_files'
-        WHEN m.material_type IN ('doc', 'docx') THEN 'doc_files'
-        WHEN m.material_type = 'video' THEN 'videos'
-        WHEN m.material_type = 'note' THEN 'teacher_notes'
+        WHEN LOWER(f.file_type) = 'pdf' THEN 'pdf_files'
+        WHEN LOWER(f.file_type) IN ('ppt', 'pptx', 'presentation') THEN 'ppt_files'
+        WHEN LOWER(f.file_type) IN ('doc', 'docx', 'document', 'word') THEN 'doc_files'
+        WHEN LOWER(f.file_type) IN ('video', 'mp4', 'mov', 'avi', 'mkv') THEN 'videos'
+        WHEN LOWER(f.file_type) IN ('note', 'notes', 'txt', 'text') THEN 'teacher_notes'
         ELSE 'learning_materials'
       END AS category,
-      CONCAT_WS(' - ', m.description, co.title, cu.title) AS description,
-      u.full_name AS owner, m.created_at AS createdAt, m.updated_at AS updatedAt,
-      CASE WHEN m.material_type = 'video' THEN '/student/videos' WHEN m.material_type = 'note' THEN '/student/notes' ELSE '/student/materials' END AS actionUrl,
-      CASE WHEN m.title = ? THEN 100 ELSE 35 END AS relevance
-     FROM materials m
-     LEFT JOIN courses co ON co.id = m.course_id
-     LEFT JOIN curriculums cu ON cu.id = co.curriculum_id
-     LEFT JOIN users u ON u.id = m.uploaded_by
-     WHERE (m.title LIKE ? OR m.description LIKE ? OR m.material_type LIKE ? OR co.title LIKE ? OR cu.title LIKE ? OR u.full_name LIKE ?)
-       AND (? = 0 OR m.material_type IN (${materialTypePlaceholders}))
-       AND (? = '' OR cu.title LIKE ? OR cu.code LIKE ?)
-       AND (? = '' OR co.title LIKE ? OR co.code LIKE ?)
+      CONCAT_WS(' - ', f.description, f.curriculum, f.subject, f.topic, CONCAT('Week ', f.week_no)) AS description,
+      u.full_name AS owner, f.created_at AS createdAt, f.updated_at AS updatedAt,
+      CASE
+        WHEN ? = 'super-admin' THEN '/super-admin/file-manager'
+        WHEN ? = 'admin' THEN '/admin/materials'
+        WHEN ? = 'teacher' THEN '/teacher/materials'
+        ELSE '/student/materials'
+      END AS actionUrl,
+      CASE WHEN f.original_file_name = ? THEN 100 ELSE 35 END AS relevance
+     FROM files f
+     LEFT JOIN users u ON u.id = f.uploaded_by
+     WHERE (f.original_file_name LIKE ? OR f.description LIKE ? OR f.file_type LIKE ? OR f.curriculum LIKE ? OR f.subject LIKE ? OR f.topic LIKE ? OR f.tags LIKE ? OR u.full_name LIKE ?)
+       AND (? = 0 OR LOWER(f.file_type) IN (${materialTypePlaceholders}))
+       AND (? = '' OR f.curriculum LIKE ?)
+       AND (? = '' OR f.subject LIKE ?)
        AND (? = '' OR u.full_name LIKE ?)
-       AND (? = '' OR m.is_published = IF(? IN ('published', 'active'), 1, 0))
-       AND (? IS NULL OR DATE(m.created_at) = ?)
-       AND (? NOT IN ('teacher', 'student') OR m.is_published = 1 OR m.uploaded_by = ?)
+       AND (? = '' OR f.status = ? OR f.visibility = ?)
+       AND (? IS NULL OR DATE(f.created_at) = ?)
+       AND f.status <> 'deleted'
+       AND (
+        ? = 'super-admin'
+        OR (? = 'admin' AND (f.uploaded_by = ? OR (f.uploaded_role <> 'student' AND f.audience IN ('all', 'admin'))))
+        OR (? = 'teacher' AND (f.uploaded_by = ? OR (f.visibility = 'public' AND f.status = 'active' AND f.uploaded_role <> 'student' AND f.audience IN ('all', 'teacher'))))
+        OR (? = 'student' AND (f.uploaded_by = ? OR (f.visibility = 'public' AND f.status = 'active' AND f.uploaded_role <> 'student' AND f.audience IN ('all', 'student'))))
+       )
      LIMIT ?`,
     [
+      user.role,
+      user.role,
+      user.role,
       term,
+      like(term),
+      like(term),
       like(term),
       like(term),
       like(term),
@@ -380,16 +396,20 @@ export async function runRoleSearch(user, filters) {
       ...materialTypes,
       filters.curriculum || '',
       like(filters.curriculum || ''),
-      like(filters.curriculum || ''),
       filters.subject || '',
-      like(filters.subject || ''),
       like(filters.subject || ''),
       filters.teacher || filters.createdBy || '',
       like(filters.teacher || filters.createdBy || ''),
       filters.status || '',
       filters.status || '',
+      filters.status || '',
       filters.uploadDate || null,
       filters.uploadDate || null,
+      user.role,
+      user.role,
+      user.id,
+      user.role,
+      user.id,
       user.role,
       user.id,
       Math.min(Number(filters.limit) || 50, 100),
@@ -759,10 +779,18 @@ export async function getSearchAnalytics() {
      LIMIT 20`,
   );
   const [viewedMaterials] = await db.execute(
-    `SELECT m.title, COUNT(sh.id) AS views
+    `SELECT f.original_file_name AS title, COUNT(sh.id) AS views
      FROM search_history sh
-     INNER JOIN materials m ON JSON_SEARCH(sh.filters, 'one', m.title) IS NOT NULL
-     GROUP BY m.id, m.title
+     INNER JOIN files f
+       ON f.status <> 'deleted'
+      AND sh.search_term <> ''
+      AND (
+        f.original_file_name LIKE CONCAT('%', sh.search_term, '%')
+        OR f.curriculum LIKE CONCAT('%', sh.search_term, '%')
+        OR f.subject LIKE CONCAT('%', sh.search_term, '%')
+        OR f.topic LIKE CONCAT('%', sh.search_term, '%')
+      )
+     GROUP BY f.id, f.original_file_name
      ORDER BY views DESC
      LIMIT 10`,
   );

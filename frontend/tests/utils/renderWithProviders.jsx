@@ -3,6 +3,7 @@ import { jest } from '@jest/globals';
 import { MemoryRouter } from 'react-router-dom';
 import { AuthContext } from '../../src/context/authContextValue';
 import { BrandingContext } from '../../src/context/brandingContextValue';
+import { LanguageContext } from '../../src/context/LanguageContext';
 import { users } from '../fixtures/lmsFixtures';
 
 export function renderWithProviders(ui, options = {}) {
@@ -28,11 +29,19 @@ export function renderWithProviders(ui, options = {}) {
     refreshBranding: jest.fn(),
     ...options.branding,
   };
+  const languageValue = {
+    languagePreference: 'en',
+    setLanguagePreference: jest.fn(),
+    t: (key) => key,
+    ...options.language,
+  };
 
   return render(
     <MemoryRouter initialEntries={[options.route || '/']}>
       <AuthContext.Provider value={authValue}>
-        <BrandingContext.Provider value={brandingValue}>{ui}</BrandingContext.Provider>
+        <BrandingContext.Provider value={brandingValue}>
+          <LanguageContext.Provider value={languageValue}>{ui}</LanguageContext.Provider>
+        </BrandingContext.Provider>
       </AuthContext.Provider>
     </MemoryRouter>,
   );

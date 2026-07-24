@@ -6,7 +6,18 @@ import { Dropdown } from '../ui/Dropdown';
 import { GlobalSearchBox } from '../search/GlobalSearchBox';
 import { NotificationPanel } from '../notifications/NotificationPanel';
 import { ROLE_LABELS } from '../../utils/constants';
+import { useLanguage } from '../../hooks/useLanguage';
 import { useTheme } from '../../hooks/useTheme';
+import { profileService } from '../../services/profileService';
+
+const apiOrigin = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api').replace(/\/api\/?$/, '');
+
+function resolveProfilePhotoUrl(value) {
+  if (!value) return '';
+  if (/^https?:\/\//i.test(value)) return value;
+  if (value.startsWith('/uploads/')) return `${apiOrigin}${value}`;
+  return `${apiOrigin}/uploads/profiles/${value}`;
+}
 
 const formatTitle = (pathname) => {
   const segment = pathname.split('/').filter(Boolean).pop() || 'Dashboard';
@@ -19,9 +30,23 @@ const formatTitle = (pathname) => {
 export function Navbar({ user, onMenuClick, onLogout }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { isDark, toggleTheme } = useTheme();
+  const { t } = useLanguage();
+  const { isDark, setThemePreference } = useTheme();
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const pageTitle = useMemo(() => formatTitle(location.pathname), [location.pathname]);
+  const pageTitle = useMemo(() => t(formatTitle(location.pathname)), [location.pathname, t]);
+  const profilePhotoUrl = useMemo(() => resolveProfilePhotoUrl(user?.profilePhoto), [user?.profilePhoto]);
+  const displayName = user?.username || user?.name || user?.fullName || 'Profile';
+  const nextThemePreference = isDark ? 'light' : 'dark';
+
+  const handleThemeToggle = async () => {
+    setThemePreference(nextThemePreference);
+
+    try {
+      await profileService.updatePreferences({ themePreference: nextThemePreference });
+    } catch {
+      // Keep the immediate UI change; Settings page can retry saving if the API is unavailable.
+    }
+  };
 
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-white/95 shadow-sm backdrop-blur">
@@ -53,7 +78,7 @@ export function Navbar({ user, onMenuClick, onLogout }) {
             className="px-3"
             aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
             title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-            onClick={toggleTheme}
+            onClick={handleThemeToggle}
           >
             {isDark ? <FiSun className="size-5" /> : <FiMoon className="size-5" />}
           </Button>
@@ -68,14 +93,20 @@ export function Navbar({ user, onMenuClick, onLogout }) {
           <Dropdown
             label={
               <span className="inline-flex items-center gap-2">
-                <FiUser className="size-4" />
-                <span className="hidden sm:inline">{user?.name || 'Profile'}</span>
+                <span className="grid size-7 shrink-0 place-items-center overflow-hidden rounded-full border border-line bg-page text-muted">
+                  {profilePhotoUrl ? (
+                    <img src={profilePhotoUrl} alt="" className="size-full object-cover" />
+                  ) : (
+                    <FiUser className="size-4" />
+                  )}
+                </span>
+                <span className="hidden max-w-32 truncate sm:inline">{displayName}</span>
               </span>
             }
             items={[
-              { label: 'Profile', onClick: () => navigate('/profile') },
-              { label: 'Settings', onClick: () => navigate('/settings') },
-              { label: 'Notification Preferences', onClick: () => navigate('/notification-preferences') },
+              { label: t('Profile'), onClick: () => navigate('/profile') },
+              { label: t('Settings'), onClick: () => navigate('/settings') },
+              { label: t('Notification Preferences'), onClick: () => navigate('/notification-preferences') },
             ]}
           />
           <Button variant="secondary" className="px-3" onClick={onLogout} aria-label="Logout">

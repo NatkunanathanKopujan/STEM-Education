@@ -7,6 +7,7 @@ const userSelect = `
     full_name AS fullName,
     username,
     email,
+    profile_photo AS profilePhoto,
     password_hash AS passwordHash,
     role,
     status,

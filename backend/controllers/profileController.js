@@ -5,6 +5,7 @@ import {
   getMyProfile,
   getProfilePreferences,
   getSessions,
+  resetProfilePreferences,
   terminateAllSessions,
   terminateSession,
   updateMyProfile,
@@ -111,6 +112,18 @@ export async function updatePreferencesController(req, res, next) {
       res,
       await updateProfilePreferences(req.user, req.body, req.ip),
       'Profile preferences updated',
+    );
+  } catch (error) {
+    return next(error);
+  }
+}
+
+export async function resetPreferencesController(req, res, next) {
+  try {
+    return sendSuccess(
+      res,
+      await resetProfilePreferences(req.user, req.ip),
+      'Profile preferences reset',
     );
   } catch (error) {
     return next(error);

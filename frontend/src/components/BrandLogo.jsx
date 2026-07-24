@@ -19,10 +19,10 @@ export function BrandLogo({ inverse = false, compact = false }) {
         />
       </span>
       {!compact ? <div className="min-w-0 leading-tight">
-        <p className={`truncate text-base font-bold ${inverse ? 'text-white' : 'text-ink'}`}>
+        <p className={`truncate ${inverse ? 'text-lg text-black' : 'text-base text-ink'} font-bold`}>
           {branding.universityName}
         </p>
-        <p className={`truncate text-xs font-medium ${inverse ? 'text-orange-50' : 'text-muted'}`}>
+        <p className={`truncate ${inverse ? 'text-sm text-black' : 'text-xs text-muted'} font-medium`}>
           {branding.subtitle}
         </p>
       </div> : null}

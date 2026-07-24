@@ -15,6 +15,14 @@ const preferenceByType = {
   security: 'security_notifications',
 };
 
+function toDatabaseBoolean(value) {
+  if (typeof value === 'string') {
+    return ['1', 'true', 'on', 'yes'].includes(value.trim().toLowerCase()) ? 1 : 0;
+  }
+
+  return value ? 1 : 0;
+}
+
 function toMysqlDateTime(value) {
   if (!value) return null;
   const date = value instanceof Date ? value : new Date(value);
@@ -229,12 +237,18 @@ export async function updateNotificationPreferences(userId, payload) {
   }
 
   const assignments = entries.map(([key]) => `${allowed[key]} = ?`).join(', ');
-  const values = entries.map(([, value]) => (value ? 1 : 0));
+  const values = entries.map(([, value]) => toDatabaseBoolean(value));
   await db.execute(`UPDATE notification_preferences SET ${assignments} WHERE user_id = ?`, [
     ...values,
     userId,
   ]);
 
+  return getNotificationPreferences(userId);
+}
+
+export async function resetNotificationPreferences(userId) {
+  await db.execute('DELETE FROM notification_preferences WHERE user_id = ?', [userId]);
+  await db.execute('INSERT INTO notification_preferences (user_id) VALUES (?)', [userId]);
   return getNotificationPreferences(userId);
 }
 

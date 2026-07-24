@@ -21,4 +21,5 @@ export const notificationService = {
   deleteAnnouncement: async (id) => unwrap(await apiClient.delete(`/announcements/${id}`)),
   getPreferences: async () => unwrap(await apiClient.get('/notification-preferences')),
   updatePreferences: async (payload) => unwrap(await apiClient.put('/notification-preferences', payload)),
+  resetPreferences: async () => unwrap(await apiClient.delete('/notification-preferences')),
 };

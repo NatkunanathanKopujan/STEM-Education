@@ -7,6 +7,7 @@ import {
   getProfileController,
   loginHistoryController,
   preferencesController,
+  resetPreferencesController,
   sessionsController,
   updatePreferencesController,
   updateProfileController,
@@ -39,5 +40,6 @@ router.delete('/sessions/:id', sessionIdValidator, validateRequest, deleteSessio
 router.delete('/sessions', deleteSessionsValidator, validateRequest, deleteSessionsController);
 router.get('/preferences', preferencesController);
 router.put('/preferences', preferencesValidator, validateRequest, updatePreferencesController);
+router.delete('/preferences', resetPreferencesController);
 
 export default router;

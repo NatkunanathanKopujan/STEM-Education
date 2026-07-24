@@ -50,6 +50,18 @@ export function AuthProvider({ children }) {
     setUser(null);
   }, []);
 
+  const updateCurrentUser = useCallback((updates) => {
+    setUser((currentUser) => {
+      if (!currentUser) {
+        return currentUser;
+      }
+
+      const nextUser = { ...currentUser, ...updates };
+      storage.setUser(nextUser, storage.getRemember());
+      return nextUser;
+    });
+  }, []);
+
   const verifySession = useCallback(async () => {
     const storedToken = storage.getToken();
 
@@ -113,8 +125,9 @@ export function AuthProvider({ children }) {
       homePath: getRoleHomePath(user?.role),
       login,
       logout,
+      updateCurrentUser,
     }),
-    [isInitializing, isLoading, isSessionExpired, login, logout, token, user],
+    [isInitializing, isLoading, isSessionExpired, login, logout, token, updateCurrentUser, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

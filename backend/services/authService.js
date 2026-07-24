@@ -31,6 +31,7 @@ export function sanitizeUser(user) {
     name: user.fullName,
     username: user.username,
     email: user.email,
+    profilePhoto: user.profilePhoto || null,
     role: user.role,
     status: user.status,
     lastLogin: user.lastLogin,

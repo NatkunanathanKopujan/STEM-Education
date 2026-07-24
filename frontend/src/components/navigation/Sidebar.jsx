@@ -4,10 +4,12 @@ import { FiChevronDown, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import { BrandLogo } from '../BrandLogo';
 import { sidebarNavigation } from '../../utils/navigation';
 import { useAuth } from '../../hooks/useAuth';
+import { useLanguage } from '../../hooks/useLanguage';
 
 function SidebarItem({ item, collapsed, onNavigate }) {
   const location = useLocation();
   const { logout } = useAuth();
+  const { t } = useLanguage();
   const [open, setOpen] = useState(() =>
     item.children?.some((child) => location.pathname.startsWith(child.path)),
   );
@@ -29,7 +31,7 @@ function SidebarItem({ item, collapsed, onNavigate }) {
           onClick={() => setOpen((value) => !value)}
         >
           {Icon ? <Icon className="size-5 shrink-0" /> : null}
-          {!collapsed ? <span className="min-w-0 flex-1 text-left">{item.label}</span> : null}
+          {!collapsed ? <span className="min-w-0 flex-1 text-left">{t(item.label)}</span> : null}
           {!collapsed ? <FiChevronDown className={`size-4 transition ${open ? 'rotate-180' : ''}`} /> : null}
         </button>
         {!collapsed && open ? (
@@ -45,7 +47,7 @@ function SidebarItem({ item, collapsed, onNavigate }) {
                   }`
                 }
               >
-                {child.label}
+                {t(child.label)}
               </NavLink>
             ))}
           </div>
@@ -65,7 +67,7 @@ function SidebarItem({ item, collapsed, onNavigate }) {
         className={`${itemBase} text-muted hover:border-primary/30 hover:bg-orange-50 hover:text-primary`}
       >
         {Icon ? <Icon className="size-5 shrink-0" /> : null}
-        {!collapsed ? <span className="truncate">{item.label}</span> : null}
+        {!collapsed ? <span className="truncate">{t(item.label)}</span> : null}
       </button>
     );
   }
@@ -74,7 +76,7 @@ function SidebarItem({ item, collapsed, onNavigate }) {
     <NavLink
       to={item.path}
       onClick={onNavigate}
-      title={collapsed ? item.label : undefined}
+      title={collapsed ? t(item.label) : undefined}
       className={({ isActive }) =>
         `${itemBase} ${
           isActive
@@ -84,7 +86,7 @@ function SidebarItem({ item, collapsed, onNavigate }) {
       }
     >
       {Icon ? <Icon className="size-5 shrink-0" /> : null}
-      {!collapsed ? <span className="truncate">{item.label}</span> : null}
+      {!collapsed ? <span className="truncate">{t(item.label)}</span> : null}
     </NavLink>
   );
 }

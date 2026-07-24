@@ -10,6 +10,7 @@ import {
   readNotifications,
   removeAnnouncement,
   removeNotification,
+  resetPreferences,
   savePreferences,
 } from '../services/notificationService.js';
 import { sendSuccess } from '../utils/apiResponse.js';
@@ -123,6 +124,21 @@ export async function updatePreferencesController(req, res, next) {
         userAgent: req.get('user-agent'),
       }),
       'Notification preferences updated',
+    );
+  } catch (error) {
+    return next(error);
+  }
+}
+
+export async function resetPreferencesController(req, res, next) {
+  try {
+    return sendSuccess(
+      res,
+      await resetPreferences(req.user, {
+        ipAddress: req.ip,
+        userAgent: req.get('user-agent'),
+      }),
+      'Notification preferences reset',
     );
   } catch (error) {
     return next(error);

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Breadcrumb } from '../components/navigation/Breadcrumb';
 import { Footer } from '../components/navigation/Footer';
@@ -7,11 +7,47 @@ import { Navbar } from '../components/navigation/Navbar';
 import { Sidebar } from '../components/navigation/Sidebar';
 import { SupportCalendarPanel } from '../components/navigation/SupportCalendarPanel';
 import { useAuth } from '../hooks/useAuth';
+import { useLanguage } from '../hooks/useLanguage';
+import { useTheme } from '../hooks/useTheme';
+import { profileService } from '../services/profileService';
 
 export function DashboardLayout() {
   const { logout, user } = useAuth();
+  const { setLanguagePreference } = useLanguage();
+  const { setThemePreference } = useTheme();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function syncUserPreferences() {
+      if (!user?.id) return;
+
+      try {
+        const data = await profileService.getPreferences();
+        const preferences = data.preferences || {};
+
+        if (!isMounted) return;
+
+        if (preferences.themePreference) {
+          setThemePreference(preferences.themePreference);
+        }
+
+        if (preferences.languagePreference) {
+          setLanguagePreference(preferences.languagePreference);
+        }
+      } catch {
+        // Local preferences still keep the UI usable if the settings request fails.
+      }
+    }
+
+    syncUserPreferences();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [setLanguagePreference, setThemePreference, user?.id]);
 
   return (
     <div className="min-h-screen bg-page text-ink">

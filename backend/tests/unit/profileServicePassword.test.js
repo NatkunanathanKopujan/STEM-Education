@@ -32,6 +32,7 @@ jest.unstable_mockModule('../../repositories/profileRepository.js', () => ({
   listSecurityEvents: jest.fn(),
   listSessions: jest.fn(),
   removeProfilePhoto: jest.fn(),
+  resetUserPreferences: jest.fn(),
   saveProfilePhoto: jest.fn(),
   touchPasswordChanged: mockTouchPasswordChanged,
   updateProfile: jest.fn(),
@@ -39,7 +40,9 @@ jest.unstable_mockModule('../../repositories/profileRepository.js', () => ({
 }));
 
 jest.unstable_mockModule('../../repositories/notificationRepository.js', () => ({
+  createNotification: jest.fn(),
   getNotificationPreferences: jest.fn(),
+  resetNotificationPreferences: jest.fn(),
   updateNotificationPreferences: jest.fn(),
 }));
 

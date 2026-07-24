@@ -13,17 +13,17 @@ export function AuthLayout() {
           transition={{ duration: 0.2 }}
           className="grid w-full overflow-hidden rounded-xl border border-line bg-white shadow-soft lg:grid-cols-[0.82fr_1.58fr]"
         >
-          <section className="hidden bg-primary p-10 text-white lg:flex lg:flex-col lg:justify-between">
+          <section className="hidden bg-[#E7FFF1] p-10 text-black lg:flex lg:flex-col lg:justify-between">
             <BrandLogo inverse />
             <div className="flex flex-1 items-center justify-center py-8">
               <img
                 src={authLmsIllustration}
                 alt=""
                 aria-hidden="true"
-                className="w-full max-w-md rounded-2xl object-contain drop-shadow-2xl"
+                className="max-h-[52vh] w-full max-w-sm object-contain opacity-95 mix-blend-multiply [mask-image:radial-gradient(ellipse_at_center,#000_58%,rgba(0,0,0,0.9)_72%,transparent_100%)] xl:max-h-[58vh]"
               />
             </div>
-            <div className="border-t border-white/20 pt-5 text-xs font-semibold uppercase tracking-wide text-slate-300">
+            <div className="border-t border-emerald-200/70 pt-5 text-sm font-semibold uppercase tracking-wide text-black">
               Secure access for students, teachers, and staff
             </div>
           </section>

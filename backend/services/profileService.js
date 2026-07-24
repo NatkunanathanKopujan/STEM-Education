@@ -16,13 +16,16 @@ import {
   listSecurityEvents,
   listSessions,
   removeProfilePhoto,
+  resetUserPreferences,
   saveProfilePhoto,
   touchPasswordChanged,
   updateProfile,
   updateUserPreferences,
 } from '../repositories/profileRepository.js';
 import {
+  createNotification,
   getNotificationPreferences,
+  resetNotificationPreferences,
   updateNotificationPreferences,
 } from '../repositories/notificationRepository.js';
 import { auditAction } from './securityService.js';
@@ -74,6 +77,20 @@ async function deleteRejectedProfileUpload(file) {
   }
 }
 
+async function notifySecurityEvent(user, { title, message, actionUrl = '/profile', metadata }) {
+  await createNotification({
+    userId: user.id,
+    role: user.role,
+    title,
+    message,
+    notificationType: 'security',
+    priority: 'important',
+    sourceModule: 'profile_security',
+    actionUrl,
+    metadata,
+  });
+}
+
 export async function getMyProfile(user) {
   const [profile, preferences, notificationPreferences, sessions, securityEvents] = await Promise.all([
     getProfile(user.id),
@@ -93,15 +110,26 @@ export async function getMyProfile(user) {
 }
 
 export async function updateMyProfile(user, payload, ipAddress) {
-  if (payload.email && !(await isEmailAvailable(payload.email, user.id))) {
+  const sanitizedPayload = Object.fromEntries(
+    Object.entries(payload).map(([key, value]) => [
+      key,
+      typeof value === 'string' ? value.trim() : value,
+    ]),
+  );
+
+  if (sanitizedPayload.email === '') {
+    throw new AppError('Valid email is required', 422);
+  }
+
+  if (sanitizedPayload.email && !(await isEmailAvailable(sanitizedPayload.email, user.id))) {
     throw new AppError('Email is already in use', 409);
   }
 
   const allowedPayload = Object.fromEntries(
-    Object.entries(payload).filter(([key]) => editableProfileFields.has(key)),
+    Object.entries(sanitizedPayload).filter(([key]) => editableProfileFields.has(key)),
   );
 
-  if (![ROLES.ADMIN, ROLES.TEACHER].includes(user.role)) {
+  if (user.role !== ROLES.TEACHER) {
     delete allowedPayload.department;
   }
 
@@ -218,19 +246,22 @@ export async function changeMyPassword(user, { currentPassword, newPassword }, i
     ipAddress,
     metadata: { affectedSessions },
   });
+  await notifySecurityEvent(user, {
+    title: 'Password changed',
+    message: 'Your account password was changed successfully.',
+    metadata: { affectedSessions },
+  });
 
   return { changed: true, affectedSessions };
 }
 
 export async function getLoginHistory(user, query = {}) {
-  return {
-    history: await listLoginHistory(user.id, {
-      limit: Number(query.limit) || 30,
-      offset: Number(query.offset) || 0,
-      search: query.search,
-      status: query.status,
-    }),
-  };
+  return listLoginHistory(user.id, {
+    limit: Number(query.limit) || 30,
+    offset: Number(query.offset) || 0,
+    search: query.search,
+    status: query.status,
+  });
 }
 
 export async function getSessions(user) {
@@ -284,6 +315,11 @@ export async function terminateSession(user, sessionId, ipAddress) {
     ipAddress,
     metadata: { sessionId },
   });
+  await notifySecurityEvent(user, {
+    title: 'Connected session logged out',
+    message: 'One of your connected sessions was logged out.',
+    metadata: { sessionId },
+  });
 
   return { closed: true };
 }
@@ -311,6 +347,13 @@ export async function terminateAllSessions(user, { keepCurrent = true, password 
     module: 'profile',
     description: 'Connected sessions were terminated',
     ipAddress,
+    metadata: { affected, keepCurrent },
+  });
+  await notifySecurityEvent(user, {
+    title: keepCurrent ? 'Other devices logged out' : 'All devices logged out',
+    message: keepCurrent
+      ? 'All other connected sessions were logged out.'
+      : 'All connected sessions were logged out after password confirmation.',
     metadata: { affected, keepCurrent },
   });
   return { affected };
@@ -344,6 +387,29 @@ export async function updateProfilePreferences(user, payload, ipAddress) {
     action: 'preferences_updated',
     module: 'profile',
     description: 'User preferences updated',
+    ipAddress,
+  });
+
+  return { preferences, notificationPreferences };
+}
+
+export async function resetProfilePreferences(user, ipAddress) {
+  const [preferences, notificationPreferences] = await Promise.all([
+    resetUserPreferences(user.id),
+    resetNotificationPreferences(user.id),
+  ]);
+
+  await createSecurityEvent({
+    userId: user.id,
+    eventType: 'preferences_reset',
+    description: 'User preferences reset to defaults',
+    ipAddress,
+  });
+  await auditAction({
+    user,
+    action: 'preferences_reset',
+    module: 'profile',
+    description: 'User preferences reset to defaults',
     ipAddress,
   });
 
