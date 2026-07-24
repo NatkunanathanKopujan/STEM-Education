@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import { db } from '../config/database.js';
 import { ensureStudentCurriculumSchema } from './curriculumRepository.js';
 import { ensureDepartmentSchema } from './departmentRepository.js';
+import { ensureUserAssignmentSchema } from './userManagementRepository.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -12,7 +13,26 @@ const profileUploadDirectory = path.resolve(__dirname, '..', 'uploads', 'profile
 const profileSelect = `SELECT u.id, u.uuid, u.full_name AS fullName, u.username, u.email,
   u.phone, u.role, u.status, u.profile_photo AS profilePhoto, u.last_login AS lastLogin,
   u.created_at AS joinedDate, up.address, up.bio,
-  CASE WHEN u.role = 'teacher' THEN COALESCE(d.name, t.department, up.department) ELSE up.department END AS department,
+  CASE
+    WHEN u.role = 'teacher' THEN COALESCE(
+      (SELECT GROUP_CONCAT(td_name.name ORDER BY td_name.name SEPARATOR ', ')
+       FROM teacher_departments tdp
+       INNER JOIN departments td_name ON td_name.id = tdp.department_id
+       WHERE tdp.teacher_id = t.id),
+      d.name,
+      t.department,
+      up.department
+    )
+    WHEN u.role = 'student' THEN COALESCE(
+      (SELECT GROUP_CONCAT(sd_name.name ORDER BY sd_name.name SEPARATOR ', ')
+       FROM student_departments sdp
+       INNER JOIN departments sd_name ON sd_name.id = sdp.department_id
+       WHERE sdp.student_id = s.id),
+      sd.name,
+      up.department
+    )
+    ELSE up.department
+  END AS department,
   CASE WHEN u.role = 'teacher' THEN COALESCE(t.specialization, up.qualification) ELSE up.qualification END AS qualification,
   CASE WHEN u.role = 'student' THEN COALESCE(sc.title, s.program, up.curriculum) ELSE up.curriculum END AS curriculum,
   up.employee_id AS employeeId,
@@ -25,6 +45,7 @@ const profileSelect = `SELECT u.id, u.uuid, u.full_name AS fullName, u.username,
  LEFT JOIN teachers t ON t.user_id = u.id
  LEFT JOIN departments d ON d.id = t.department_id
  LEFT JOIN students s ON s.user_id = u.id
+ LEFT JOIN departments sd ON sd.id = s.department_id
  LEFT JOIN curriculums sc ON sc.id = s.curriculum_id`;
 
 export async function ensureUserProfile(userId) {
@@ -35,6 +56,7 @@ export async function ensureUserProfile(userId) {
 export async function getProfile(userId) {
   await ensureDepartmentSchema();
   await ensureStudentCurriculumSchema();
+  await ensureUserAssignmentSchema();
   await ensureUserProfile(userId);
   const [rows] = await db.execute(`${profileSelect} WHERE u.id = ? LIMIT 1`, [userId]);
   return rows[0] || null;

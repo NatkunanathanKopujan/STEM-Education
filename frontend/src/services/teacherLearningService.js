@@ -42,11 +42,24 @@ function normalizeStudent(row) {
   };
 }
 
+function normalizeActivity(row) {
+  return {
+    id: row.attemptId || row.id,
+    studentId: row.studentNo || row.studentId || '-',
+    studentName: row.studentName || row.fullName || row.name || '-',
+    quizNumber: row.quizNumber || '-',
+    percentage: Math.round(Number(row.percentage || 0)),
+    passStatus: row.passStatus || '',
+    subject: row.subject || 'Quiz',
+    activityDate: row.activityDate || row.submittedAt || row.createdAt || null,
+  };
+}
+
 export const teacherLearningService = {
   async getDashboard() {
     const [analytics, announcements] = await Promise.all([
       teacherDashboardService.getAnalyticsDashboard(),
-      notificationService.getAnnouncements({ limit: 3 }).catch(() => ({ announcements: [] })),
+      notificationService.getAnnouncements({ limit: 3, visibleOnly: true }).catch(() => ({ announcements: [] })),
     ]);
     const cards = analytics.cards || {};
     return {
@@ -58,7 +71,7 @@ export const teacherLearningService = {
       ],
       weeklyAnalytics: analytics.weeklyAnalytics || [],
       announcements: announcements.announcements || [],
-      activity: analytics.leaderboard || [],
+      activity: (analytics.recentStudentActivity || []).map(normalizeActivity),
     };
   },
 

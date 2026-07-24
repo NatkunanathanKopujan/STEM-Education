@@ -8,7 +8,11 @@ export function TeacherStatCard({ title, value, note }) {
       </span>
       <p className="mt-5 text-3xl font-bold text-ink">{value.toLocaleString()}</p>
       <h2 className="mt-2 text-sm font-semibold text-muted">{title}</h2>
-      <p className="mt-3 inline-flex rounded-full border border-orange-100 bg-orange-50 px-2.5 py-1 text-xs font-semibold text-primary">{note}</p>
+      {note ? (
+        <p className="mt-3 inline-flex rounded-full border border-orange-100 bg-orange-50 px-2.5 py-1 text-xs font-semibold text-primary">
+          {note}
+        </p>
+      ) : null}
     </article>
   );
 }

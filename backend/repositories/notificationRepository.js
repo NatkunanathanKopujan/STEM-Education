@@ -429,12 +429,13 @@ export async function listAnnouncements({
   priority,
   status,
   sort = 'newest',
+  visibleOnly = false,
   limit = 30,
   offset = 0,
 }) {
   const safeLimit = Math.min(Math.max(Number(limit) || 30, 1), 100);
   const safeOffset = Math.max(Number(offset) || 0, 0);
-  const canManage = ['super-admin', 'admin', 'teacher'].includes(user.role);
+  const canManage = !visibleOnly && ['super-admin', 'admin', 'teacher'].includes(user.role);
   const { targetSql, targetValues } = getAnnouncementVisibilitySql(user, canManage);
   const where = [];
   const values = [];

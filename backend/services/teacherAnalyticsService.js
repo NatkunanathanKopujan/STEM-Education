@@ -6,6 +6,7 @@ import {
   listAttemptReview,
   listLeaderboard,
   listQuizAttempts,
+  listRecentStudentActivity,
   listStudentPerformance,
   listTopicPerformance,
   listWeeklyAnalytics,
@@ -40,7 +41,7 @@ function normalizeAttempt(attempt) {
 }
 
 export async function getTeacherAnalyticsDashboard(user) {
-  const [metrics, studentPerformance, weeklyAnalytics, exposure, questionBank, leaderboard] =
+  const [metrics, studentPerformance, weeklyAnalytics, exposure, questionBank, leaderboard, recentStudentActivity] =
     await Promise.all([
       getDashboardMetrics(user),
       listStudentPerformance(user),
@@ -48,6 +49,7 @@ export async function getTeacherAnalyticsDashboard(user) {
       getQuestionExposure(user),
       getQuestionBankAnalytics(user),
       listLeaderboard(user),
+      listRecentStudentActivity(user, 5),
     ]);
 
   return {
@@ -67,6 +69,7 @@ export async function getTeacherAnalyticsDashboard(user) {
     questionExposure: exposure.summary,
     questionBank,
     leaderboard,
+    recentStudentActivity,
   };
 }
 

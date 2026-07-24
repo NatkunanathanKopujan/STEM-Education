@@ -10,7 +10,7 @@ export function createUserManagementController(service, label) {
   return {
     index: async (req, res, next) => {
       try {
-        return sendSuccess(res, await service.list(req.query), `${label}s fetched successfully`);
+        return sendSuccess(res, await service.list(req.query, req.user), `${label}s fetched successfully`);
       } catch (error) {
         return next(error);
       }
@@ -18,7 +18,7 @@ export function createUserManagementController(service, label) {
 
     show: async (req, res, next) => {
       try {
-        const record = await service.findById(req.params.id);
+        const record = await service.findById(req.params.id, req.user);
         await auditAction({
           user: req.user,
           action: `${label.toLowerCase()}_viewed`,
@@ -35,7 +35,7 @@ export function createUserManagementController(service, label) {
 
     create: async (req, res, next) => {
       try {
-        const created = await service.create(req.body);
+        const created = await service.create(req.body, req.user);
         await auditAction({
           user: req.user,
           action: `${label.toLowerCase()}_created`,
@@ -52,7 +52,7 @@ export function createUserManagementController(service, label) {
 
     update: async (req, res, next) => {
       try {
-        const updated = await service.update(req.params.id, req.body);
+        const updated = await service.update(req.params.id, req.body, req.user);
         await auditAction({
           user: req.user,
           action: `${label.toLowerCase()}_updated`,
@@ -69,7 +69,7 @@ export function createUserManagementController(service, label) {
 
     remove: async (req, res, next) => {
       try {
-        const result = await service.remove(req.params.id);
+        const result = await service.remove(req.params.id, req.user);
         await auditAction({
           user: req.user,
           action: `${label.toLowerCase()}_deleted`,

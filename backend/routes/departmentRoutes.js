@@ -15,7 +15,7 @@ import {
 const router = Router();
 
 router.use(authenticate);
-router.use(authorize(ROLES.SUPER_ADMIN, ROLES.ADMIN));
+router.use(authorize(ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.TEACHER));
 
 router.get(
   '/',

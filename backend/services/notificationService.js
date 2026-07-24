@@ -141,6 +141,7 @@ export async function getAnnouncements(user, filters = {}) {
     priority: filters.priority,
     status: filters.status,
     sort: filters.sort,
+    visibleOnly: filters.visibleOnly,
     limit: Number(filters.limit) || 30,
     offset: Number(filters.offset) || 0,
   });

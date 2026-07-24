@@ -145,9 +145,6 @@ const AdminReportsPage = lazy(() =>
 const TeacherDashboardPage = lazy(() =>
   import('../pages/teacher/TeacherDashboardPage').then((module) => ({ default: module.TeacherDashboardPage })),
 );
-const TeacherStudentsPage = lazy(() =>
-  import('../pages/teacher/TeacherStudentsPage').then((module) => ({ default: module.TeacherStudentsPage })),
-);
 const TeacherContentPage = lazy(() =>
   import('../pages/teacher/TeacherContentPage').then((module) => ({ default: module.TeacherContentPage })),
 );
@@ -287,7 +284,7 @@ export function AppRoutes() {
                 path="/teacher/dashboard"
                 element={<TeacherDashboardPage />}
               />
-              <Route path="/teacher/students" element={<TeacherStudentsPage />} />
+              <Route path="/teacher/students" element={<PeopleManagementPage type="student" />} />
               <Route path="/teacher/materials" element={<TeacherContentPage type="material" />} />
               <Route path="/teacher/videos" element={<TeacherContentPage type="video" />} />
               <Route path="/teacher/notes" element={<TeacherContentPage type="note" />} />

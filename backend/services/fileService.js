@@ -7,6 +7,7 @@ import { AppError } from '../utils/appError.js';
 import { getFileCategory, getFileExtension } from '../utils/fileHelper.js';
 import {
   canAccessFile,
+  canAccessFileRecord,
   createFileRecord,
   createFileVersion,
   deleteFileRecord,
@@ -202,7 +203,7 @@ export async function getFiles(user, filters) {
 
 export async function getFile(user, id) {
   const file = await findFileById(Number(id));
-  if (!canAccessFile(user, file, 'read')) {
+  if (!(await canAccessFileRecord(user, file, 'read'))) {
     throw new AppError('File not found or access denied', 404);
   }
   return file;

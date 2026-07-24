@@ -1,16 +1,14 @@
 import { AppError } from '../utils/appError.js';
 import { hashPassword } from '../utils/password.js';
 import {
-  findActiveCurriculumById,
-  findActiveCurriculumByName,
-} from '../repositories/curriculumRepository.js';
-import {
-  findActiveDepartmentById,
   findActiveDepartmentByName,
+  findDepartmentById,
 } from '../repositories/departmentRepository.js';
 import {
   createManagedUser,
   deleteManagedUser,
+  findTeacherAdminOwnerByUserId,
+  findTeacherDepartmentsByUserId,
   findManagedUserById,
   listManagedUsers,
   updateManagedUser,
@@ -23,6 +21,10 @@ const roleLabels = {
   teacher: 'Teacher',
   student: 'Student',
 };
+
+const isSuperAdmin = (actor) => actor?.role === 'super-admin';
+const isAdmin = (actor) => actor?.role === 'admin';
+const isTeacher = (actor) => actor?.role === 'teacher';
 
 function validatePayload(role, payload, { requirePassword = false } = {}) {
   if (!payload.fullName?.trim()) {
@@ -58,53 +60,179 @@ function validatePayload(role, payload, { requirePassword = false } = {}) {
     status: normalizeStatus(payload.status),
     department: payload.department?.trim() || '',
     departmentId: payload.departmentId ? Number(payload.departmentId) : null,
+    departmentIds: normalizeIdArray(payload.departmentIds ?? payload.departmentId),
     qualification: payload.qualification?.trim() || '',
     employeeNo: payload.employeeNo?.trim() || '',
     studentId: payload.studentId?.trim() || '',
     batch: payload.batch ? String(payload.batch).trim() : '',
     curriculumId: payload.curriculumId ? Number(payload.curriculumId) : null,
     curriculum: payload.curriculum?.trim() || '',
+    managedByAdminId: payload.managedByAdminId ? Number(payload.managedByAdminId) : null,
   };
 }
 
-async function resolveTeacherDepartment(payload) {
-  if (payload.departmentId) {
-    const department = await findActiveDepartmentById(payload.departmentId);
-    if (!department) {
+function normalizeIdArray(value) {
+  const raw = Array.isArray(value) ? value : [value];
+  return [...new Set(raw.map(Number).filter(Boolean))];
+}
+
+function ensureDepartmentOwner(department, actor, managedByAdminId = null) {
+  if (isAdmin(actor) && Number(department.createdBy) !== Number(actor.id)) {
+    throw new AppError('You can only use departments under your campus', 403);
+  }
+
+  if (isSuperAdmin(actor) && managedByAdminId && department.createdBy && Number(department.createdBy) !== Number(managedByAdminId)) {
+    throw new AppError('Selected department does not belong to the assigned admin campus', 403);
+  }
+}
+
+async function resolveActiveDepartments(ids = [], actor = null, managedByAdminId = null) {
+  const departments = [];
+  for (const id of ids) {
+    const department = await findDepartmentById(id);
+    if (!department || department.status !== 'Active') {
       throw new AppError('Select a valid active department', 422);
     }
-    return { departmentId: department.id, department: department.name };
+    ensureDepartmentOwner(department, actor, managedByAdminId);
+    departments.push(department);
+  }
+  return departments;
+}
+
+const summarizeDepartments = (departments) => ({
+  departmentIds: departments.map((department) => department.id),
+  departmentId: departments[0]?.id || null,
+  department: departments.map((department) => department.name).join(', '),
+});
+
+async function resolveTeacherDepartments(payload, actor) {
+  const managedByAdminId = await resolveManagedByAdminId(actor, payload);
+  let departments = [];
+  if (payload.departmentIds.length) {
+    departments = await resolveActiveDepartments(payload.departmentIds, actor, managedByAdminId);
+  } else if (payload.departmentId) {
+    departments = await resolveActiveDepartments([payload.departmentId], actor, managedByAdminId);
+  } else if (payload.department) {
+    const names = payload.department.split(',').map((name) => name.trim()).filter(Boolean);
+    for (const name of names) {
+      const department = await findActiveDepartmentByName(name);
+      if (!department) {
+        throw new AppError('Select a valid active department', 422);
+      }
+      const fullDepartment = await findDepartmentById(department.id);
+      ensureDepartmentOwner(fullDepartment, actor, managedByAdminId);
+      departments.push(department);
+    }
+  }
+
+  if (!departments.length) {
+    throw new AppError('Department is required', 422);
+  }
+
+  return summarizeDepartments(departments);
+}
+
+async function resolveStudentDepartments(payload, actor) {
+  if (isTeacher(actor)) {
+    const teacherDepartments = await findTeacherDepartmentsByUserId(actor.id);
+    if (!teacherDepartments.length) {
+      throw new AppError('Teacher is not assigned to an active department', 403);
+    }
+    const allowedIds = teacherDepartments.map((department) => Number(department.departmentId));
+    const requestedIds = payload.departmentIds.length ? payload.departmentIds : allowedIds;
+    const invalid = requestedIds.some((id) => !allowedIds.includes(Number(id)));
+    if (invalid) {
+      throw new AppError('You can only assign students to your departments', 403);
+    }
+    const departments = teacherDepartments
+      .filter((department) => requestedIds.includes(Number(department.departmentId)))
+      .map((department) => ({ id: department.departmentId, name: department.department }));
+    return summarizeDepartments(departments);
+  }
+
+  if (payload.departmentIds.length) {
+    const departments = await resolveActiveDepartments(payload.departmentIds, actor, payload.managedByAdminId);
+    if (!departments.length) {
+      throw new AppError('Department is required', 422);
+    }
+    return summarizeDepartments(departments);
+  }
+
+  if (payload.departmentId) {
+    const departments = await resolveActiveDepartments([payload.departmentId], actor, payload.managedByAdminId);
+    return summarizeDepartments(departments);
   }
 
   if (payload.department) {
-    const department = await findActiveDepartmentByName(payload.department);
-    if (!department) {
-      throw new AppError('Select a valid active department', 422);
+    const departments = [];
+    const names = payload.department.split(',').map((name) => name.trim()).filter(Boolean);
+    for (const name of names) {
+      const department = await findActiveDepartmentByName(name);
+      if (!department) {
+        throw new AppError('Select a valid active department', 422);
+      }
+      const fullDepartment = await findDepartmentById(department.id);
+      ensureDepartmentOwner(fullDepartment, actor, payload.managedByAdminId);
+      departments.push(department);
     }
-    return { departmentId: department.id, department: department.name };
+    if (departments.length) {
+      return summarizeDepartments(departments);
+    }
   }
 
   throw new AppError('Department is required', 422);
 }
 
-async function resolveStudentCurriculum(payload) {
-  if (payload.curriculumId) {
-    const curriculum = await findActiveCurriculumById(payload.curriculumId);
-    if (!curriculum) {
-      throw new AppError('Select a valid active curriculum', 422);
-    }
-    return { curriculumId: curriculum.id, curriculum: curriculum.name };
+async function ensureTeacherCanAccessStudent(studentId, actor) {
+  if (!isTeacher(actor)) return;
+
+  const [teacherDepartments, ownerId] = await Promise.all([
+    findTeacherDepartmentsByUserId(actor.id),
+    findTeacherAdminOwnerByUserId(actor.id),
+  ]);
+  if (!teacherDepartments.length) {
+    throw new AppError('Teacher is not assigned to an active department', 403);
+  }
+  if (!ownerId) {
+    throw new AppError('Teacher is not assigned under an admin campus', 403);
   }
 
-  if (payload.curriculum) {
-    const curriculum = await findActiveCurriculumByName(payload.curriculum);
-    if (!curriculum) {
-      throw new AppError('Select a valid active curriculum', 422);
-    }
-    return { curriculumId: curriculum.id, curriculum: curriculum.name };
+  const student = await findManagedUserById('student', studentId);
+  const teacherIds = teacherDepartments.map((department) => Number(department.departmentId));
+  const studentIds = (student?.departmentIds || []).map(Number);
+  const hasAccess = studentIds.some((id) => teacherIds.includes(id));
+  if (!student || Number(student.managedByAdminId) !== Number(ownerId) || !hasAccess) {
+    throw new AppError('You can only manage students in your assigned department', 403);
+  }
+}
+
+async function resolveManagedByAdminId(actor, current = null) {
+  if (isAdmin(actor)) {
+    return actor.id;
   }
 
-  throw new AppError('Curriculum is required', 422);
+  if (isTeacher(actor)) {
+    const ownerId = await findTeacherAdminOwnerByUserId(actor.id);
+    if (!ownerId) {
+      throw new AppError('Teacher is not assigned under an admin campus', 403);
+    }
+    return ownerId;
+  }
+
+  return current?.managedByAdminId || null;
+}
+
+function ensureAdminCanAccessManagedUser(user, actor) {
+  if (!isAdmin(actor)) return;
+  if (!user || Number(user.managedByAdminId) !== Number(actor.id)) {
+    throw new AppError('You can only manage records under your campus', 403);
+  }
+}
+
+function ensureCanManageAdminRecords(actor) {
+  if (!isSuperAdmin(actor)) {
+    throw new AppError('Only Super Admin can manage Admin accounts', 403);
+  }
 }
 
 function handleDuplicate(error) {
@@ -119,24 +247,69 @@ export function createUserManagementService(role) {
   const label = roleLabels[role] || 'User';
 
   return {
-    async list(filters) {
+    async list(filters, actor) {
+      if (role === 'admin') {
+        ensureCanManageAdminRecords(actor);
+      }
+
+      if ((role === 'teacher' || role === 'student') && isAdmin(actor)) {
+        return listManagedUsers(role, { ...filters, managedByAdminId: actor.id });
+      }
+
+      if (role === 'student' && isTeacher(actor)) {
+        const teacherDepartments = await findTeacherDepartmentsByUserId(actor.id);
+        if (!teacherDepartments.length) {
+          throw new AppError('Teacher is not assigned to an active department', 403);
+        }
+        const ownerId = await findTeacherAdminOwnerByUserId(actor.id);
+        if (!ownerId) {
+          throw new AppError('Teacher is not assigned under an admin campus', 403);
+        }
+        return listManagedUsers(role, {
+          ...filters,
+          managedByAdminId: ownerId,
+          departmentIds: teacherDepartments.map((department) => department.departmentId),
+        });
+      }
       return listManagedUsers(role, filters);
     },
 
-    async findById(id) {
+    async findById(id, actor) {
+      if (role === 'admin') {
+        ensureCanManageAdminRecords(actor);
+      }
       const user = await findManagedUserById(role, id);
       if (!user) {
         throw new AppError(`${label} was not found`, 404);
       }
+      if (role === 'teacher' || role === 'student') {
+        ensureAdminCanAccessManagedUser(user, actor);
+      }
+      if (role === 'student') {
+        await ensureTeacherCanAccessStudent(id, actor);
+      }
       return user;
     },
 
-    async create(payload) {
+    async create(payload, actor) {
+      if (role === 'admin') {
+        ensureCanManageAdminRecords(actor);
+      }
       let userPayload = validatePayload(role, payload, { requirePassword: true });
       if (role === 'teacher') {
-        userPayload = { ...userPayload, ...(await resolveTeacherDepartment(userPayload)) };
+        userPayload = {
+          ...userPayload,
+          ...(await resolveTeacherDepartments(userPayload, actor)),
+          managedByAdminId: await resolveManagedByAdminId(actor, userPayload),
+        };
       } else if (role === 'student') {
-        userPayload = { ...userPayload, ...(await resolveStudentCurriculum(userPayload)) };
+        userPayload = {
+          ...userPayload,
+          ...(await resolveStudentDepartments(userPayload, actor)),
+          curriculumId: null,
+          curriculum: '',
+          managedByAdminId: await resolveManagedByAdminId(actor, userPayload),
+        };
       }
       const passwordHash = await hashPassword(payload.password);
 
@@ -147,13 +320,26 @@ export function createUserManagementService(role) {
       }
     },
 
-    async update(id, payload) {
-      const current = await this.findById(id);
+    async update(id, payload, actor) {
+      if (role === 'admin') {
+        ensureCanManageAdminRecords(actor);
+      }
+      const current = await this.findById(id, actor);
       let userPayload = validatePayload(role, { ...current, ...payload });
       if (role === 'teacher') {
-        userPayload = { ...userPayload, ...(await resolveTeacherDepartment(userPayload)) };
-      } else if (role === 'student' && ('curriculumId' in payload || 'curriculum' in payload)) {
-        userPayload = { ...userPayload, ...(await resolveStudentCurriculum(userPayload)) };
+        userPayload = {
+          ...userPayload,
+          ...(await resolveTeacherDepartments(userPayload, actor)),
+          managedByAdminId: await resolveManagedByAdminId(actor, current),
+        };
+      } else if (role === 'student') {
+        userPayload = {
+          ...userPayload,
+          ...(await resolveStudentDepartments(userPayload, actor)),
+          curriculumId: null,
+          curriculum: '',
+          managedByAdminId: await resolveManagedByAdminId(actor, current),
+        };
       }
       const passwordHash = payload.password ? await hashPassword(payload.password) : null;
 
@@ -168,7 +354,17 @@ export function createUserManagementService(role) {
       }
     },
 
-    async remove(id) {
+    async remove(id, actor) {
+      if (role === 'admin') {
+        ensureCanManageAdminRecords(actor);
+      }
+      if (role === 'teacher' || role === 'student') {
+        const current = await this.findById(id, actor);
+        ensureAdminCanAccessManagedUser(current, actor);
+      }
+      if (role === 'student') {
+        await ensureTeacherCanAccessStudent(id, actor);
+      }
       const deleted = await deleteManagedUser(role, id);
       if (!deleted) {
         throw new AppError(`${label} was not found`, 404);

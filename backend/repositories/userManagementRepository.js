@@ -34,10 +34,151 @@ const initials = (fullName = '') =>
 
 const statusToUi = (status) => (status === 'active' ? 'Active' : 'Inactive');
 
+let studentDepartmentSchemaReady = false;
+let userAssignmentSchemaReady = false;
+let adminScopeSchemaReady = false;
+
+const parseJsonArray = (value) => {
+  if (!value) return [];
+  const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+  return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+};
+
+export async function ensureStudentDepartmentSchema() {
+  if (studentDepartmentSchemaReady) return;
+
+  const [columns] = await db.query(
+    `SELECT COLUMN_NAME
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'students'
+      AND COLUMN_NAME = 'department_id'`,
+  );
+
+  if (!columns.length) {
+    await db.query('ALTER TABLE students ADD COLUMN department_id BIGINT UNSIGNED NULL AFTER curriculum_id');
+  }
+
+  const [indexes] = await db.query(
+    `SELECT INDEX_NAME
+     FROM INFORMATION_SCHEMA.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'students'
+      AND INDEX_NAME = 'idx_students_department_id'`,
+  );
+
+  if (!indexes.length) {
+    await db.query('CREATE INDEX idx_students_department_id ON students (department_id)');
+  }
+
+  studentDepartmentSchemaReady = true;
+}
+
+export async function ensureUserAssignmentSchema() {
+  await ensureDepartmentSchema();
+  await ensureStudentDepartmentSchema();
+  if (userAssignmentSchemaReady) return;
+
+  await db.query(
+    `CREATE TABLE IF NOT EXISTS teacher_departments (
+      teacher_id BIGINT UNSIGNED NOT NULL,
+      department_id BIGINT UNSIGNED NOT NULL,
+      assigned_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (teacher_id, department_id),
+      CONSTRAINT fk_teacher_departments_teacher FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE CASCADE,
+      CONSTRAINT fk_teacher_departments_department FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE CASCADE,
+      INDEX idx_teacher_departments_department (department_id)
+    )`,
+  );
+
+  await db.query(
+    `CREATE TABLE IF NOT EXISTS student_departments (
+      student_id BIGINT UNSIGNED NOT NULL,
+      department_id BIGINT UNSIGNED NOT NULL,
+      assigned_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (student_id, department_id),
+      CONSTRAINT fk_student_departments_student FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+      CONSTRAINT fk_student_departments_department FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE CASCADE,
+      INDEX idx_student_departments_department (department_id)
+    )`,
+  );
+
+  await db.query(
+    `INSERT IGNORE INTO teacher_departments (teacher_id, department_id)
+     SELECT id, department_id FROM teachers WHERE department_id IS NOT NULL`,
+  );
+  await db.query(
+    `INSERT IGNORE INTO student_departments (student_id, department_id)
+     SELECT id, department_id FROM students WHERE department_id IS NOT NULL`,
+  );
+
+  userAssignmentSchemaReady = true;
+}
+
+export async function ensureAdminScopeSchema() {
+  if (adminScopeSchemaReady) return;
+
+  const tables = ['teachers', 'students'];
+  for (const table of tables) {
+    const [columns] = await db.query(
+      `SELECT COLUMN_NAME
+       FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = ?
+        AND COLUMN_NAME = 'managed_by_admin_id'`,
+      [table],
+    );
+    if (!columns.length) {
+      await db.query(`ALTER TABLE ${table} ADD COLUMN managed_by_admin_id BIGINT UNSIGNED NULL AFTER user_id`);
+    }
+
+    const [indexes] = await db.query(
+      `SELECT INDEX_NAME
+       FROM INFORMATION_SCHEMA.STATISTICS
+       WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = ?
+        AND INDEX_NAME = ?`,
+      [table, `idx_${table}_managed_by_admin_id`],
+    );
+    if (!indexes.length) {
+      await db.query(`CREATE INDEX idx_${table}_managed_by_admin_id ON ${table} (managed_by_admin_id)`);
+    }
+  }
+
+  adminScopeSchemaReady = true;
+}
+
+export async function findTeacherDepartmentsByUserId(userId) {
+  await ensureUserAssignmentSchema();
+  const [rows] = await db.query(
+    `SELECT d.id AS departmentId, d.name AS department
+     FROM teachers t
+     INNER JOIN teacher_departments td ON td.teacher_id = t.id
+     INNER JOIN departments d ON d.id = td.department_id
+     WHERE t.user_id = ? AND d.status = 'active'
+     ORDER BY d.name`,
+    [userId],
+  );
+  return rows;
+}
+
+export async function findTeacherAdminOwnerByUserId(userId) {
+  await ensureAdminScopeSchema();
+  const [rows] = await db.query(
+    `SELECT managed_by_admin_id AS managedByAdminId
+     FROM teachers
+     WHERE user_id = ?
+     LIMIT 1`,
+    [userId],
+  );
+  return rows[0]?.managedByAdminId || null;
+}
+
 function mapRow(role, row) {
   const base = {
     id: row.profileId,
     userId: row.userId,
+    managedByAdminId: row.managedByAdminId || null,
     fullName: row.fullName,
     username: row.username,
     email: row.email,
@@ -52,19 +193,31 @@ function mapRow(role, row) {
   }
 
   if (role === 'teacher') {
+    const departments = parseJsonArray(row.departmentsJson);
+    const curriculums = parseJsonArray(row.curriculumsJson);
     return {
       ...base,
       employeeNo: row.profileCode || '',
-      departmentId: row.departmentId || null,
-      department: row.departmentName || row.department || '',
+      departmentId: departments[0]?.id || row.departmentId || null,
+      departmentIds: departments.map((department) => department.id),
+      departments,
+      department: departments.map((department) => department.name).join(', ') || row.departmentName || row.department || '',
+      curriculumIds: curriculums.map((curriculum) => curriculum.id),
+      curriculums,
+      curriculum: curriculums.map((curriculum) => curriculum.name).join(', '),
       qualification: row.specialization || '',
     };
   }
 
+  const departments = parseJsonArray(row.departmentsJson);
   return {
     ...base,
     studentId: row.profileCode || '',
     batch: row.enrollmentYear ? String(row.enrollmentYear) : '',
+    departmentId: departments[0]?.id || row.departmentId || null,
+    departmentIds: departments.map((department) => department.id),
+    departments,
+    department: departments.map((department) => department.name).join(', ') || row.departmentName || '',
     curriculumId: row.curriculumId || null,
     curriculum: row.curriculumName || row.program || '',
   };
@@ -95,54 +248,93 @@ function getSortClause(role, sort = 'createdDate', direction = 'desc') {
 
 export async function listManagedUsers(
   role,
-  { search = '', status = '', page = 1, limit = 10, sort = 'createdDate', direction = 'desc' } = {},
+  {
+    search = '',
+    status = '',
+    page = 1,
+    limit = 10,
+    sort = 'createdDate',
+    direction = 'desc',
+    departmentId = '',
+    departmentIds = [],
+    managedByAdminId = '',
+  } = {},
 ) {
   if (role === 'teacher') {
-    await ensureDepartmentSchema();
+    await ensureUserAssignmentSchema();
+    await ensureAdminScopeSchema();
   } else if (role === 'student') {
     await ensureStudentCurriculumSchema();
+    await ensureUserAssignmentSchema();
+    await ensureAdminScopeSchema();
   }
   const config = getConfig(role);
   const safePage = Math.max(Number(page) || 1, 1);
   const safeLimit = Math.min(Math.max(Number(limit) || 10, 1), 100);
   const offset = (safePage - 1) * safeLimit;
   const orderBy = getSortClause(role, sort, direction);
-  const filters = [`u.role = ?`];
+  const whereFilters = [`u.role = ?`];
   const params = [role];
 
   if (search) {
-    filters.push(role === 'teacher'
-      ? `(u.full_name LIKE ? OR u.username LIKE ? OR u.email LIKE ? OR p.${config.profileIdColumn} LIKE ? OR p.${config.extraColumn} LIKE ? OR d.name LIKE ? OR p.department LIKE ?)`
+    whereFilters.push(role === 'teacher'
+      ? `(u.full_name LIKE ? OR u.username LIKE ? OR u.email LIKE ? OR p.${config.profileIdColumn} LIKE ? OR p.${config.extraColumn} LIKE ? OR EXISTS (SELECT 1 FROM teacher_departments std INNER JOIN departments sd ON sd.id = std.department_id WHERE std.teacher_id = p.id AND sd.name LIKE ?) OR p.department LIKE ? OR EXISTS (SELECT 1 FROM curriculum_teachers sct INNER JOIN curriculums sc ON sc.id = sct.curriculum_id WHERE sct.teacher_id = p.id AND sc.title LIKE ?))`
       : role === 'student'
-        ? `(u.full_name LIKE ? OR u.username LIKE ? OR u.email LIKE ? OR p.${config.profileIdColumn} LIKE ? OR p.${config.extraColumn} LIKE ? OR c.title LIKE ?)`
+        ? `(u.full_name LIKE ? OR u.username LIKE ? OR u.email LIKE ? OR p.${config.profileIdColumn} LIKE ? OR p.${config.extraColumn} LIKE ? OR c.title LIKE ? OR EXISTS (SELECT 1 FROM student_departments ssd INNER JOIN departments sd ON sd.id = ssd.department_id WHERE ssd.student_id = p.id AND sd.name LIKE ?))`
         : `(u.full_name LIKE ? OR u.username LIKE ? OR u.email LIKE ? OR p.${config.profileIdColumn} LIKE ? OR p.${config.extraColumn} LIKE ?)`);
     const term = `%${search}%`;
     params.push(term, term, term, term, term);
     if (role === 'teacher') {
-      params.push(term, term);
+      params.push(term, term, term);
     } else if (role === 'student') {
-      params.push(term);
+      params.push(term, term);
     }
   }
 
+  const filterDepartmentIds = [...new Set([...(departmentIds || []), departmentId].map(Number).filter(Boolean))];
+  if (role === 'student' && filterDepartmentIds.length) {
+    whereFilters.push(`EXISTS (SELECT 1 FROM student_departments filter_sd WHERE filter_sd.student_id = p.id AND filter_sd.department_id IN (${filterDepartmentIds.map(() => '?').join(',')}))`);
+    params.push(...filterDepartmentIds);
+  }
+
+  if ((role === 'teacher' || role === 'student') && managedByAdminId) {
+    whereFilters.push('p.managed_by_admin_id = ?');
+    params.push(Number(managedByAdminId));
+  }
+
   if (status && status !== 'All') {
-    filters.push(`u.status = ?`);
+    whereFilters.push(`u.status = ?`);
     params.push(status.toLowerCase());
   }
 
   const selectExtra =
     role === 'student'
-      ? `p.student_no AS profileCode, p.enrollment_year AS enrollmentYear, p.program,
-        p.curriculum_id AS curriculumId, c.title AS curriculumName`
+      ? `p.managed_by_admin_id AS managedByAdminId,
+        p.student_no AS profileCode, p.enrollment_year AS enrollmentYear, p.program,
+        p.curriculum_id AS curriculumId, c.title AS curriculumName,
+        p.department_id AS departmentId, d.name AS departmentName,
+        (SELECT JSON_ARRAYAGG(JSON_OBJECT('id', sd.id, 'name', sd.name))
+         FROM student_departments ssd
+         INNER JOIN departments sd ON sd.id = ssd.department_id
+         WHERE ssd.student_id = p.id) AS departmentsJson`
       : role === 'teacher'
-        ? `p.employee_no AS profileCode, p.department_id AS departmentId, p.department, d.name AS departmentName, p.specialization`
+        ? `p.managed_by_admin_id AS managedByAdminId,
+        p.employee_no AS profileCode, p.department_id AS departmentId, p.department, d.name AS departmentName, p.specialization,
+        (SELECT JSON_ARRAYAGG(JSON_OBJECT('id', sd.id, 'name', sd.name))
+         FROM teacher_departments std
+         INNER JOIN departments sd ON sd.id = std.department_id
+         WHERE std.teacher_id = p.id) AS departmentsJson,
+        (SELECT JSON_ARRAYAGG(JSON_OBJECT('id', sc.id, 'name', sc.title))
+         FROM curriculum_teachers sct
+         INNER JOIN curriculums sc ON sc.id = sct.curriculum_id
+         WHERE sct.teacher_id = p.id) AS curriculumsJson`
         : `p.employee_no AS profileCode, p.department`;
 
   const baseFrom = `FROM ${config.table} p
      INNER JOIN users u ON u.id = p.user_id
      ${role === 'teacher' ? 'LEFT JOIN departments d ON d.id = p.department_id' : ''}
-     ${role === 'student' ? 'LEFT JOIN curriculums c ON c.id = p.curriculum_id' : ''}
-     WHERE ${filters.join(' AND ')}`;
+     ${role === 'student' ? 'LEFT JOIN curriculums c ON c.id = p.curriculum_id LEFT JOIN departments d ON d.id = p.department_id' : ''}
+     WHERE ${whereFilters.join(' AND ')}`;
 
   const [rows] = await db.query(
     `SELECT
@@ -176,17 +368,35 @@ export async function listManagedUsers(
 
 export async function findManagedUserById(role, id) {
   if (role === 'teacher') {
-    await ensureDepartmentSchema();
+    await ensureUserAssignmentSchema();
+    await ensureAdminScopeSchema();
   } else if (role === 'student') {
     await ensureStudentCurriculumSchema();
+    await ensureUserAssignmentSchema();
+    await ensureAdminScopeSchema();
   }
   const config = getConfig(role);
   const selectExtra =
     role === 'student'
-      ? `p.student_no AS profileCode, p.enrollment_year AS enrollmentYear, p.program,
-        p.curriculum_id AS curriculumId, c.title AS curriculumName`
+      ? `p.managed_by_admin_id AS managedByAdminId,
+        p.student_no AS profileCode, p.enrollment_year AS enrollmentYear, p.program,
+        p.curriculum_id AS curriculumId, c.title AS curriculumName,
+        p.department_id AS departmentId, d.name AS departmentName,
+        (SELECT JSON_ARRAYAGG(JSON_OBJECT('id', sd.id, 'name', sd.name))
+         FROM student_departments ssd
+         INNER JOIN departments sd ON sd.id = ssd.department_id
+         WHERE ssd.student_id = p.id) AS departmentsJson`
       : role === 'teacher'
-        ? `p.employee_no AS profileCode, p.department_id AS departmentId, p.department, d.name AS departmentName, p.specialization`
+        ? `p.managed_by_admin_id AS managedByAdminId,
+        p.employee_no AS profileCode, p.department_id AS departmentId, p.department, d.name AS departmentName, p.specialization,
+        (SELECT JSON_ARRAYAGG(JSON_OBJECT('id', sd.id, 'name', sd.name))
+         FROM teacher_departments std
+         INNER JOIN departments sd ON sd.id = std.department_id
+         WHERE std.teacher_id = p.id) AS departmentsJson,
+        (SELECT JSON_ARRAYAGG(JSON_OBJECT('id', sc.id, 'name', sc.title))
+         FROM curriculum_teachers sct
+         INNER JOIN curriculums sc ON sc.id = sct.curriculum_id
+         WHERE sct.teacher_id = p.id) AS curriculumsJson`
         : `p.employee_no AS profileCode, p.department`;
 
   const [rows] = await db.query(
@@ -203,7 +413,7 @@ export async function findManagedUserById(role, id) {
      FROM ${config.table} p
      INNER JOIN users u ON u.id = p.user_id
      ${role === 'teacher' ? 'LEFT JOIN departments d ON d.id = p.department_id' : ''}
-     ${role === 'student' ? 'LEFT JOIN curriculums c ON c.id = p.curriculum_id' : ''}
+     ${role === 'student' ? 'LEFT JOIN curriculums c ON c.id = p.curriculum_id LEFT JOIN departments d ON d.id = p.department_id' : ''}
      WHERE p.id = ? AND u.role = ?
      LIMIT 1`,
     [id, role],
@@ -212,11 +422,35 @@ export async function findManagedUserById(role, id) {
   return rows[0] ? mapRow(role, rows[0]) : null;
 }
 
+async function syncProfileDepartments(connection, role, profileId, departmentIds = []) {
+  const table = role === 'teacher' ? 'teacher_departments' : 'student_departments';
+  const profileColumn = role === 'teacher' ? 'teacher_id' : 'student_id';
+  const uniqueIds = [...new Set((departmentIds || []).map(Number).filter(Boolean))];
+
+  await connection.query(`DELETE FROM ${table} WHERE ${profileColumn} = ?`, [profileId]);
+  if (!uniqueIds.length) return;
+
+  const [departments] = await connection.query(
+    `SELECT id FROM departments WHERE id IN (${uniqueIds.map(() => '?').join(',')}) AND status = 'active'`,
+    uniqueIds,
+  );
+  const validIds = departments.map((department) => department.id);
+  if (!validIds.length) return;
+
+  await connection.query(
+    `INSERT INTO ${table} (${profileColumn}, department_id) VALUES ${validIds.map(() => '(?, ?)').join(', ')}`,
+    validIds.flatMap((departmentId) => [profileId, departmentId]),
+  );
+}
+
 export async function createManagedUser(role, payload) {
   if (role === 'teacher') {
-    await ensureDepartmentSchema();
+    await ensureUserAssignmentSchema();
+    await ensureAdminScopeSchema();
   } else if (role === 'student') {
     await ensureStudentCurriculumSchema();
+    await ensureUserAssignmentSchema();
+    await ensureAdminScopeSchema();
   }
   const config = getConfig(role);
   const connection = await db.getConnection();
@@ -241,15 +475,18 @@ export async function createManagedUser(role, payload) {
 
     if (role === 'student') {
       const [profileResult] = await connection.query(
-        `INSERT INTO students (user_id, student_no, enrollment_year, program, curriculum_id) VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO students (user_id, managed_by_admin_id, student_no, enrollment_year, program, curriculum_id, department_id) VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [
           userResult.insertId,
+          payload.managedByAdminId || null,
           payload.studentId || null,
           payload.batch || null,
           payload.curriculum || null,
           payload.curriculumId || null,
+          payload.departmentId || null,
         ],
       );
+      await syncProfileDepartments(connection, 'student', profileResult.insertId, payload.departmentIds);
       await connection.commit();
       return findManagedUserById(role, profileResult.insertId);
     }
@@ -257,9 +494,10 @@ export async function createManagedUser(role, payload) {
     const [profileResult] =
       role === 'teacher'
         ? await connection.query(
-            `INSERT INTO teachers (user_id, employee_no, department, department_id, specialization) VALUES (?, ?, ?, ?, ?)`,
+            `INSERT INTO teachers (user_id, managed_by_admin_id, employee_no, department, department_id, specialization) VALUES (?, ?, ?, ?, ?, ?)`,
             [
               userResult.insertId,
+              payload.managedByAdminId || null,
               payload.employeeNo || null,
               payload.department || null,
               payload.departmentId || null,
@@ -271,6 +509,9 @@ export async function createManagedUser(role, payload) {
             [userResult.insertId, payload.employeeNo || null, payload.department || null],
           );
 
+    if (role === 'teacher') {
+      await syncProfileDepartments(connection, 'teacher', profileResult.insertId, payload.departmentIds);
+    }
     await connection.commit();
     return findManagedUserById(role, profileResult.insertId);
   } catch (error) {
@@ -283,9 +524,12 @@ export async function createManagedUser(role, payload) {
 
 export async function updateManagedUser(role, id, payload) {
   if (role === 'teacher') {
-    await ensureDepartmentSchema();
+    await ensureUserAssignmentSchema();
+    await ensureAdminScopeSchema();
   } else if (role === 'student') {
     await ensureStudentCurriculumSchema();
+    await ensureUserAssignmentSchema();
+    await ensureAdminScopeSchema();
   }
   const existing = await findManagedUserById(role, id);
   if (!existing) {
@@ -317,23 +561,26 @@ export async function updateManagedUser(role, id, payload) {
 
     if (role === 'student') {
       await connection.query(
-        `UPDATE students SET student_no = ?, enrollment_year = ?, program = ?, curriculum_id = ? WHERE id = ?`,
+        `UPDATE students SET student_no = ?, enrollment_year = ?, program = ?, curriculum_id = ?, department_id = ?, managed_by_admin_id = ? WHERE id = ?`,
         [
           payload.studentId || null,
           payload.batch || null,
           payload.curriculum || null,
           payload.curriculumId || null,
+          payload.departmentId || null,
+          payload.managedByAdminId || null,
           id,
         ],
       );
     } else if (role === 'teacher') {
       await connection.query(
-        `UPDATE teachers SET employee_no = ?, department = ?, department_id = ?, specialization = ? WHERE id = ?`,
+        `UPDATE teachers SET employee_no = ?, department = ?, department_id = ?, specialization = ?, managed_by_admin_id = ? WHERE id = ?`,
         [
           payload.employeeNo || null,
           payload.department || null,
           payload.departmentId || null,
           payload.qualification || null,
+          payload.managedByAdminId || null,
           id,
         ],
       );
@@ -345,6 +592,9 @@ export async function updateManagedUser(role, id, payload) {
       ]);
     }
 
+    if (role === 'teacher' || role === 'student') {
+      await syncProfileDepartments(connection, role, id, payload.departmentIds);
+    }
     await connection.commit();
     return findManagedUserById(role, id);
   } catch (error) {

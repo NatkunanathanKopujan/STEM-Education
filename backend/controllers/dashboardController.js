@@ -11,17 +11,17 @@ export const dashboardController = {
     }
   },
 
-  users: async (_req, res, next) => {
+  users: async (req, res, next) => {
     try {
-      return sendSuccess(res, await dashboardService.listUsers(), 'Dashboard users fetched');
+      return sendSuccess(res, await dashboardService.listUsers(req.user), 'Dashboard users fetched');
     } catch (error) {
       return next(error);
     }
   },
 
-  curriculums: async (_req, res, next) => {
+  curriculums: async (req, res, next) => {
     try {
-      return sendSuccess(res, await dashboardService.listCurriculums(), 'Dashboard curriculums fetched');
+      return sendSuccess(res, await dashboardService.listCurriculums(req.user), 'Dashboard curriculums fetched');
     } catch (error) {
       return next(error);
     }

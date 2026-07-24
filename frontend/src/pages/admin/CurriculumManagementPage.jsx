@@ -18,6 +18,7 @@ export function CurriculumManagementPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [viewingItem, setViewingItem] = useState(null);
+  const [teacherListItem, setTeacherListItem] = useState(null);
   const [deleteItem, setDeleteItem] = useState(null);
 
   const openCreate = () => {
@@ -69,13 +70,22 @@ export function CurriculumManagementPage() {
               <div>
                 <h2 className="text-lg font-bold text-ink">{item.name}</h2>
                 <p className="mt-2 text-sm leading-6 text-muted">{item.description || 'No description added.'}</p>
+                <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-accent">
+                  Department: {item.departmentName || 'Not assigned'}
+                </p>
               </div>
               <StatusBadge status={item.status} />
             </div>
             <div className="mt-5 grid gap-3 sm:grid-cols-3">
               <p className="rounded-xl bg-page p-3 text-sm text-muted">Subjects: <span className="font-semibold text-ink">{item.subjects || 0}</span></p>
               <p className="rounded-xl bg-page p-3 text-sm text-muted">Materials: <span className="font-semibold text-ink">{item.materials || 0}</span></p>
-              <p className="rounded-xl bg-page p-3 text-sm text-muted">Students: <span className="font-semibold text-ink">{item.students || 0}</span></p>
+              <button
+                type="button"
+                className="rounded-xl bg-page p-3 text-left text-sm text-muted transition hover:border-accent hover:bg-accent/10 focus:outline-none focus:ring-2 focus:ring-accent/40"
+                onClick={() => setTeacherListItem(item)}
+              >
+                Teachers: <span className="font-semibold text-ink">{item.teachers?.length || 0}</span>
+              </button>
             </div>
             <div className="mt-5 flex flex-wrap gap-2">
               <Button variant="secondary" onClick={() => openView(item)}>View Curriculum</Button>
@@ -107,10 +117,11 @@ export function CurriculumManagementPage() {
             <div className="grid gap-3 sm:grid-cols-2">
               {[
                 ['Code', viewingItem.code || '-'],
+                ['Department', viewingItem.departmentName || 'Not assigned'],
                 ['Status', viewingItem.status],
                 ['Subjects', viewingItem.subjects || 0],
                 ['Materials', viewingItem.materials || 0],
-                ['Students', viewingItem.students || 0],
+                ['Assigned Teachers', viewingItem.teachers?.length || 0],
                 ['Created Date', viewingItem.createdDate || '-'],
               ].map(([key, value]) => (
                 <div key={key} className="rounded-lg border border-line bg-page p-3">
@@ -119,8 +130,50 @@ export function CurriculumManagementPage() {
                 </div>
               ))}
             </div>
+            <div className="rounded-lg border border-line bg-page p-3">
+              <p className="text-xs uppercase text-muted">Teacher Usernames</p>
+              {viewingItem.teachers?.length ? (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {viewingItem.teachers.map((teacher) => (
+                    <span key={teacher.id} className="rounded-full border border-line bg-white px-3 py-1 text-sm font-semibold text-ink">
+                      {teacher.username || teacher.fullName}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-1 font-semibold text-ink">No teachers assigned</p>
+              )}
+            </div>
             <div className="flex justify-end">
               <Button variant="secondary" onClick={() => setViewingItem(null)}>Close</Button>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
+      <Modal open={Boolean(teacherListItem)} title="Assigned Teachers" onClose={() => setTeacherListItem(null)}>
+        {teacherListItem ? (
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-lg font-bold text-ink">{teacherListItem.name}</h3>
+              <p className="mt-1 text-sm text-muted">
+                {teacherListItem.teachers?.length || 0} teacher{teacherListItem.teachers?.length === 1 ? '' : 's'} assigned.
+              </p>
+            </div>
+            {teacherListItem.teachers?.length ? (
+              <div className="space-y-2">
+                {teacherListItem.teachers.map((teacher) => (
+                  <div key={teacher.id} className="rounded-lg border border-line bg-page p-3">
+                    <p className="font-semibold text-ink">{teacher.fullName}</p>
+                    <p className="mt-1 text-sm text-muted">Username: <span className="font-semibold text-ink">{teacher.username || '-'}</span></p>
+                    {teacher.employeeNo ? <p className="mt-1 text-sm text-muted">Employee No: <span className="font-semibold text-ink">{teacher.employeeNo}</span></p> : null}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <EmptyState title="No teachers assigned" description="Assign teachers from the curriculum edit form." />
+            )}
+            <div className="flex justify-end">
+              <Button variant="secondary" onClick={() => setTeacherListItem(null)}>Close</Button>
             </div>
           </div>
         ) : null}

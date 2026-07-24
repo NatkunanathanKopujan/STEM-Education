@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useContext, useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { FiRefreshCcw, FiX, FiZap } from 'react-icons/fi';
+import { FiCheck, FiChevronDown, FiRefreshCcw, FiSearch, FiX, FiZap } from 'react-icons/fi';
 import { Button, SecondaryButton } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { PasswordInput, SelectBox, Textarea } from '../ui/FormControls';
@@ -8,6 +8,7 @@ import { generatePassword, generateStudentId } from '../../hooks/useEntityManage
 import { academicYearService } from '../../services/academicYearService';
 import { departmentService } from '../../services/departmentService';
 import { userManagementService } from '../../services/userManagementService';
+import { AuthContext } from '../../context/authContextValue';
 
 const qualificationOptions = [
   { label: 'Select qualification', value: '' },
@@ -26,18 +27,22 @@ const qualificationOptions = [
 ];
 
 export function EntityForm({ type, item, onSubmit, onCancel, generateUsername }) {
+  const auth = useContext(AuthContext);
+  const isTeacherUser = auth?.role === 'teacher';
   const isTeacher = type === 'teacher';
   const isStudent = type === 'student';
   const isCurriculum = type === 'curriculum';
   const [academicYearOptions, setAcademicYearOptions] = useState([]);
   const [departmentOptions, setDepartmentOptions] = useState([]);
-  const [departmentSearch, setDepartmentSearch] = useState(item?.department || '');
+  const [departmentSearch, setDepartmentSearch] = useState('');
+  const [departmentPickerOpen, setDepartmentPickerOpen] = useState(false);
+  const [draftDepartmentIds, setDraftDepartmentIds] = useState([]);
   const [departmentsLoading, setDepartmentsLoading] = useState(false);
   const [departmentError, setDepartmentError] = useState('');
-  const [curriculumOptions, setCurriculumOptions] = useState([]);
-  const [curriculumsLoading, setCurriculumsLoading] = useState(false);
-  const [curriculumError, setCurriculumError] = useState('');
   const [teacherOptions, setTeacherOptions] = useState([]);
+  const [teacherSearch, setTeacherSearch] = useState('');
+  const [teacherPickerOpen, setTeacherPickerOpen] = useState(false);
+  const [draftTeacherIds, setDraftTeacherIds] = useState([]);
   const [teachersLoading, setTeachersLoading] = useState(false);
   const [teacherError, setTeacherError] = useState('');
   const {
@@ -51,6 +56,7 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
       status: 'Active',
       department: '',
       departmentId: '',
+      departmentIds: [],
       curriculum: '',
       curriculumId: '',
       academicYear: '',
@@ -70,12 +76,13 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
         setValue('assignedTeacherIds', (item.teachers || []).map((teacher) => teacher.id));
       }
       if (isTeacher) {
-        setDepartmentSearch(item.department || '');
         setValue('departmentId', item.departmentId || '');
+        setValue('departmentIds', item.departmentIds || (item.departmentId ? [item.departmentId] : []));
       }
       if (isStudent) {
-        setValue('curriculumId', item.curriculumId || '');
-        setValue('curriculum', item.curriculum || '');
+        setValue('departmentId', item.departmentId || '');
+        setValue('departmentIds', item.departmentIds || (item.departmentId ? [item.departmentId] : []));
+        setValue('department', item.department || '');
       }
     }
   }, [isCurriculum, isStudent, isTeacher, item, setValue]);
@@ -157,7 +164,6 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
       try {
         const data = await departmentService.list({
           status: 'active',
-          search: departmentSearch,
           limit: 100,
           sort: 'name',
           direction: 'asc',
@@ -165,15 +171,14 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
         if (!isMounted) return;
         const activeDepartments = data.departments || [];
         setDepartmentOptions(activeDepartments);
-        const selected = activeDepartments.find(
-          (department) => department.name.toLowerCase() === departmentSearch.trim().toLowerCase(),
-        );
-        if (selected) {
-          setValue('departmentId', selected.id, { shouldValidate: true });
-          setValue('department', selected.name);
-        } else if (!item?.departmentId || departmentSearch !== item.department) {
-          setValue('departmentId', '', { shouldValidate: true });
-          setValue('department', departmentSearch);
+        const selectedIds = item?.departmentIds || (item?.departmentId ? [item.departmentId] : []);
+        if (selectedIds.length) {
+          const selectedDepartments = activeDepartments.filter((department) =>
+            selectedIds.map(String).includes(String(department.id)),
+          );
+          setValue('departmentIds', selectedDepartments.map((department) => department.id), { shouldValidate: true });
+          setValue('departmentId', selectedDepartments[0]?.id || '', { shouldValidate: true });
+          setValue('department', selectedDepartments.map((department) => department.name).join(', '));
         }
       } catch {
         if (isMounted) {
@@ -198,54 +203,126 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
       isMounted = false;
       window.removeEventListener('lms:data-changed', reloadDepartments);
     };
-  }, [departmentSearch, isTeacher, item, setValue]);
+  }, [isTeacher, item, setValue]);
 
   useEffect(() => {
-    if (!isStudent) return undefined;
+    if (!isCurriculum) return undefined;
 
     let isMounted = true;
-    const loadCurriculums = async () => {
-      setCurriculumsLoading(true);
-      setCurriculumError('');
+    const loadDepartments = async () => {
+      setDepartmentsLoading(true);
+      setDepartmentError('');
       try {
-        const data = await userManagementService.list('curriculum', {
-          status: 'Active',
+        const data = await departmentService.list({
+          status: 'active',
           limit: 100,
           sort: 'name',
           direction: 'asc',
         });
         if (!isMounted) return;
-        setCurriculumOptions(data.curriculums || []);
+        setDepartmentOptions(data.departments || []);
       } catch {
         if (isMounted) {
-          setCurriculumOptions([]);
-          setCurriculumError('Unable to load active curriculums.');
+          setDepartmentOptions([]);
+          setDepartmentError('Unable to load active departments.');
         }
       } finally {
-        if (isMounted) setCurriculumsLoading(false);
+        if (isMounted) setDepartmentsLoading(false);
       }
     };
 
-    loadCurriculums();
+    loadDepartments();
 
-    const reloadCurriculums = (event) => {
-      if (!event.detail || event.detail.type === 'curriculum') {
-        loadCurriculums();
+    const reloadDepartments = (event) => {
+      if (!event.detail || event.detail.type === 'department') {
+        loadDepartments();
       }
     };
-    window.addEventListener('lms:data-changed', reloadCurriculums);
+    window.addEventListener('lms:data-changed', reloadDepartments);
 
     return () => {
       isMounted = false;
-      window.removeEventListener('lms:data-changed', reloadCurriculums);
+      window.removeEventListener('lms:data-changed', reloadDepartments);
     };
-  }, [isStudent]);
+  }, [isCurriculum]);
+
+  useEffect(() => {
+    if (!isStudent) return undefined;
+
+    let isMounted = true;
+    const loadStudentDepartments = async () => {
+      setDepartmentsLoading(true);
+      setDepartmentError('');
+      try {
+        if (isTeacherUser) {
+          const data = await departmentService.list({
+            status: 'active',
+            limit: 100,
+            sort: 'name',
+            direction: 'asc',
+          });
+          if (!isMounted) return;
+          const teacherDepartments = data.departments || [];
+          const selectedIds = item?.departmentIds || (item?.departmentId ? [item.departmentId] : []);
+          const selectedAllowedIds = selectedIds
+            .map(Number)
+            .filter((id) => teacherDepartments.some((department) => Number(department.id) === id));
+          setDepartmentOptions(teacherDepartments);
+          syncSelectedDepartments(selectedAllowedIds);
+          if (!teacherDepartments.length) {
+            setDepartmentError('Your teacher account is not assigned to an active department.');
+          }
+          return;
+        }
+
+        const data = await departmentService.list({
+          status: 'active',
+          limit: 100,
+          sort: 'name',
+          direction: 'asc',
+        });
+        if (!isMounted) return;
+        setDepartmentOptions(data.departments || []);
+      } catch {
+        if (isMounted) {
+          setDepartmentOptions([]);
+          setDepartmentError('Unable to load active departments.');
+        }
+      } finally {
+        if (isMounted) setDepartmentsLoading(false);
+      }
+    };
+
+    loadStudentDepartments();
+
+    const reloadDepartments = (event) => {
+      if (!event.detail || event.detail.type === 'department') {
+        loadStudentDepartments();
+      }
+    };
+    window.addEventListener('lms:data-changed', reloadDepartments);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('lms:data-changed', reloadDepartments);
+    };
+  }, [isStudent, isTeacherUser, item, setValue]);
 
   const password = watch('password');
   const selectedTeacherIds = (watch('assignedTeacherIds') || []).map(Number);
-  const selectedCurriculumId = watch('curriculumId') || '';
+  const selectedDepartmentIds = (watch('departmentIds') || []).map(Number).filter(Boolean);
+  const selectedDepartments = departmentOptions.filter((department) => selectedDepartmentIds.includes(Number(department.id)));
+  const searchedDepartments = departmentOptions.filter((department) =>
+    department.name.toLowerCase().includes(departmentSearch.trim().toLowerCase()),
+  );
+  const visibleDepartmentOptions = departmentSearch.trim() ? searchedDepartments : departmentOptions;
   const selectedTeachers = teacherOptions.filter((teacher) => selectedTeacherIds.includes(Number(teacher.id)));
   const availableTeacherOptions = teacherOptions.filter((teacher) => !selectedTeacherIds.includes(Number(teacher.id)));
+  const visibleTeacherOptions = teacherOptions.filter((teacher) =>
+    `${teacher.fullName} ${teacher.username || ''} ${teacher.employeeNo || ''} ${teacher.email || ''}`
+      .toLowerCase()
+      .includes(teacherSearch.trim().toLowerCase()),
+  );
 
   const toggleAssignedTeacher = (teacherId) => {
     const normalizedId = Number(teacherId);
@@ -263,11 +340,71 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
     event.target.value = '';
   };
 
-  const selectStudentCurriculum = (event) => {
-    const curriculumId = event.target.value;
-    const selected = curriculumOptions.find((curriculum) => String(curriculum.id) === String(curriculumId));
-    setValue('curriculumId', curriculumId, { shouldDirty: true, shouldValidate: true });
-    setValue('curriculum', selected?.name || '', { shouldDirty: true });
+  const openTeacherPicker = () => {
+    if (teachersLoading || !teacherOptions.length) return;
+    setDraftTeacherIds(selectedTeacherIds);
+    setTeacherPickerOpen((isOpen) => !isOpen);
+  };
+
+  const toggleDraftTeacher = (teacherId) => {
+    const normalizedId = Number(teacherId);
+    setDraftTeacherIds((ids) =>
+      ids.includes(normalizedId) ? ids.filter((id) => id !== normalizedId) : [...ids, normalizedId],
+    );
+  };
+
+  const applyTeacherSelection = () => {
+    setValue('assignedTeacherIds', draftTeacherIds, { shouldDirty: true, shouldValidate: true });
+    setTeacherPickerOpen(false);
+  };
+
+  const cancelTeacherSelection = () => {
+    setDraftTeacherIds(selectedTeacherIds);
+    setTeacherPickerOpen(false);
+  };
+
+  const syncSelectedDepartments = (ids) => {
+    const departments = departmentOptions.filter((department) => ids.map(String).includes(String(department.id)));
+    setValue('departmentIds', ids, { shouldDirty: true, shouldValidate: true });
+    setValue('departmentId', ids[0] || '', { shouldDirty: true, shouldValidate: true });
+    setValue('department', departments.map((department) => department.name).join(', '), { shouldDirty: true, shouldValidate: true });
+  };
+
+  const removeDepartment = (departmentId) => {
+    syncSelectedDepartments(selectedDepartmentIds.filter((id) => Number(id) !== Number(departmentId)));
+  };
+
+  const toggleDepartment = (departmentId) => {
+    const normalizedId = Number(departmentId);
+    if (!normalizedId) return;
+    if (selectedDepartmentIds.includes(normalizedId)) {
+      removeDepartment(normalizedId);
+      return;
+    }
+    syncSelectedDepartments([...selectedDepartmentIds, normalizedId]);
+  };
+
+  const openDepartmentPicker = () => {
+    if (departmentsLoading || !departmentOptions.length) return;
+    setDraftDepartmentIds(selectedDepartmentIds);
+    setDepartmentPickerOpen((isOpen) => !isOpen);
+  };
+
+  const toggleDraftDepartment = (departmentId) => {
+    const normalizedId = Number(departmentId);
+    setDraftDepartmentIds((ids) =>
+      ids.includes(normalizedId) ? ids.filter((id) => id !== normalizedId) : [...ids, normalizedId],
+    );
+  };
+
+  const applyDepartmentSelection = () => {
+    syncSelectedDepartments(draftDepartmentIds);
+    setDepartmentPickerOpen(false);
+  };
+
+  const cancelDepartmentSelection = () => {
+    setDraftDepartmentIds(selectedDepartmentIds);
+    setDepartmentPickerOpen(false);
   };
 
   if (isCurriculum) {
@@ -293,28 +430,100 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
           </datalist>
           <p className="mt-1 text-xs text-muted">Select an existing academic year or type a new one.</p>
         </div>
-        <div className="md:col-span-2">
-          <input type="hidden" {...register('assignedTeacherIds')} />
+        <div>
           <SelectBox
-            label="Assigned Teachers"
-            value=""
-            onChange={addAssignedTeacher}
-            disabled={teachersLoading || !availableTeacherOptions.length}
+            label="Department"
+            disabled={departmentsLoading || !departmentOptions.length}
+            error={errors.departmentId?.message || departmentError}
             options={[
               {
-                label: teachersLoading
-                  ? 'Loading teachers...'
-                  : selectedTeacherIds.length
-                    ? `${selectedTeacherIds.length} teacher${selectedTeacherIds.length === 1 ? '' : 's'} selected`
-                    : 'Select teacher',
+                label: departmentsLoading
+                  ? 'Loading departments...'
+                  : departmentOptions.length
+                    ? 'Select department'
+                    : 'No active departments found',
                 value: '',
               },
-              ...availableTeacherOptions.map((teacher) => ({
-                label: `${teacher.fullName}${teacher.employeeNo || teacher.email ? ` - ${teacher.employeeNo || teacher.email}` : ''}`,
-                value: teacher.id,
+              ...departmentOptions.map((department) => ({
+                label: department.name,
+                value: department.id,
               })),
             ]}
+            {...register('departmentId', { required: 'Department is required' })}
           />
+          <p className="mt-1 text-xs text-muted">
+            {departmentsLoading ? 'Refreshing active departments...' : 'Only active departments can be selected.'}
+          </p>
+        </div>
+        <div className="md:col-span-2">
+          <input type="hidden" {...register('assignedTeacherIds')} />
+          <label className="mb-2 block text-sm font-semibold text-ink">Assigned Teachers</label>
+          <button
+            type="button"
+            onClick={openTeacherPicker}
+            disabled={teachersLoading || !teacherOptions.length}
+            className="flex w-full items-center justify-between rounded-lg border border-line bg-white px-4 py-3 text-left text-sm font-semibold text-ink shadow-sm transition hover:border-primary disabled:cursor-not-allowed disabled:text-muted"
+          >
+            <span>
+              {teachersLoading
+                ? 'Loading teachers...'
+                : selectedTeacherIds.length
+                  ? `${selectedTeacherIds.length} teacher${selectedTeacherIds.length === 1 ? '' : 's'} selected`
+                  : teacherOptions.length
+                    ? 'Select teachers'
+                    : 'No active teachers found'}
+            </span>
+            <FiChevronDown className={`transition ${teacherPickerOpen ? 'rotate-180' : ''}`} />
+          </button>
+          {teacherPickerOpen ? (
+            <div className="mt-2 rounded-lg border border-line bg-white p-3 shadow-lg">
+              <div className="relative">
+                <FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+                <input
+                  type="search"
+                  value={teacherSearch}
+                  onChange={(event) => setTeacherSearch(event.target.value)}
+                  placeholder="Search teachers"
+                  className="w-full rounded-lg border border-line bg-page py-2.5 pl-10 pr-3 text-sm font-semibold text-ink outline-none transition focus:border-primary"
+                />
+              </div>
+              <div className="mt-3 grid max-h-44 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+                {visibleTeacherOptions.length ? (
+                  visibleTeacherOptions.map((teacher) => {
+                    const isSelected = draftTeacherIds.includes(Number(teacher.id));
+                    return (
+                      <button
+                        key={teacher.id}
+                        type="button"
+                        onClick={() => toggleDraftTeacher(teacher.id)}
+                        className={`flex items-center justify-between rounded-lg border px-3 py-2 text-left text-sm font-semibold transition ${
+                          isSelected
+                            ? 'border-primary bg-primary/10 text-primary'
+                            : 'border-line bg-page text-ink hover:border-primary hover:text-primary'
+                        }`}
+                      >
+                        <span>
+                          {teacher.fullName}
+                          <span className="block text-xs font-medium text-muted">
+                            {teacher.employeeNo || teacher.username || teacher.email}
+                          </span>
+                        </span>
+                        {isSelected ? <FiCheck /> : null}
+                      </button>
+                    );
+                  })
+                ) : (
+                  <p className="rounded-lg border border-line bg-page px-3 py-2 text-sm font-semibold text-muted sm:col-span-2">
+                    No teachers found.
+                  </p>
+                )}
+              </div>
+              <div className="mt-3 flex justify-end gap-2">
+                <SecondaryButton onClick={cancelTeacherSelection}>Cancel</SecondaryButton>
+                <Button type="button" onClick={applyTeacherSelection}>OK</Button>
+              </div>
+            </div>
+          ) : null}
           {selectedTeachers.length ? (
             <div className="mt-2 flex flex-wrap gap-2">
               {selectedTeachers.map((teacher) => (
@@ -375,19 +584,99 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
       {isTeacher ? (
         <>
           <div>
-            <Input
-              label="Department"
-              list="teacher-department-options"
-              value={departmentSearch}
-              onChange={(event) => setDepartmentSearch(event.target.value)}
-              placeholder={departmentsLoading ? 'Loading departments...' : 'Search active departments'}
-              error={errors.departmentId?.message || departmentError}
+            <input
+              type="hidden"
+              {...register('departmentIds', {
+                validate: (value) => (Array.isArray(value) ? value.length : selectedDepartmentIds.length) > 0 || 'Department is required',
+              })}
             />
-            <datalist id="teacher-department-options">
-              {departmentOptions.map((department) => (
-                <option key={department.id} value={department.name} />
-              ))}
-            </datalist>
+            <label className="mb-2 block text-sm font-semibold text-ink">Departments</label>
+            <button
+              type="button"
+              onClick={openDepartmentPicker}
+              disabled={departmentsLoading || !departmentOptions.length}
+              className="flex w-full items-center justify-between rounded-lg border border-line bg-white px-4 py-3 text-left text-sm font-semibold text-ink shadow-sm transition hover:border-primary disabled:cursor-not-allowed disabled:text-muted"
+            >
+              <span>
+                {departmentsLoading
+                  ? 'Loading departments...'
+                  : selectedDepartmentIds.length
+                    ? `${selectedDepartmentIds.length} department${selectedDepartmentIds.length === 1 ? '' : 's'} selected`
+                    : departmentOptions.length
+                      ? 'Select departments'
+                      : 'No active departments found'}
+              </span>
+              <FiChevronDown className={`transition ${departmentPickerOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {departmentPickerOpen ? (
+              <div className="mt-2 rounded-lg border border-line bg-white p-3 shadow-lg">
+                <div className="relative">
+                  <FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+                  <input
+                    type="search"
+                    value={departmentSearch}
+                    onChange={(event) => setDepartmentSearch(event.target.value)}
+                    placeholder="Search departments"
+                    className="w-full rounded-lg border border-line bg-page py-2.5 pl-10 pr-3 text-sm font-semibold text-ink outline-none transition focus:border-primary"
+                  />
+                </div>
+                <div className="mt-3 grid max-h-36 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+                  {visibleDepartmentOptions.length ? (
+                    visibleDepartmentOptions.map((department) => {
+                      const isSelected = draftDepartmentIds.includes(Number(department.id));
+                      return (
+                        <button
+                          key={department.id}
+                          type="button"
+                          onClick={() => toggleDraftDepartment(department.id)}
+                          className={`flex items-center justify-between rounded-lg border px-3 py-2 text-left text-sm font-semibold transition ${
+                            isSelected
+                              ? 'border-primary bg-primary/10 text-primary'
+                              : 'border-line bg-page text-ink hover:border-primary hover:text-primary'
+                          }`}
+                        >
+                          <span>{department.name}</span>
+                          {isSelected ? <FiCheck /> : null}
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <p className="rounded-lg border border-line bg-page px-3 py-2 text-sm font-semibold text-muted sm:col-span-2">
+                      No active departments found.
+                    </p>
+                  )}
+                </div>
+                <div className="mt-3 flex justify-end gap-2">
+                  <SecondaryButton onClick={cancelDepartmentSelection}>Cancel</SecondaryButton>
+                  <Button type="button" onClick={applyDepartmentSelection}>OK</Button>
+                </div>
+              </div>
+            ) : null}
+            {(errors.departmentIds?.message || errors.departmentId?.message || departmentError) ? (
+              <p className="mt-1 text-xs text-red-600">
+                {errors.departmentIds?.message || errors.departmentId?.message || departmentError}
+              </p>
+            ) : null}
+            {selectedDepartments.length ? (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {selectedDepartments.map((department) => (
+                  <span
+                    key={department.id}
+                    className="inline-flex items-center gap-2 rounded-full border border-line bg-white px-3 py-1.5 text-xs font-semibold text-ink shadow-sm"
+                  >
+                    {department.name}
+                    <button
+                      type="button"
+                      className="text-muted transition hover:text-red-600"
+                      onClick={() => removeDepartment(department.id)}
+                      aria-label={`Remove ${department.name}`}
+                    >
+                      <FiX />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            ) : null}
             <input type="hidden" {...register('departmentId', { required: 'Department is required' })} />
             <input type="hidden" {...register('department')} />
             <p className="mt-1 text-xs text-muted">
@@ -406,31 +695,108 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
         <>
           <Input label="Batch" {...register('batch', { required: 'Batch is required' })} />
           <div>
-            <SelectBox
-              label="Curriculum / Course"
-              value={selectedCurriculumId}
-              onChange={selectStudentCurriculum}
-              disabled={curriculumsLoading || !curriculumOptions.length}
-              error={errors.curriculumId?.message || curriculumError}
-              options={[
-                {
-                  label: curriculumsLoading
-                    ? 'Loading curriculums...'
-                    : curriculumOptions.length
-                      ? 'Select curriculum / course'
-                      : 'No active curriculums found',
-                  value: '',
-                },
-                ...curriculumOptions.map((curriculum) => ({
-                  label: curriculum.code ? `${curriculum.code} - ${curriculum.name}` : curriculum.name,
-                  value: curriculum.id,
-                })),
-              ]}
+            <label className="mb-2 block text-sm font-semibold text-ink">Departments</label>
+            <button
+              type="button"
+              onClick={openDepartmentPicker}
+              disabled={departmentsLoading || !departmentOptions.length}
+              className="flex w-full items-center justify-between rounded-lg border border-line bg-white px-4 py-3 text-left text-sm font-semibold text-ink shadow-sm transition hover:border-primary disabled:cursor-not-allowed disabled:text-muted"
+            >
+              <span>
+                {departmentsLoading
+                  ? 'Loading departments...'
+                  : selectedDepartmentIds.length
+                    ? `${selectedDepartmentIds.length} department${selectedDepartmentIds.length === 1 ? '' : 's'} selected`
+                    : departmentOptions.length
+                      ? 'Select departments'
+                      : 'No active departments found'}
+              </span>
+              <FiChevronDown className={`transition ${departmentPickerOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {departmentPickerOpen ? (
+              <div className="mt-2 rounded-lg border border-line bg-white p-3 shadow-lg">
+                <div className="relative">
+                  <FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+                  <input
+                    type="search"
+                    value={departmentSearch}
+                    onChange={(event) => setDepartmentSearch(event.target.value)}
+                    placeholder="Search departments"
+                    className="w-full rounded-lg border border-line bg-page py-2.5 pl-10 pr-3 text-sm font-semibold text-ink outline-none transition focus:border-primary"
+                  />
+                </div>
+                <div className="mt-3 grid max-h-36 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+                  {visibleDepartmentOptions.length ? (
+                    visibleDepartmentOptions.map((department) => {
+                      const isSelected = draftDepartmentIds.includes(Number(department.id));
+                      return (
+                        <button
+                          key={department.id}
+                          type="button"
+                          onClick={() => toggleDraftDepartment(department.id)}
+                          className={`flex items-center justify-between rounded-lg border px-3 py-2 text-left text-sm font-semibold transition ${
+                            isSelected
+                              ? 'border-primary bg-primary/10 text-primary'
+                              : 'border-line bg-page text-ink hover:border-primary hover:text-primary'
+                          }`}
+                        >
+                          <span>{department.name}</span>
+                          {isSelected ? <FiCheck /> : null}
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <p className="rounded-lg border border-line bg-page px-3 py-2 text-sm font-semibold text-muted sm:col-span-2">
+                      No active departments found.
+                    </p>
+                  )}
+                </div>
+                <div className="mt-3 flex justify-end gap-2">
+                  <SecondaryButton onClick={cancelDepartmentSelection}>Cancel</SecondaryButton>
+                  <Button type="button" onClick={applyDepartmentSelection}>OK</Button>
+                </div>
+              </div>
+            ) : null}
+            {(errors.departmentIds?.message || errors.departmentId?.message || departmentError) ? (
+              <p className="mt-1 text-xs text-red-600">
+                {errors.departmentIds?.message || errors.departmentId?.message || departmentError}
+              </p>
+            ) : null}
+            {selectedDepartments.length ? (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {selectedDepartments.map((department) => (
+                  <span
+                    key={department.id}
+                    className="inline-flex items-center gap-2 rounded-full border border-line bg-white px-3 py-1.5 text-xs font-semibold text-ink shadow-sm"
+                  >
+                    {department.name}
+                    <button
+                      type="button"
+                      className="text-muted transition hover:text-red-600"
+                      onClick={() => removeDepartment(department.id)}
+                      aria-label={`Remove ${department.name}`}
+                    >
+                      <FiX />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            ) : null}
+            <input
+              type="hidden"
+              {...register('departmentIds', {
+                validate: (value) =>
+                  (Array.isArray(value) ? value.length : selectedDepartmentIds.length) > 0 || 'Department is required',
+              })}
             />
-            <input type="hidden" {...register('curriculumId', { required: 'Curriculum is required' })} />
-            <input type="hidden" {...register('curriculum')} />
+            <input type="hidden" {...register('departmentId', { required: 'Department is required' })} />
+            <input type="hidden" {...register('department')} />
             <p className="mt-1 text-xs text-muted">
-              {curriculumsLoading ? 'Refreshing active curriculums...' : 'Only active curriculums can be selected.'}
+              {isTeacherUser
+                ? 'Only your assigned departments can be selected.'
+                : departmentsLoading
+                  ? 'Refreshing active departments...'
+                  : 'Only active departments can be selected.'}
             </p>
           </div>
         </>

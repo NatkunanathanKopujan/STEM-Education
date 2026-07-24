@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useContext } from 'react';
 import { EntityForm } from '../../components/admin/EntityForm';
 import { EntityTable } from '../../components/admin/EntityTable';
 import { PageHeader } from '../../components/super-admin/PageHeader';
@@ -10,8 +11,10 @@ import { ConfirmationDialog, Modal } from '../../components/ui/Modal';
 import { SearchBar } from '../../components/ui/SearchBar';
 import { SelectBox } from '../../components/ui/FormControls';
 import { useEntityManagement } from '../../hooks/useEntityManagement';
+import { AuthContext } from '../../context/authContextValue';
 
 export function PeopleManagementPage({ type }) {
+  const auth = useContext(AuthContext);
   const isTeacher = type === 'teacher';
   const isStudent = type === 'student';
   const state = useEntityManagement([], type);
@@ -49,7 +52,7 @@ export function PeopleManagementPage({ type }) {
 
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow="Admin" title={title} description={`Create, search, view, edit, activate, deactivate, and delete ${label.toLowerCase()} accounts from live database records.`} actionLabel={`Create ${label}`} onAction={openCreate} />
+      <PageHeader eyebrow={auth?.role === 'teacher' ? 'Teacher' : 'Admin'} title={title} description={`Create, search, view, edit, activate, deactivate, and delete ${label.toLowerCase()} accounts from live database records.`} actionLabel={`Create ${label}`} onAction={openCreate} />
       <Card className="p-5">
         <ErrorAlert message={state.errorMessage} />
         <SuccessAlert message={state.successMessage} />
@@ -113,7 +116,8 @@ export function PeopleManagementPage({ type }) {
                 isStudent ? ['Student ID', viewingItem.studentId || '-'] : null,
                 ['Email', viewingItem.email],
                 ['Phone', viewingItem.phone || '-'],
-                [isTeacher ? 'Department' : 'Curriculum', isTeacher ? viewingItem.department || '-' : viewingItem.curriculum || '-'],
+                ['Department', viewingItem.department || '-'],
+                isTeacher ? ['Curriculums', viewingItem.curriculum || '-'] : null,
                 isTeacher ? ['Qualification', viewingItem.qualification || '-'] : ['Batch', viewingItem.batch || '-'],
                 ['Status', viewingItem.status],
                 ['Created Date', viewingItem.createdDate || '-'],

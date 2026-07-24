@@ -6,6 +6,6 @@ import {
 
 export const dashboardService = {
   getSummary: (user) => getDashboardSummary(user),
-  listUsers: async () => ({ users: await listDashboardUsers() }),
-  listCurriculums: async () => ({ curriculums: await listDashboardCurriculums() }),
+  listUsers: async (user) => ({ users: await listDashboardUsers(user) }),
+  listCurriculums: async (user) => ({ curriculums: await listDashboardCurriculums(user) }),
 };

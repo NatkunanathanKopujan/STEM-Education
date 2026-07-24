@@ -35,6 +35,30 @@ export async function ensureDepartmentSchema() {
     }
 
     await db.execute(
+      `CREATE TABLE IF NOT EXISTS teacher_departments (
+        teacher_id BIGINT UNSIGNED NOT NULL,
+        department_id BIGINT UNSIGNED NOT NULL,
+        assigned_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (teacher_id, department_id),
+        CONSTRAINT fk_teacher_departments_teacher FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE CASCADE,
+        CONSTRAINT fk_teacher_departments_department FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE CASCADE,
+        INDEX idx_teacher_departments_department (department_id)
+      )`,
+    );
+
+    await db.execute(
+      `CREATE TABLE IF NOT EXISTS student_departments (
+        student_id BIGINT UNSIGNED NOT NULL,
+        department_id BIGINT UNSIGNED NOT NULL,
+        assigned_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (student_id, department_id),
+        CONSTRAINT fk_student_departments_student FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+        CONSTRAINT fk_student_departments_department FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE CASCADE,
+        INDEX idx_student_departments_department (department_id)
+      )`,
+    );
+
+    await db.execute(
       `INSERT IGNORE INTO departments (uuid, name, status)
        SELECT UUID(), TRIM(department), 'active'
        FROM teachers
@@ -57,6 +81,7 @@ const mapDepartment = (row) => ({
   name: row.name,
   description: row.description || '',
   status: row.status === 'active' ? 'Active' : 'Inactive',
+  createdBy: row.createdBy || null,
   createdAt: row.createdAt,
   updatedAt: row.updatedAt,
 });
@@ -73,7 +98,7 @@ function orderBy(sort = 'name', direction = 'asc') {
   return `${column} ${normalizedDirection}, id ${normalizedDirection}`;
 }
 
-export async function listDepartments({ search = '', status = '', page = 1, limit = 50, sort = 'name', direction = 'asc' } = {}) {
+export async function listDepartments({ search = '', status = '', page = 1, limit = 50, sort = 'name', direction = 'asc', createdBy = '' } = {}) {
   await ensureDepartmentSchema();
   const safePage = Math.max(Number(page) || 1, 1);
   const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
@@ -91,9 +116,14 @@ export async function listDepartments({ search = '', status = '', page = 1, limi
     values.push(String(status).toLowerCase());
   }
 
+  if (createdBy) {
+    filters.push('created_by = ?');
+    values.push(Number(createdBy));
+  }
+
   const whereSql = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
   const [rows] = await db.query(
-    `SELECT id, uuid, name, description, status, created_at AS createdAt, updated_at AS updatedAt
+    `SELECT id, uuid, name, description, status, created_by AS createdBy, created_at AS createdAt, updated_at AS updatedAt
      FROM departments
      ${whereSql}
      ORDER BY ${orderBy(sort, direction)}
@@ -116,7 +146,7 @@ export async function listDepartments({ search = '', status = '', page = 1, limi
 export async function findDepartmentById(id) {
   await ensureDepartmentSchema();
   const [rows] = await db.execute(
-    `SELECT id, uuid, name, description, status, created_at AS createdAt, updated_at AS updatedAt
+    `SELECT id, uuid, name, description, status, created_by AS createdBy, created_at AS createdAt, updated_at AS updatedAt
      FROM departments WHERE id = ? LIMIT 1`,
     [id],
   );
@@ -176,8 +206,14 @@ export async function deleteDepartment(id) {
 
   try {
     await connection.beginTransaction();
+    await connection.execute('DELETE FROM teacher_departments WHERE department_id = ?', [id]);
+    await connection.execute('DELETE FROM student_departments WHERE department_id = ?', [id]);
     await connection.execute(
       'UPDATE teachers SET department_id = NULL, department = NULL WHERE department_id = ?',
+      [id],
+    );
+    await connection.execute(
+      'UPDATE students SET department_id = NULL WHERE department_id = ?',
       [id],
     );
     const [result] = await connection.execute('DELETE FROM departments WHERE id = ?', [id]);

@@ -10,7 +10,7 @@ const requestMeta = (req) => ({
 export const departmentController = {
   index: async (req, res, next) => {
     try {
-      return sendSuccess(res, await departmentService.list(req.query), 'Departments fetched successfully');
+      return sendSuccess(res, await departmentService.list(req.query, req.user), 'Departments fetched successfully');
     } catch (error) {
       return next(error);
     }
@@ -18,7 +18,7 @@ export const departmentController = {
 
   show: async (req, res, next) => {
     try {
-      const department = await departmentService.findById(Number(req.params.id));
+      const department = await departmentService.findById(Number(req.params.id), req.user);
       return sendSuccess(res, department, 'Department fetched successfully');
     } catch (error) {
       return next(error);
@@ -44,7 +44,7 @@ export const departmentController = {
 
   update: async (req, res, next) => {
     try {
-      const department = await departmentService.update(Number(req.params.id), req.body);
+      const department = await departmentService.update(Number(req.params.id), req.body, req.user);
       await auditAction({
         user: req.user,
         action: 'department_updated',
@@ -61,7 +61,7 @@ export const departmentController = {
 
   remove: async (req, res, next) => {
     try {
-      const result = await departmentService.remove(Number(req.params.id));
+      const result = await departmentService.remove(Number(req.params.id), req.user);
       await auditAction({
         user: req.user,
         action: 'department_deleted',

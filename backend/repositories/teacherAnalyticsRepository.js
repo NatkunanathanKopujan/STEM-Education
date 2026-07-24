@@ -1,5 +1,6 @@
 import { db } from '../config/database.js';
 import { ROLES } from '../config/roles.js';
+import { ensureUserAssignmentSchema } from './userManagementRepository.js';
 
 function isTeacher(user) {
   return user?.role === ROLES.TEACHER;
@@ -12,10 +13,14 @@ function teacherAttemptScope(user, alias = 'qa') {
 
   return {
     clause: `AND EXISTS (
-      SELECT 1 FROM quiz_attempt_answers scoped_answers
-      INNER JOIN question_bank scoped_questions ON scoped_questions.id = scoped_answers.question_id
-      WHERE scoped_answers.attempt_id = ${alias}.id
-        AND scoped_questions.created_by = ?
+      SELECT 1
+      FROM teachers scoped_teacher
+      INNER JOIN teacher_departments scoped_td
+        ON scoped_td.teacher_id = scoped_teacher.id
+      INNER JOIN student_departments scoped_sd
+        ON scoped_sd.department_id = scoped_td.department_id
+        AND scoped_sd.student_id = ${alias}.student_id
+      WHERE scoped_teacher.user_id = ?
     )`,
     values: [user.id],
   };
@@ -29,14 +34,37 @@ function teacherQuestionScope(user, alias = 'qb') {
   return { clause: `AND ${alias}.created_by = ?`, values: [user.id] };
 }
 
+function teacherStudentScope(user, alias = 's') {
+  if (!isTeacher(user)) {
+    return { clause: '', values: [] };
+  }
+
+  return {
+    clause: `AND EXISTS (
+      SELECT 1
+      FROM teachers scoped_teacher
+      INNER JOIN teacher_departments scoped_td
+        ON scoped_td.teacher_id = scoped_teacher.id
+      INNER JOIN student_departments scoped_sd
+        ON scoped_sd.department_id = scoped_td.department_id
+        AND scoped_sd.student_id = ${alias}.id
+      WHERE scoped_teacher.user_id = ?
+    )`,
+    values: [user.id],
+  };
+}
+
 export async function getDashboardMetrics(user) {
+  if (isTeacher(user)) {
+    await ensureUserAssignmentSchema();
+  }
   const attemptScope = teacherAttemptScope(user, 'qa');
   const questionScope = teacherQuestionScope(user, 'qb');
+  const studentScope = teacherStudentScope(user, 's');
   const topicScope = isTeacher(user) ? 'WHERE teacher_id = ?' : '';
 
   const [attemptRows] = await db.execute(
-    `SELECT COUNT(DISTINCT qa.student_id) AS totalStudents,
-      COUNT(qa.id) AS totalQuizAttempts,
+    `SELECT COUNT(qa.id) AS totalQuizAttempts,
       COALESCE(ROUND(AVG(qa.percentage), 2), 0) AS averageQuizScore,
       COALESCE(MAX(qa.percentage), 0) AS highestScore,
       COALESCE(MIN(qa.percentage), 0) AS lowestScore,
@@ -45,6 +73,14 @@ export async function getDashboardMetrics(user) {
      FROM quiz_attempts qa
      WHERE qa.status = 'graded' ${attemptScope.clause}`,
     attemptScope.values,
+  );
+
+  const [studentRows] = await db.execute(
+    `SELECT COUNT(DISTINCT s.id) AS totalStudents
+     FROM students s
+     INNER JOIN users u ON u.id = s.user_id
+     WHERE u.status = 'active' ${studentScope.clause}`,
+    studentScope.values,
   );
 
   const [topicRows] = await db.execute(
@@ -57,19 +93,27 @@ export async function getDashboardMetrics(user) {
   const [questionRows] = await db.execute(
     `SELECT COUNT(*) AS aiQuestionsAvailable
      FROM question_bank qb
-     WHERE qb.approval_status = 'approved' AND qb.status = 'approved' ${questionScope.clause}`,
+     WHERE qb.approval_status = 'approved'
+      AND qb.status = 'approved'
+      AND qb.created_by_ai = 1
+      ${questionScope.clause}`,
     questionScope.values,
   );
 
   return {
     ...(attemptRows[0] || {}),
+    totalStudents: studentRows[0]?.totalStudents || 0,
     completedTopics: topicRows[0]?.completedTopics || 0,
     aiQuestionsAvailable: questionRows[0]?.aiQuestionsAvailable || 0,
   };
 }
 
 export async function listStudentPerformance(user) {
-  const scope = teacherAttemptScope(user, 'qa');
+  if (isTeacher(user)) {
+    await ensureUserAssignmentSchema();
+  }
+  const attemptScope = teacherAttemptScope(user, 'qa');
+  const studentScope = teacherStudentScope(user, 's');
   const [rows] = await db.execute(
     `SELECT s.id AS studentId, s.student_no AS studentNo, u.full_name AS studentName,
       COALESCE(c.title, 'General Curriculum') AS curriculum,
@@ -84,20 +128,25 @@ export async function listStudentPerformance(user) {
         WHEN COALESCE(AVG(qa.percentage), 0) >= 50 THEN 'needs_review'
         ELSE 'at_risk'
       END AS progressStatus
-     FROM quiz_attempts qa
-     INNER JOIN students s ON s.id = qa.student_id
+     FROM students s
      INNER JOIN users u ON u.id = s.user_id
-     LEFT JOIN curriculums c ON c.id = qa.curriculum_id
-     WHERE qa.status = 'graded' ${scope.clause}
+     LEFT JOIN curriculums c ON c.id = s.curriculum_id
+     LEFT JOIN quiz_attempts qa
+      ON qa.student_id = s.id
+      AND qa.status = 'graded' ${attemptScope.clause}
+     WHERE u.status = 'active' ${studentScope.clause}
      GROUP BY s.id, s.student_no, u.full_name, c.title
      ORDER BY averagePercentage DESC, quizAttempts DESC`,
-    scope.values,
+    [...attemptScope.values, ...studentScope.values],
   );
 
   return rows;
 }
 
 export async function listQuizAttempts(user, filters = {}) {
+  if (isTeacher(user)) {
+    await ensureUserAssignmentSchema();
+  }
   const scope = teacherAttemptScope(user, 'qa');
   const where = ['qa.status = \'graded\''];
   const values = [];
@@ -129,6 +178,9 @@ export async function listQuizAttempts(user, filters = {}) {
 }
 
 export async function listAttemptReview(user, attemptId) {
+  if (isTeacher(user)) {
+    await ensureUserAssignmentSchema();
+  }
   const scope = teacherAttemptScope(user, 'qa');
   const [rows] = await db.execute(
     `SELECT qa.quiz_number AS quizNumber, u.full_name AS studentName,
@@ -171,7 +223,11 @@ export async function listTopicPerformance(user) {
 }
 
 export async function listWeeklyAnalytics(user) {
+  if (isTeacher(user)) {
+    await ensureUserAssignmentSchema();
+  }
   const questionScope = teacherQuestionScope(user, 'qb');
+  const attemptScope = teacherAttemptScope(user, 'qa');
   const [rows] = await db.execute(
     `SELECT qb.week_no AS weekNo,
       COUNT(DISTINCT qb.topic) AS completedTopics,
@@ -180,11 +236,11 @@ export async function listWeeklyAnalytics(user) {
       COUNT(DISTINCT qa.id) AS quizAttempts
      FROM question_bank qb
      LEFT JOIN quiz_attempt_answers qaa ON qaa.question_id = qb.id
-     LEFT JOIN quiz_attempts qa ON qa.id = qaa.attempt_id AND qa.status = 'graded'
+     LEFT JOIN quiz_attempts qa ON qa.id = qaa.attempt_id AND qa.status = 'graded' ${attemptScope.clause}
      WHERE qb.week_no IS NOT NULL ${questionScope.clause}
      GROUP BY qb.week_no
      ORDER BY qb.week_no ASC`,
-    questionScope.values,
+    [...attemptScope.values, ...questionScope.values],
   );
 
   return rows;
@@ -268,6 +324,9 @@ export async function getQuestionBankAnalytics(user, filters = {}) {
 }
 
 export async function listLeaderboard(user) {
+  if (isTeacher(user)) {
+    await ensureUserAssignmentSchema();
+  }
   const scope = teacherAttemptScope(user, 'qa');
   const [rows] = await db.execute(
     `SELECT RANK() OVER (ORDER BY AVG(qa.percentage) DESC, MAX(qa.percentage) DESC) AS rankNo,
@@ -283,6 +342,29 @@ export async function listLeaderboard(user) {
      ORDER BY averagePercentage DESC, highestScore DESC
      LIMIT 50`,
     scope.values,
+  );
+
+  return rows;
+}
+
+export async function listRecentStudentActivity(user, limit = 5) {
+  if (isTeacher(user)) {
+    await ensureUserAssignmentSchema();
+  }
+  const scope = teacherAttemptScope(user, 'qa');
+  const safeLimit = Math.min(Math.max(Number(limit) || 5, 1), 20);
+  const [rows] = await db.query(
+    `SELECT qa.id AS attemptId, qa.quiz_number AS quizNumber,
+      qa.submitted_at AS activityDate, qa.percentage, qa.pass_status AS passStatus,
+      qa.subject, s.id AS studentId, s.student_no AS studentNo,
+      u.full_name AS studentName
+     FROM quiz_attempts qa
+     INNER JOIN students s ON s.id = qa.student_id
+     INNER JOIN users u ON u.id = s.user_id
+     WHERE qa.status = 'graded' ${scope.clause}
+     ORDER BY qa.submitted_at DESC, qa.id DESC
+     LIMIT ?`,
+    [...scope.values, safeLimit],
   );
 
   return rows;

@@ -19,6 +19,7 @@ export function EntityTable({
 }) {
   const isTeacher = type === 'teacher';
   const isStudent = type === 'student';
+  const columnCount = isStudent ? 10 : isTeacher ? 10 : 9;
 
   return (
     <Card className="overflow-hidden">
@@ -32,7 +33,8 @@ export function EntityTable({
                 'Name',
                 'Username',
                 'Email',
-                isTeacher ? 'Department' : 'Curriculum',
+                'Department',
+                isTeacher ? 'Curriculums' : null,
                 'Phone',
                 'Status',
                 'Created Date',
@@ -47,7 +49,7 @@ export function EntityTable({
           <tbody className="divide-y divide-line bg-white">
             {isLoading ? (
               <tr>
-                <td className="px-4 py-8 text-center text-sm font-semibold text-muted" colSpan={isStudent ? 10 : 9}>
+                <td className="px-4 py-8 text-center text-sm font-semibold text-muted" colSpan={columnCount}>
                   Loading {isTeacher ? 'teachers' : 'students'}...
                 </td>
               </tr>
@@ -59,7 +61,8 @@ export function EntityTable({
                 <td className="px-4 py-3 font-semibold text-ink">{item.fullName}</td>
                 <td className="px-4 py-3 text-muted">{item.username}</td>
                 <td className="px-4 py-3 text-muted">{item.email}</td>
-                <td className="px-4 py-3 text-muted">{isTeacher ? item.department : item.curriculum}</td>
+                <td className="px-4 py-3 text-muted">{item.department || '-'}</td>
+                {isTeacher ? <td className="px-4 py-3 text-muted">{item.curriculum || '-'}</td> : null}
                 <td className="px-4 py-3 text-muted">{item.phone}</td>
                 <td className="px-4 py-3"><StatusBadge status={item.status} /></td>
                 <td className="px-4 py-3 text-muted">{item.createdDate || '-'}</td>
@@ -75,7 +78,7 @@ export function EntityTable({
             ))}
             {!isLoading && !items.length ? (
               <tr>
-                <td className="px-4 py-8 text-center text-sm font-semibold text-muted" colSpan={isStudent ? 10 : 9}>
+                <td className="px-4 py-8 text-center text-sm font-semibold text-muted" colSpan={columnCount}>
                   No {isTeacher ? 'teachers' : 'students'} found.
                 </td>
               </tr>

@@ -10,7 +10,7 @@ const requestMeta = (req) => ({
 export const curriculumController = {
   index: async (req, res, next) => {
     try {
-      return sendSuccess(res, await curriculumService.list(req.query), 'Curriculums fetched successfully');
+      return sendSuccess(res, await curriculumService.list(req.query, req.user), 'Curriculums fetched successfully');
     } catch (error) {
       return next(error);
     }
@@ -18,7 +18,7 @@ export const curriculumController = {
 
   show: async (req, res, next) => {
     try {
-      const curriculum = await curriculumService.findById(req.params.id);
+      const curriculum = await curriculumService.findById(req.params.id, req.user);
       await auditAction({
         user: req.user,
         action: 'curriculum_viewed',
@@ -52,7 +52,7 @@ export const curriculumController = {
 
   update: async (req, res, next) => {
     try {
-      const curriculum = await curriculumService.update(req.params.id, req.body);
+      const curriculum = await curriculumService.update(req.params.id, req.body, req.user);
       await auditAction({
         user: req.user,
         action: 'curriculum_updated',
@@ -69,7 +69,7 @@ export const curriculumController = {
 
   remove: async (req, res, next) => {
     try {
-      const result = await curriculumService.remove(req.params.id);
+      const result = await curriculumService.remove(req.params.id, req.user);
       await auditAction({
         user: req.user,
         action: 'curriculum_deleted',

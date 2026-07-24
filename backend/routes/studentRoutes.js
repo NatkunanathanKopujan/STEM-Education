@@ -5,7 +5,7 @@ import { createCrudRoutes } from './createCrudRoutes.js';
 
 export default createCrudRoutes({
   controller: studentController,
-  allowedRoles: [ROLES.SUPER_ADMIN, ROLES.ADMIN],
+  allowedRoles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.TEACHER],
   readPermissions: [PERMISSIONS.USERS_READ],
   writePermissions: [PERMISSIONS.USERS_WRITE],
 });

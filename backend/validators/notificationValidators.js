@@ -36,6 +36,7 @@ export const announcementQueryValidator = [
   query('search').optional(optionalField).trim(),
   query('priority').optional(optionalField).isIn(['normal', 'important', 'urgent']),
   query('status').optional(optionalField).isIn(['draft', 'published', 'scheduled', 'expired']),
+  query('visibleOnly').optional(optionalField).isBoolean().toBoolean(),
   query('sort').optional(optionalField).isIn(['newest', 'oldest', 'publishDate', 'priority', 'status']),
   query('limit').optional(optionalField).isInt({ min: 1, max: 100 }),
   query('offset').optional(optionalField).isInt({ min: 0 }),

@@ -14,6 +14,9 @@ const mapCurriculum = (row) => ({
   description: row.description || '',
   duration: row.duration || '',
   academicYear: row.academicYear || '',
+  departmentId: row.departmentId || '',
+  departmentName: row.departmentName || '',
+  createdBy: row.createdBy || null,
   teachers: parseTeachers(row.teachersJson),
   students: Number(row.students || 0),
   subjects: Number(row.subjects || 0),
@@ -48,6 +51,28 @@ export async function ensureCurriculumManagementSchema() {
   );
   if (!academicYearColumns.length) {
     await db.query('ALTER TABLE curriculums ADD COLUMN academic_year VARCHAR(120) NULL AFTER duration');
+  }
+
+  const [departmentColumns] = await db.query(
+    `SELECT COLUMN_NAME
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'curriculums'
+      AND COLUMN_NAME = 'department_id'`,
+  );
+  if (!departmentColumns.length) {
+    await db.query('ALTER TABLE curriculums ADD COLUMN department_id BIGINT UNSIGNED NULL AFTER academic_year');
+  }
+
+  const [departmentIndexes] = await db.query(
+    `SELECT INDEX_NAME
+     FROM INFORMATION_SCHEMA.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'curriculums'
+      AND INDEX_NAME = 'idx_curriculums_department_id'`,
+  );
+  if (!departmentIndexes.length) {
+    await db.query('CREATE INDEX idx_curriculums_department_id ON curriculums (department_id)');
   }
 
   await db.query(
@@ -123,7 +148,7 @@ function getSortClause(sort = 'createdDate', direction = 'desc') {
   return `${column} ${normalizedDirection}, c.id ${normalizedDirection}`;
 }
 
-export async function listCurriculums({ search = '', status = '', page = 1, limit = 10, sort = 'createdDate', direction = 'desc' } = {}) {
+export async function listCurriculums({ search = '', status = '', page = 1, limit = 10, sort = 'createdDate', direction = 'desc', createdBy = '' } = {}) {
   await ensureCurriculumManagementSchema();
   await ensureStudentCurriculumSchema();
   const safePage = Math.max(Number(page) || 1, 1);
@@ -144,8 +169,14 @@ export async function listCurriculums({ search = '', status = '', page = 1, limi
     params.push(status === 'Active' ? 1 : 0);
   }
 
+  if (createdBy) {
+    filters.push('c.created_by = ?');
+    params.push(Number(createdBy));
+  }
+
   const where = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
   const fromClause = `FROM curriculums c
+     LEFT JOIN departments d ON d.id = c.department_id
      LEFT JOIN students s ON s.curriculum_id = c.id OR (s.curriculum_id IS NULL AND s.program = c.title)
      LEFT JOIN courses co ON co.curriculum_id = c.id
      LEFT JOIN materials m ON m.course_id = co.id
@@ -162,6 +193,9 @@ export async function listCurriculums({ search = '', status = '', page = 1, limi
        c.description,
        c.duration,
        c.academic_year AS academicYear,
+       c.department_id AS departmentId,
+       d.name AS departmentName,
+       c.created_by AS createdBy,
        c.is_active AS isActive,
        DATE_FORMAT(c.created_at, '%Y-%m-%d') AS createdDate,
        COUNT(DISTINCT s.id) AS students,
@@ -171,13 +205,13 @@ export async function listCurriculums({ search = '', status = '', page = 1, limi
         JSON_ARRAYAGG(
           CASE
             WHEN t.id IS NULL THEN NULL
-            ELSE JSON_OBJECT('id', t.id, 'fullName', u.full_name, 'employeeNo', t.employee_no)
+            ELSE JSON_OBJECT('id', t.id, 'fullName', u.full_name, 'username', u.username, 'employeeNo', t.employee_no)
           END
         ),
         JSON_ARRAY()
        ) AS teachersJson
      ${fromClause}
-     GROUP BY c.id, c.title, c.code, c.description, c.duration, c.academic_year, c.is_active, c.created_at
+     GROUP BY c.id, c.title, c.code, c.description, c.duration, c.academic_year, c.department_id, d.name, c.created_by, c.is_active, c.created_at
      ORDER BY ${orderBy}
      LIMIT ? OFFSET ?`,
     [...params, safeLimit, offset],
@@ -207,6 +241,9 @@ export async function findCurriculumById(id) {
        c.description,
        c.duration,
        c.academic_year AS academicYear,
+       c.department_id AS departmentId,
+       d.name AS departmentName,
+       c.created_by AS createdBy,
        c.is_active AS isActive,
        DATE_FORMAT(c.created_at, '%Y-%m-%d') AS createdDate,
        COUNT(DISTINCT s.id) AS students,
@@ -216,12 +253,13 @@ export async function findCurriculumById(id) {
         JSON_ARRAYAGG(
           CASE
             WHEN t.id IS NULL THEN NULL
-            ELSE JSON_OBJECT('id', t.id, 'fullName', u.full_name, 'employeeNo', t.employee_no)
+            ELSE JSON_OBJECT('id', t.id, 'fullName', u.full_name, 'username', u.username, 'employeeNo', t.employee_no)
           END
         ),
         JSON_ARRAY()
        ) AS teachersJson
      FROM curriculums c
+     LEFT JOIN departments d ON d.id = c.department_id
      LEFT JOIN students s ON s.curriculum_id = c.id OR (s.curriculum_id IS NULL AND s.program = c.title)
      LEFT JOIN courses co ON co.curriculum_id = c.id
      LEFT JOIN materials m ON m.course_id = co.id
@@ -229,7 +267,7 @@ export async function findCurriculumById(id) {
      LEFT JOIN teachers t ON t.id = ct.teacher_id
      LEFT JOIN users u ON u.id = t.user_id
      WHERE c.id = ?
-     GROUP BY c.id, c.title, c.code, c.description, c.duration, c.academic_year, c.is_active, c.created_at
+     GROUP BY c.id, c.title, c.code, c.description, c.duration, c.academic_year, c.department_id, d.name, c.created_by, c.is_active, c.created_at
      LIMIT 1`,
     [id],
   );
@@ -269,8 +307,8 @@ export async function createCurriculumRecord(payload) {
   try {
     await connection.beginTransaction();
     const [result] = await connection.query(
-      `INSERT INTO curriculums (uuid, title, code, description, duration, academic_year, created_by, is_active)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO curriculums (uuid, title, code, description, duration, academic_year, department_id, created_by, is_active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         randomUUID(),
         payload.name,
@@ -278,6 +316,7 @@ export async function createCurriculumRecord(payload) {
         payload.description || null,
         payload.duration || null,
         payload.academicYear || null,
+        payload.departmentId || null,
         payload.createdBy || null,
         payload.status === 'Active' ? 1 : 0,
       ],
@@ -301,7 +340,7 @@ export async function updateCurriculumRecord(id, payload) {
     await connection.beginTransaction();
     const [result] = await connection.query(
       `UPDATE curriculums
-       SET title = ?, code = ?, description = ?, duration = ?, academic_year = ?, is_active = ?
+       SET title = ?, code = ?, description = ?, duration = ?, academic_year = ?, department_id = ?, is_active = ?
        WHERE id = ?`,
       [
         payload.name,
@@ -309,6 +348,7 @@ export async function updateCurriculumRecord(id, payload) {
         payload.description || null,
         payload.duration || null,
         payload.academicYear || null,
+        payload.departmentId || null,
         payload.status === 'Active' ? 1 : 0,
         id,
       ],

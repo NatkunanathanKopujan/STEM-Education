@@ -157,6 +157,7 @@ CREATE TABLE IF NOT EXISTS departments (
 CREATE TABLE IF NOT EXISTS teachers (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   user_id BIGINT UNSIGNED NOT NULL UNIQUE,
+  managed_by_admin_id BIGINT UNSIGNED NULL,
   employee_no VARCHAR(60) NULL UNIQUE,
   specialization VARCHAR(160) NULL,
   department VARCHAR(120) NULL,
@@ -164,20 +165,48 @@ CREATE TABLE IF NOT EXISTS teachers (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_teachers_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-  CONSTRAINT fk_teachers_department FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL
+  CONSTRAINT fk_teachers_managed_by_admin FOREIGN KEY (managed_by_admin_id) REFERENCES users(id) ON DELETE SET NULL,
+  CONSTRAINT fk_teachers_department FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL,
+  INDEX idx_teachers_managed_by_admin_id (managed_by_admin_id)
 );
 
 CREATE TABLE IF NOT EXISTS students (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   user_id BIGINT UNSIGNED NOT NULL UNIQUE,
+  managed_by_admin_id BIGINT UNSIGNED NULL,
   student_no VARCHAR(60) NULL UNIQUE,
   enrollment_year YEAR NULL,
   program VARCHAR(160) NULL,
   curriculum_id BIGINT UNSIGNED NULL,
+  department_id BIGINT UNSIGNED NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_students_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-  INDEX idx_students_curriculum_id (curriculum_id)
+  CONSTRAINT fk_students_managed_by_admin FOREIGN KEY (managed_by_admin_id) REFERENCES users(id) ON DELETE SET NULL,
+  CONSTRAINT fk_students_department FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL,
+  INDEX idx_students_curriculum_id (curriculum_id),
+  INDEX idx_students_department_id (department_id),
+  INDEX idx_students_managed_by_admin_id (managed_by_admin_id)
+);
+
+CREATE TABLE IF NOT EXISTS teacher_departments (
+  teacher_id BIGINT UNSIGNED NOT NULL,
+  department_id BIGINT UNSIGNED NOT NULL,
+  assigned_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (teacher_id, department_id),
+  CONSTRAINT fk_teacher_departments_teacher FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE CASCADE,
+  CONSTRAINT fk_teacher_departments_department FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE CASCADE,
+  INDEX idx_teacher_departments_department (department_id)
+);
+
+CREATE TABLE IF NOT EXISTS student_departments (
+  student_id BIGINT UNSIGNED NOT NULL,
+  department_id BIGINT UNSIGNED NOT NULL,
+  assigned_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (student_id, department_id),
+  CONSTRAINT fk_student_departments_student FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+  CONSTRAINT fk_student_departments_department FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE CASCADE,
+  INDEX idx_student_departments_department (department_id)
 );
 
 CREATE TABLE IF NOT EXISTS curriculums (
@@ -188,11 +217,14 @@ CREATE TABLE IF NOT EXISTS curriculums (
   description TEXT NULL,
   duration VARCHAR(120) NULL,
   academic_year VARCHAR(120) NULL,
+  department_id BIGINT UNSIGNED NULL,
   created_by BIGINT UNSIGNED NULL,
   is_active TINYINT(1) NOT NULL DEFAULT 1,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  CONSTRAINT fk_curriculums_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+  CONSTRAINT fk_curriculums_department FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL,
+  CONSTRAINT fk_curriculums_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+  INDEX idx_curriculums_department_id (department_id)
 );
 
 CREATE TABLE IF NOT EXISTS curriculum_teachers (

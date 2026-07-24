@@ -1,6 +1,12 @@
 import { db } from '../config/database.js';
+import { ensureAdminScopeSchema } from './userManagementRepository.js';
 
 export async function getDashboardSummary(user = null) {
+  const adminScoped = user?.role === 'admin';
+  const adminId = user?.id || 0;
+  if (adminScoped) {
+    await ensureAdminScopeSchema();
+  }
   const [[profileCounts]] = await db.query(
     `SELECT
        (SELECT COUNT(*)
@@ -10,21 +16,40 @@ export async function getDashboardSummary(user = null) {
        (SELECT COUNT(*)
         FROM teachers t
         INNER JOIN users u ON u.id = t.user_id
-        WHERE u.role = 'teacher' AND u.status = 'active') AS teachers,
+        WHERE u.role = 'teacher' AND u.status = 'active'
+          ${adminScoped ? 'AND t.managed_by_admin_id = ?' : ''}) AS teachers,
        (SELECT COUNT(*)
         FROM students s
         INNER JOIN users u ON u.id = s.user_id
-        WHERE u.role = 'student' AND u.status = 'active') AS students,
-       (SELECT COUNT(*) FROM users WHERE status = 'active') AS activeUsers`,
+        WHERE u.role = 'student' AND u.status = 'active'
+          ${adminScoped ? 'AND s.managed_by_admin_id = ?' : ''}) AS students,
+       (SELECT COUNT(*)
+        FROM users u
+        WHERE u.status = 'active'
+          ${adminScoped ? `AND (
+            u.id = ?
+            OR EXISTS (SELECT 1 FROM teachers t WHERE t.user_id = u.id AND t.managed_by_admin_id = ?)
+            OR EXISTS (SELECT 1 FROM students s WHERE s.user_id = u.id AND s.managed_by_admin_id = ?)
+          )` : ''}) AS activeUsers`,
+    adminScoped ? [adminId, adminId, adminId, adminId, adminId] : [],
   );
   const [[totals]] = await db.query(
     `SELECT
-       (SELECT COUNT(*) FROM curriculums) AS curriculums,
-       (SELECT COUNT(*) FROM courses) AS courses,
+       (SELECT COUNT(*) FROM curriculums ${adminScoped ? 'WHERE created_by = ?' : ''}) AS curriculums,
+       (SELECT COUNT(*)
+        FROM courses co
+        INNER JOIN curriculums c ON c.id = co.curriculum_id
+        ${adminScoped ? 'WHERE c.created_by = ?' : ''}) AS courses,
        (SELECT COUNT(*) FROM materials) AS materials,
        (SELECT COUNT(*) FROM files) AS files,
        (SELECT COUNT(*) FROM quiz_attempts) AS quizAttempts,
-       (SELECT COUNT(*) FROM login_history WHERE DATE(created_at) = CURRENT_DATE()) AS todaysLogins`,
+       (SELECT COUNT(*) FROM login_history WHERE DATE(created_at) = CURRENT_DATE()
+          ${adminScoped ? `AND (
+            user_id = ?
+            OR EXISTS (SELECT 1 FROM teachers t WHERE t.user_id = login_history.user_id AND t.managed_by_admin_id = ?)
+            OR EXISTS (SELECT 1 FROM students s WHERE s.user_id = login_history.user_id AND s.managed_by_admin_id = ?)
+          )` : ''}) AS todaysLogins`,
+    adminScoped ? [adminId, adminId, adminId, adminId, adminId] : [],
   );
   const [monthlyRegistrations] = await db.query(
     `SELECT
@@ -45,6 +70,7 @@ export async function getDashboardSummary(user = null) {
        FROM teachers t
        INNER JOIN users u ON u.id = t.user_id
        WHERE u.status = 'active'
+        ${adminScoped ? 'AND t.managed_by_admin_id = ?' : ''}
        GROUP BY DATE_FORMAT(t.created_at, '%Y-%m-01')
        UNION ALL
        SELECT DATE_FORMAT(s.created_at, '%Y-%m-01') AS month_start,
@@ -52,10 +78,12 @@ export async function getDashboardSummary(user = null) {
        FROM students s
        INNER JOIN users u ON u.id = s.user_id
        WHERE u.status = 'active'
+        ${adminScoped ? 'AND s.managed_by_admin_id = ?' : ''}
        GROUP BY DATE_FORMAT(s.created_at, '%Y-%m-01')
      ) registration_months
      GROUP BY month_start
      ORDER BY month_start`,
+    adminScoped ? [adminId, adminId] : [],
   );
   const activityFilters = [];
   const activityParams = [];
@@ -128,12 +156,22 @@ export async function getDashboardSummary(user = null) {
   };
 }
 
-export async function listDashboardUsers() {
+export async function listDashboardUsers(user = null) {
+  const adminScoped = user?.role === 'admin';
+  if (adminScoped) {
+    await ensureAdminScopeSchema();
+  }
   const [rows] = await db.query(
     `SELECT id, full_name AS fullName, username, email, role, status
-     FROM users
+     FROM users u
      WHERE role IN ('admin', 'teacher', 'student')
+      ${adminScoped ? `AND (
+        u.id = ?
+        OR EXISTS (SELECT 1 FROM teachers t WHERE t.user_id = u.id AND t.managed_by_admin_id = ?)
+        OR EXISTS (SELECT 1 FROM students s WHERE s.user_id = u.id AND s.managed_by_admin_id = ?)
+      )` : ''}
      ORDER BY created_at DESC`,
+    adminScoped ? [user.id, user.id, user.id] : [],
   );
 
   return rows.map((row) => ({
@@ -146,7 +184,8 @@ export async function listDashboardUsers() {
   }));
 }
 
-export async function listDashboardCurriculums() {
+export async function listDashboardCurriculums(user = null) {
+  const adminScoped = user?.role === 'admin';
   const [rows] = await db.query(
     `SELECT
        c.id,
@@ -162,8 +201,10 @@ export async function listDashboardCurriculums() {
      LEFT JOIN courses co ON co.curriculum_id = c.id
      LEFT JOIN students s ON s.program = c.title
      LEFT JOIN materials m ON m.course_id = co.id
+     ${adminScoped ? 'WHERE c.created_by = ?' : ''}
      GROUP BY c.id, c.title, c.code, c.description, c.is_active
      ORDER BY c.created_at DESC`,
+    adminScoped ? [user.id] : [],
   );
 
   return rows.map((row) => ({

@@ -1,6 +1,7 @@
 import { db } from '../config/database.js';
 import { ROLES } from '../config/roles.js';
 import { generateId } from '../utils/idGenerator.js';
+import { ensureUserAssignmentSchema } from './userManagementRepository.js';
 
 const fileSelect = `SELECT f.id, f.uuid, f.file_name AS fileName, f.original_file_name AS originalFileName,
   f.file_type AS fileType, f.mime_type AS mimeType, f.file_size AS fileSize, f.file_path AS filePath,
@@ -55,8 +56,31 @@ function applyRoleScope(user, where, values) {
   }
 
   if (user.role === ROLES.STUDENT) {
-    where.push('((f.visibility = ? AND f.status = ? AND f.uploaded_role <> ? AND f.audience IN (?, ?)) OR f.uploaded_by = ?)');
-    values.push('public', 'active', ROLES.STUDENT, 'all', ROLES.STUDENT, getUserId(user));
+    where.push(`(
+      (
+        f.visibility = ?
+        AND f.status = ?
+        AND f.uploaded_role <> ?
+        AND f.audience IN (?, ?)
+        AND (
+          f.uploaded_role <> ?
+          OR EXISTS (
+            SELECT 1
+            FROM students scoped_student
+            INNER JOIN student_departments scoped_sd
+              ON scoped_sd.student_id = scoped_student.id
+            INNER JOIN teacher_departments scoped_td
+              ON scoped_td.department_id = scoped_sd.department_id
+            INNER JOIN teachers scoped_teacher
+              ON scoped_teacher.id = scoped_td.teacher_id
+              AND scoped_teacher.user_id = f.uploaded_by
+            WHERE scoped_student.user_id = ?
+          )
+        )
+      )
+      OR f.uploaded_by = ?
+    )`);
+    values.push('public', 'active', ROLES.STUDENT, 'all', ROLES.STUDENT, ROLES.TEACHER, getUserId(user), getUserId(user));
   }
 }
 
@@ -127,6 +151,9 @@ function sortClause(sort = 'newest') {
 
 export async function listFiles(user, filters = {}) {
   await ensureFileAudienceSchema();
+  if (user.role === ROLES.STUDENT) {
+    await ensureUserAssignmentSchema();
+  }
   const limit = Math.min(Number(filters.limit || 20), 100);
   const page = Math.max(Number(filters.page || 1), 1);
   const offset = (page - 1) * limit;
@@ -183,6 +210,36 @@ export function canAccessFile(user, file, action = 'read') {
       (action === 'read' && file.visibility === 'public' && file.status === 'active' && ['all', ROLES.STUDENT].includes(file.audience));
   }
   return false;
+}
+
+export async function canAccessFileRecord(user, file, action = 'read') {
+  if (!canAccessFile(user, file, action)) return false;
+
+  if (
+    action === 'read' &&
+    user.role === ROLES.STUDENT &&
+    file.uploadedRole === ROLES.TEACHER &&
+    file.uploadedBy !== getUserId(user)
+  ) {
+    await ensureUserAssignmentSchema();
+    const [rows] = await db.execute(
+      `SELECT 1
+       FROM students scoped_student
+       INNER JOIN student_departments scoped_sd
+        ON scoped_sd.student_id = scoped_student.id
+       INNER JOIN teacher_departments scoped_td
+        ON scoped_td.department_id = scoped_sd.department_id
+       INNER JOIN teachers scoped_teacher
+        ON scoped_teacher.id = scoped_td.teacher_id
+       WHERE scoped_student.user_id = ?
+        AND scoped_teacher.user_id = ?
+       LIMIT 1`,
+      [getUserId(user), file.uploadedBy],
+    );
+    return rows.length > 0;
+  }
+
+  return true;
 }
 
 export async function findDuplicate({ originalFileName, fileSize, uploadedBy, curriculum, subject, weekNo, topic }) {
