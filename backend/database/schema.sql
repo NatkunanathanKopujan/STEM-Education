@@ -903,6 +903,16 @@ CREATE TABLE IF NOT EXISTS file_versions (
   CONSTRAINT fk_file_versions_uploaded_by FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS file_departments (
+  file_id BIGINT UNSIGNED NOT NULL,
+  department_id BIGINT UNSIGNED NOT NULL,
+  assigned_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (file_id, department_id),
+  INDEX idx_file_departments_department (department_id),
+  CONSTRAINT fk_file_departments_file FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE,
+  CONSTRAINT fk_file_departments_department FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS file_downloads (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   file_id BIGINT UNSIGNED NOT NULL,
@@ -1074,6 +1084,18 @@ CREATE TABLE IF NOT EXISTS settings (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_settings_updated_by FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS calendar_notes (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT UNSIGNED NOT NULL,
+  note_date DATE NOT NULL,
+  note TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_calendar_notes_user_date (user_id, note_date),
+  INDEX idx_calendar_notes_user_date (user_id, note_date),
+  CONSTRAINT fk_calendar_notes_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS academic_years (

@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { ROLES } from '../config/roles.js';
 import { AppError } from '../utils/appError.js';
 import { getFileCategory, getFileExtension } from '../utils/fileHelper.js';
+import { findDepartmentById } from '../repositories/departmentRepository.js';
 import {
   canAccessFile,
   canAccessFileRecord,
@@ -12,6 +13,7 @@ import {
   createFileVersion,
   deleteFileRecord,
   findDuplicate,
+  findTeacherAssignableFileDepartments,
   findFileIdByVersion,
   findFileById,
   getStorageStatistics,
@@ -20,6 +22,7 @@ import {
   recordDownload,
   recordPreview,
   restoreVersion,
+  syncFileDepartments,
   updateFileRecord,
 } from '../repositories/fileRepository.js';
 import { getStorageProvider } from './storageProviderService.js';
@@ -90,6 +93,45 @@ function normalizeMetadata(user, file, body = {}) {
   };
 }
 
+function normalizeDepartmentIds(value) {
+  if (value === undefined || value === null || value === '') return [];
+  const values = Array.isArray(value) ? value : String(value).split(',');
+  return [...new Set(values.map((item) => Number(item)).filter(Boolean))];
+}
+
+async function resolveFileTargetDepartments(user, body = {}) {
+  if (![ROLES.STUDENT, ROLES.TEACHER].includes(body.audience)) {
+    return [];
+  }
+
+  const requestedIds = normalizeDepartmentIds(body.departmentIds);
+  if (!requestedIds.length) {
+    throw new AppError('Select at least one department for this audience', 400);
+  }
+
+  if (user.role === ROLES.TEACHER) {
+    const assignedDepartments = await findTeacherAssignableFileDepartments(getUserId(user));
+    const assignedIds = assignedDepartments.map((department) => Number(department.departmentId));
+    const invalidIds = requestedIds.filter((departmentId) => !assignedIds.includes(departmentId));
+    if (invalidIds.length) {
+      throw new AppError('You can only share materials with your assigned departments', 403);
+    }
+    return requestedIds;
+  }
+
+  for (const departmentId of requestedIds) {
+    const department = await findDepartmentById(departmentId);
+    if (!department || department.status !== 'Active') {
+      throw new AppError('Select valid active departments for this audience', 400);
+    }
+    if (user.role === ROLES.ADMIN && Number(department.createdBy) !== Number(getUserId(user))) {
+      throw new AppError('You can only share materials with departments under your campus', 403);
+    }
+  }
+
+  return requestedIds;
+}
+
 function ensureUploadAllowed(user) {
   if (![ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.TEACHER, ROLES.STUDENT].includes(user.role)) {
     throw new AppError('You do not have permission to upload files', 403);
@@ -123,6 +165,7 @@ export async function uploadManagedFile(user, file, body = {}) {
   ensureStudentUploadAllowed(user, body);
   if (!file) throw new AppError('File is required', 400);
 
+  const targetDepartmentIds = await resolveFileTargetDepartments(user, body);
   const metadata = normalizeMetadata(user, file, body);
   metadata.checksum = await calculateChecksum(file.path);
 
@@ -130,6 +173,7 @@ export async function uploadManagedFile(user, file, body = {}) {
     const parent = await findFileById(Number(body.parentFileId));
     ensureManageAllowed(user, parent);
     const versionId = await createFileVersion(parent.id, metadata);
+    await syncFileDepartments(parent.id, targetDepartmentIds);
     const parentRecord = await findFileById(parent.id);
     performanceMetricsService.recordUpload({
       fileSize: file.size,
@@ -163,6 +207,7 @@ export async function uploadManagedFile(user, file, body = {}) {
   }
 
   const fileId = await createFileRecord(metadata);
+  await syncFileDepartments(fileId, targetDepartmentIds);
   const versionId = await createFileVersion(fileId, metadata);
   const fileRecord = await findFileById(fileId);
   performanceMetricsService.recordUpload({
@@ -212,7 +257,17 @@ export async function getFile(user, id) {
 export async function updateFile(user, id, payload) {
   const file = await getFile(user, id);
   ensureManageAllowed(user, file);
+  const nextAudience = payload.audience || file.audience;
+  const targetDepartmentIds = await resolveFileTargetDepartments(user, {
+    ...payload,
+    audience: nextAudience,
+  });
   await updateFileRecord(file.id, payload);
+  if ([ROLES.STUDENT, ROLES.TEACHER].includes(nextAudience)) {
+    await syncFileDepartments(file.id, targetDepartmentIds);
+  } else if (payload.audience && ![ROLES.STUDENT, ROLES.TEACHER].includes(payload.audience)) {
+    await syncFileDepartments(file.id, []);
+  }
   const updated = await findFileById(file.id);
   await auditAction({
     user,

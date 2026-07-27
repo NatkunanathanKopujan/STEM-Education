@@ -1,7 +1,7 @@
 import { body, param, query } from 'express-validator';
 
 const optionalField = { values: 'falsy' };
-const targetIdTypes = ['curriculum', 'batch', 'teacher', 'student'];
+const targetIdTypes = ['curriculum', 'batch', 'teacher', 'student', 'department'];
 
 function validateAnnouncementTargets(targets = []) {
   if (!Array.isArray(targets)) {
@@ -11,6 +11,10 @@ function validateAnnouncementTargets(targets = []) {
   targets.forEach((target) => {
     if (target?.targetType === 'role' && !target.targetRole) {
       throw new Error('Target role is required when target type is role');
+    }
+
+    if (target?.targetType === 'department' && !['teacher', 'student'].includes(target.targetRole)) {
+      throw new Error('Target role must be teacher or student when target type is department');
     }
 
     if (targetIdTypes.includes(target?.targetType) && !target.targetId) {
@@ -59,6 +63,7 @@ export const announcementValidator = [
     .isIn(['super-admin', 'admin', 'teacher', 'student']),
   body('priority').optional(optionalField).isIn(['normal', 'important', 'urgent']),
   body('status').optional(optionalField).isIn(['draft', 'published', 'expired']),
+  body('attachmentPath').optional({ nullable: true, values: 'falsy' }).trim().isLength({ max: 255 }),
   body('publishDate').optional({ nullable: true, values: 'falsy' }).isISO8601(),
   body('expiryDate').optional({ nullable: true, values: 'falsy' }).isISO8601(),
   body('expiryDate').custom((expiryDate, { req }) => {
@@ -71,7 +76,7 @@ export const announcementValidator = [
   body('targets').optional().isArray().custom(validateAnnouncementTargets),
   body('targets.*.targetType')
     .optional(optionalField)
-    .isIn(['all_users', 'role', 'curriculum', 'batch', 'teacher', 'student']),
+    .isIn(['all_users', 'role', 'curriculum', 'batch', 'teacher', 'student', 'department']),
   body('targets.*.targetRole')
     .optional({ nullable: true, values: 'falsy' })
     .isIn(['super-admin', 'admin', 'teacher', 'student']),
@@ -86,6 +91,7 @@ export const announcementUpdateValidator = [
     .isIn(['super-admin', 'admin', 'teacher', 'student']),
   body('priority').optional(optionalField).isIn(['normal', 'important', 'urgent']),
   body('status').optional(optionalField).isIn(['draft', 'published', 'expired']),
+  body('attachmentPath').optional({ nullable: true, values: 'falsy' }).trim().isLength({ max: 255 }),
   body('publishDate').optional({ nullable: true, values: 'falsy' }).isISO8601(),
   body('expiryDate').optional({ nullable: true, values: 'falsy' }).isISO8601(),
   body('expiryDate').custom((expiryDate, { req }) => {
@@ -98,7 +104,7 @@ export const announcementUpdateValidator = [
   body('targets').optional().isArray().custom(validateAnnouncementTargets),
   body('targets.*.targetType')
     .optional(optionalField)
-    .isIn(['all_users', 'role', 'curriculum', 'batch', 'teacher', 'student']),
+    .isIn(['all_users', 'role', 'curriculum', 'batch', 'teacher', 'student', 'department']),
   body('targets.*.targetRole')
     .optional({ nullable: true, values: 'falsy' })
     .isIn(['super-admin', 'admin', 'teacher', 'student']),

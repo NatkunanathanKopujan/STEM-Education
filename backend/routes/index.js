@@ -4,6 +4,7 @@ import academicYearRoutes from './academicYearRoutes.js';
 import aiRoutes from './aiRoutes.js';
 import announcementRoutes from './announcementRoutes.js';
 import authRoutes from './authRoutes.js';
+import calendarNoteRoutes from './calendarNoteRoutes.js';
 import curriculumRoutes from './curriculumRoutes.js';
 import dashboardRoutes from './dashboardRoutes.js';
 import departmentRoutes from './departmentRoutes.js';
@@ -29,6 +30,7 @@ import timezoneRoutes from './timezoneRoutes.js';
 const router = Router();
 
 router.use('/auth', authRoutes);
+router.use('/calendar-notes', calendarNoteRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/announcements', announcementRoutes);
 router.use('/notification-preferences', notificationPreferenceRoutes);

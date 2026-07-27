@@ -3,12 +3,21 @@ import { allManagedFileExtensions } from '../utils/fileHelper.js';
 
 const optionalField = { values: 'falsy' };
 const audienceValues = ['all', 'super-admin', 'admin', 'teacher', 'student'];
+const fileTypeValues = ['pdf', 'ppt', 'documents', 'spreadsheets', 'archives', 'videos', 'images', 'audio'];
+const departmentIdsValidator = (value) => {
+  const values = Array.isArray(value) ? value : String(value).split(',');
+  return values.every((item) => Number.isInteger(Number(item)) && Number(item) > 0);
+};
+const fileTypesValidator = (value) => {
+  const values = Array.isArray(value) ? value : String(value).split(',');
+  return values.every((item) => fileTypeValues.includes(String(item).trim()));
+};
 
 export const fileListValidator = [
   query('search').optional(optionalField).trim().isLength({ max: 255 }),
   query('fileType')
     .optional(optionalField)
-    .isIn(['pdf', 'ppt', 'documents', 'spreadsheets', 'archives', 'videos', 'images', 'audio'])
+    .custom(fileTypesValidator)
     .withMessage('Invalid file type'),
   query('status').optional(optionalField).isIn(['active', 'archived', 'draft', 'deleted']),
   query('visibility').optional(optionalField).isIn(['public', 'private', 'restricted', 'draft']),
@@ -40,6 +49,7 @@ export const uploadMetadataValidator = [
   body('status').optional(optionalField).isIn(['active', 'archived', 'draft']),
   body('tags').optional(optionalField).trim().isLength({ max: 500 }),
   body('versionNote').optional(optionalField).trim().isLength({ max: 1000 }),
+  body('departmentIds').optional(optionalField).custom(departmentIdsValidator).withMessage('Department IDs must be valid'),
   body('parentFileId').optional(optionalField).isInt({ min: 1 }),
   body('allowDuplicate').optional(optionalField).isBoolean().toBoolean(),
 ];
@@ -55,6 +65,7 @@ export const fileUpdateValidator = [
   body('audience').optional(optionalField).isIn(audienceValues),
   body('status').optional(optionalField).isIn(['active', 'archived', 'draft']),
   body('tags').optional(optionalField).trim().isLength({ max: 500 }),
+  body('departmentIds').optional(optionalField).custom(departmentIdsValidator).withMessage('Department IDs must be valid'),
 ];
 
 export const supportedExtensions = allManagedFileExtensions.join(', ');

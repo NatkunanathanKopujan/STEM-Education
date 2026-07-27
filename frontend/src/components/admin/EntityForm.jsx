@@ -268,7 +268,15 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
             .map(Number)
             .filter((id) => teacherDepartments.some((department) => Number(department.id) === id));
           setDepartmentOptions(teacherDepartments);
-          syncSelectedDepartments(selectedAllowedIds);
+          const selectedDepartments = teacherDepartments.filter((department) =>
+            selectedAllowedIds.map(String).includes(String(department.id)),
+          );
+          setValue('departmentIds', selectedAllowedIds, { shouldDirty: true, shouldValidate: true });
+          setValue('departmentId', selectedAllowedIds[0] || '', { shouldDirty: true, shouldValidate: true });
+          setValue('department', selectedDepartments.map((department) => department.name).join(', '), {
+            shouldDirty: true,
+            shouldValidate: true,
+          });
           if (!teacherDepartments.length) {
             setDepartmentError('Your teacher account is not assigned to an active department.');
           }
@@ -317,7 +325,6 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
   );
   const visibleDepartmentOptions = departmentSearch.trim() ? searchedDepartments : departmentOptions;
   const selectedTeachers = teacherOptions.filter((teacher) => selectedTeacherIds.includes(Number(teacher.id)));
-  const availableTeacherOptions = teacherOptions.filter((teacher) => !selectedTeacherIds.includes(Number(teacher.id)));
   const visibleTeacherOptions = teacherOptions.filter((teacher) =>
     `${teacher.fullName} ${teacher.username || ''} ${teacher.employeeNo || ''} ${teacher.email || ''}`
       .toLowerCase()
@@ -330,14 +337,6 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
       ? selectedTeacherIds.filter((id) => id !== normalizedId)
       : [...selectedTeacherIds, normalizedId];
     setValue('assignedTeacherIds', nextIds, { shouldDirty: true, shouldValidate: true });
-  };
-
-  const addAssignedTeacher = (event) => {
-    const teacherId = Number(event.target.value);
-    if (teacherId && !selectedTeacherIds.includes(teacherId)) {
-      setValue('assignedTeacherIds', [...selectedTeacherIds, teacherId], { shouldDirty: true, shouldValidate: true });
-    }
-    event.target.value = '';
   };
 
   const openTeacherPicker = () => {
@@ -372,16 +371,6 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
 
   const removeDepartment = (departmentId) => {
     syncSelectedDepartments(selectedDepartmentIds.filter((id) => Number(id) !== Number(departmentId)));
-  };
-
-  const toggleDepartment = (departmentId) => {
-    const normalizedId = Number(departmentId);
-    if (!normalizedId) return;
-    if (selectedDepartmentIds.includes(normalizedId)) {
-      removeDepartment(normalizedId);
-      return;
-    }
-    syncSelectedDepartments([...selectedDepartmentIds, normalizedId]);
   };
 
   const openDepartmentPicker = () => {

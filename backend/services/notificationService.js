@@ -6,6 +6,7 @@ import {
   createNotification,
   deleteAnnouncement,
   deleteNotification,
+  findAnnouncementRawById,
   findAnnouncementById,
   getNotificationPreferences,
   listAnnouncements,
@@ -172,6 +173,14 @@ async function notifyAnnouncementAudience(announcement, createdBy) {
     return { delivered: 0 };
   }
 
+  if (announcement.publishDate && new Date(announcement.publishDate).getTime() > Date.now()) {
+    return { delivered: 0 };
+  }
+
+  if (announcement.expiryDate && new Date(announcement.expiryDate).getTime() <= Date.now()) {
+    return { delivered: 0 };
+  }
+
   const users = await listUsersForAnnouncement({
     audienceRole: announcement.audienceRole,
     targets: announcement.targets || [],
@@ -188,7 +197,7 @@ async function notifyAnnouncementAudience(announcement, createdBy) {
         priority: announcement.priority,
         sourceModule: 'announcements',
         actionUrl: '/notifications',
-        metadata: { createdBy },
+        metadata: { announcementId: announcement.id, createdBy },
       }),
     ),
   );
@@ -210,7 +219,7 @@ export async function publishAnnouncement(user, payload) {
   };
   const id = await createAnnouncement(announcement);
   await replaceAnnouncementTargets(id, payload.targets || []);
-  const delivery = await notifyAnnouncementAudience(announcement, user.id);
+  const delivery = await notifyAnnouncementAudience({ ...announcement, id }, user.id);
   await auditAction({
     user,
     action: announcement.status === 'draft' ? 'announcement_draft_created' : 'announcement_published',
@@ -227,6 +236,11 @@ export async function editAnnouncement(user, id, payload) {
     throw new AppError('You do not have permission to update announcements', 403);
   }
 
+  const existing = await findAnnouncementRawById(Number(id));
+  if (!existing) {
+    throw new AppError('Announcement not found', 404);
+  }
+
   const updated = await updateAnnouncement(id, payload);
 
   if (!updated && !payload.targets) {
@@ -236,15 +250,28 @@ export async function editAnnouncement(user, id, payload) {
   if (payload.targets) {
     await replaceAnnouncementTargets(id, payload.targets);
   }
+
+  const updatedAnnouncement = await findAnnouncementById({ user, id: Number(id) });
+  const wasDeliverable = existing.status === 'published' &&
+    (!existing.publishDate || new Date(existing.publishDate).getTime() <= Date.now()) &&
+    (!existing.expiryDate || new Date(existing.expiryDate).getTime() > Date.now());
+  const isDeliverable = updatedAnnouncement?.status === 'published' &&
+    (!updatedAnnouncement.publishDate || new Date(updatedAnnouncement.publishDate).getTime() <= Date.now()) &&
+    (!updatedAnnouncement.expiryDate || new Date(updatedAnnouncement.expiryDate).getTime() > Date.now());
+  const shouldNotifyAudience = isDeliverable && (!wasDeliverable || existing.status !== updatedAnnouncement.status);
+  const delivery = shouldNotifyAudience
+    ? await notifyAnnouncementAudience(updatedAnnouncement, user.id)
+    : { delivered: 0 };
+
   await auditAction({
     user,
     action: 'announcement_updated',
     module: 'announcements',
     description: `Announcement ${id} updated`,
-    metadata: { announcementId: Number(id), fields: Object.keys(payload || {}) },
+    metadata: { announcementId: Number(id), fields: Object.keys(payload || {}), delivered: delivery.delivered },
   });
 
-  return { updated: true };
+  return { updated: true, delivered: delivery.delivered };
 }
 
 export async function removeAnnouncement(user, id) {

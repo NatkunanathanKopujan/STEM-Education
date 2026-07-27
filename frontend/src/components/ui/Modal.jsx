@@ -7,13 +7,13 @@ export function Modal({ open, title, children, onClose, footer }) {
     <AnimatePresence>
       {open ? (
         <motion.div
-          className="fixed inset-0 z-50 grid place-items-center bg-slate-950/60 p-4"
+          className="fixed inset-0 z-50 grid place-items-center bg-slate-950/62 p-4 backdrop-blur-sm"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
         >
           <motion.section
-            className="w-full max-w-lg rounded-xl border border-line bg-white shadow-soft"
+            className="enterprise-panel w-full max-w-lg rounded-2xl"
             initial={{ opacity: 0, y: 18, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 18, scale: 0.98 }}
@@ -22,7 +22,7 @@ export function Modal({ open, title, children, onClose, footer }) {
               <h2 className="text-base font-semibold text-ink">{title}</h2>
               <button
                 type="button"
-                className="focus-ring rounded-lg p-2 text-muted hover:bg-slate-100 hover:text-primary"
+                className="focus-ring rounded-xl p-2 text-muted hover:bg-orange-50 hover:text-primary"
                 onClick={onClose}
                 aria-label="Close modal"
               >

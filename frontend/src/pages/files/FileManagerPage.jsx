@@ -26,6 +26,8 @@ import { Card, DashboardCard } from '../../components/ui/Card';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Loader } from '../../components/ui/Loader';
 import { ConfirmationDialog, Modal } from '../../components/ui/Modal';
+import { useAuth } from '../../hooks/useAuth';
+import { departmentService } from '../../services/departmentService';
 import { fileService } from '../../services/fileService';
 
 const acceptedTypes = '.pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx,.zip,.jpg,.jpeg,.png,.webp,.mp4,.mov,.avi,.mp3,.wav';
@@ -74,6 +76,20 @@ function buildDefaultMetadata() {
     audience: 'all',
     status: 'active',
     tags: '',
+    departmentIds: [],
+  };
+}
+
+function buildDefaultFilters(initialFilters = {}) {
+  return {
+    search: '',
+    fileType: '',
+    visibility: '',
+    audience: '',
+    status: '',
+    sort: 'newest',
+    page: 1,
+    ...initialFilters,
   };
 }
 
@@ -89,10 +105,13 @@ export function FileManagerPage({
   eyebrow = 'Storage',
   title = 'File Management',
   description = 'Manage LMS files, storage usage, previews, secure downloads, and version history.',
+  initialFilters = {},
+  lockFileType = false,
 } = {}) {
+  const { role } = useAuth();
   const [files, setFiles] = useState([]);
   const [stats, setStats] = useState(null);
-  const [filters, setFilters] = useState({ search: '', fileType: '', visibility: '', status: '', sort: 'newest', page: 1 });
+  const [filters, setFilters] = useState(() => buildDefaultFilters(initialFilters));
   const [metadata, setMetadata] = useState(buildDefaultMetadata);
   const [queue, setQueue] = useState([]);
   const [versions, setVersions] = useState(null);
@@ -102,12 +121,30 @@ export function FileManagerPage({
   const [editingFile, setEditingFile] = useState(null);
   const [archiveTarget, setArchiveTarget] = useState(null);
   const [editForm, setEditForm] = useState(buildDefaultMetadata);
+  const [departments, setDepartments] = useState([]);
+  const [departmentPickerOpen, setDepartmentPickerOpen] = useState(false);
+  const [editDepartmentPickerOpen, setEditDepartmentPickerOpen] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
 
   const totalPages = useMemo(() => Math.max(Math.ceil((files.total || 0) / (files.limit || 20)), 1), [files]);
+  const isDepartmentTargetAudience = (audience) => ['student', 'teacher'].includes(audience);
+  const showDepartmentTargets = role !== 'student' && isDepartmentTargetAudience(metadata.audience);
+  const showEditDepartmentTargets = role !== 'student' && isDepartmentTargetAudience(editForm.audience);
+  const targetAudienceLabel = metadata.audience === 'teacher' ? 'teachers' : 'students';
+  const editTargetAudienceLabel = editForm.audience === 'teacher' ? 'teachers' : 'students';
+
+  const selectedUploadDepartments = useMemo(
+    () => departments.filter((department) => metadata.departmentIds.includes(Number(department.id))),
+    [departments, metadata.departmentIds],
+  );
+
+  const selectedEditDepartments = useMemo(
+    () => departments.filter((department) => editForm.departmentIds.includes(Number(department.id))),
+    [departments, editForm.departmentIds],
+  );
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -130,12 +167,56 @@ export function FileManagerPage({
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    if (role === 'student') return;
+
+    let active = true;
+    departmentService
+      .list({ status: 'active', limit: 100 })
+      .then((data) => {
+        if (active) setDepartments(data.departments || data.items || []);
+      })
+      .catch(() => {
+        if (active) setDepartments([]);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [role]);
+
   const enqueueFiles = (fileList) => {
     setQueue(Array.from(fileList || []).map((file) => ({ file, progress: 0, status: 'queued', error: '' })));
   };
 
   const selectedFiles = (event) => {
     enqueueFiles(event.target.files);
+  };
+
+  const toggleMetadataDepartment = (departmentId) => {
+    setMetadata((current) => {
+      const id = Number(departmentId);
+      const selected = current.departmentIds.includes(id);
+      return {
+        ...current,
+        departmentIds: selected
+          ? current.departmentIds.filter((value) => value !== id)
+          : [...current.departmentIds, id],
+      };
+    });
+  };
+
+  const toggleEditDepartment = (departmentId) => {
+    setEditForm((current) => {
+      const id = Number(departmentId);
+      const selected = current.departmentIds.includes(id);
+      return {
+        ...current,
+        departmentIds: selected
+          ? current.departmentIds.filter((value) => value !== id)
+          : [...current.departmentIds, id],
+      };
+    });
   };
 
   const uploadQueue = async (onlyFailed = false) => {
@@ -263,6 +344,7 @@ export function FileManagerPage({
       status: file.status || 'active',
       audience: file.audience || 'all',
       tags: file.tags || '',
+      departmentIds: file.targetDepartmentIds || [],
     });
   };
 
@@ -381,6 +463,57 @@ export function FileManagerPage({
             </select>
             <input value={metadata.tags} onChange={(event) => setMetadata((current) => ({ ...current, tags: event.target.value }))} placeholder="Tags" className="min-h-11 rounded-xl border border-line px-3 text-sm sm:col-span-2" />
           </div>
+          {showDepartmentTargets ? (
+            <div className="mt-3 rounded-2xl border border-line bg-page p-3">
+              <button
+                type="button"
+                onClick={() => setDepartmentPickerOpen((open) => !open)}
+                className="flex min-h-11 w-full items-center justify-between rounded-xl border border-line bg-card px-3 text-left text-sm font-semibold text-ink"
+              >
+                <span>
+                  {selectedUploadDepartments.length
+                    ? `${selectedUploadDepartments.length} department${selectedUploadDepartments.length === 1 ? '' : 's'} selected`
+                    : `Select ${targetAudienceLabel} departments`}
+                </span>
+                <span className="text-primary">{departmentPickerOpen ? 'Close' : 'Choose'}</span>
+              </button>
+              {departmentPickerOpen ? (
+                <div className="mt-3 max-h-52 space-y-2 overflow-y-auto rounded-xl border border-line bg-card p-3">
+                  {departments.map((department) => (
+                    <label key={department.id} className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-page">
+                      <input
+                        type="checkbox"
+                        checked={metadata.departmentIds.includes(Number(department.id))}
+                        onChange={() => toggleMetadataDepartment(department.id)}
+                        className="size-4 accent-primary"
+                      />
+                      <span className="text-sm font-semibold text-ink">{department.name}</span>
+                    </label>
+                  ))}
+                  {!departments.length ? <p className="text-sm font-semibold text-red-600">No active departments found.</p> : null}
+                  {departments.length ? (
+                    <div className="flex justify-end border-t border-line pt-3">
+                      <Button type="button" variant="secondary" onClick={() => setDepartmentPickerOpen(false)}>
+                        OK
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              {selectedUploadDepartments.length ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {selectedUploadDepartments.map((department) => (
+                    <span key={department.id} className="rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-bold text-primary">
+                      {department.name}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+              <p className="mt-2 text-xs font-semibold text-muted">
+                Only {targetAudienceLabel} in the selected departments can view this file.
+              </p>
+            </div>
+          ) : null}
           <div className="mt-4 space-y-2">
             {queue.map((item) => (
               <div key={item.file.name} className="rounded-xl bg-page p-3 text-sm">
@@ -425,13 +558,15 @@ export function FileManagerPage({
             />
           </label>
           <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-            <label className="rounded-2xl border border-line bg-page/70 p-3 shadow-sm">
-              <span className="mb-2 block text-[11px] font-bold uppercase tracking-wide text-muted">File Type</span>
-              <select value={filters.fileType} onChange={(event) => updateFilter('fileType', event.target.value)} className="min-h-11 w-full rounded-xl border border-line bg-card px-3 text-sm font-semibold text-ink outline-none transition focus:border-primary">
-                <option value="">All Types</option>
-                {['pdf', 'ppt', 'documents', 'spreadsheets', 'archives', 'images', 'videos', 'audio'].map((type) => <option key={type} value={type}>{type}</option>)}
-              </select>
-            </label>
+            {!lockFileType ? (
+              <label className="rounded-2xl border border-line bg-page/70 p-3 shadow-sm">
+                <span className="mb-2 block text-[11px] font-bold uppercase tracking-wide text-muted">File Type</span>
+                <select value={filters.fileType} onChange={(event) => updateFilter('fileType', event.target.value)} className="min-h-11 w-full rounded-xl border border-line bg-card px-3 text-sm font-semibold text-ink outline-none transition focus:border-primary">
+                  <option value="">All Types</option>
+                  {['pdf', 'ppt', 'documents', 'spreadsheets', 'archives', 'images', 'videos', 'audio'].map((type) => <option key={type} value={type}>{type}</option>)}
+                </select>
+              </label>
+            ) : null}
             <label className="rounded-2xl border border-line bg-page/70 p-3 shadow-sm">
               <span className="mb-2 block text-[11px] font-bold uppercase tracking-wide text-muted">Visibility</span>
               <select value={filters.visibility} onChange={(event) => updateFilter('visibility', event.target.value)} className="min-h-11 w-full rounded-xl border border-line bg-card px-3 text-sm font-semibold text-ink outline-none transition focus:border-primary">
@@ -465,6 +600,7 @@ export function FileManagerPage({
                 <option value="newest">Newest</option>
                 <option value="oldest">Oldest</option>
                 <option value="az">A-Z</option>
+                <option value="za">Z-A</option>
                 <option value="largest">Largest</option>
                 <option value="mostDownloaded">Most Downloaded</option>
                 <option value="mostViewed">Most Viewed</option>
@@ -476,7 +612,7 @@ export function FileManagerPage({
             <p className="text-xs font-bold uppercase tracking-wide text-muted">Advanced filters</p>
             <button
               type="button"
-              onClick={() => setFilters({ search: '', fileType: '', visibility: '', status: '', sort: 'newest', page: 1 })}
+              onClick={() => setFilters(buildDefaultFilters(initialFilters))}
               className="text-xs font-bold text-primary transition hover:text-primary-dark"
             >
               Clear filters
@@ -679,6 +815,57 @@ export function FileManagerPage({
             </select>
           </label>
         </div>
+        {showEditDepartmentTargets ? (
+          <div className="mt-3 rounded-2xl border border-line bg-page p-3">
+            <button
+              type="button"
+              onClick={() => setEditDepartmentPickerOpen((open) => !open)}
+              className="flex min-h-11 w-full items-center justify-between rounded-xl border border-line bg-card px-3 text-left text-sm font-semibold text-ink"
+            >
+              <span>
+                  {selectedEditDepartments.length
+                    ? `${selectedEditDepartments.length} department${selectedEditDepartments.length === 1 ? '' : 's'} selected`
+                    : `Select ${editTargetAudienceLabel} departments`}
+              </span>
+              <span className="text-primary">{editDepartmentPickerOpen ? 'Close' : 'Choose'}</span>
+            </button>
+            {editDepartmentPickerOpen ? (
+              <div className="mt-3 max-h-52 space-y-2 overflow-y-auto rounded-xl border border-line bg-card p-3">
+                {departments.map((department) => (
+                  <label key={department.id} className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-page">
+                    <input
+                      type="checkbox"
+                      checked={editForm.departmentIds.includes(Number(department.id))}
+                      onChange={() => toggleEditDepartment(department.id)}
+                      className="size-4 accent-primary"
+                    />
+                    <span className="text-sm font-semibold text-ink">{department.name}</span>
+                  </label>
+                ))}
+                {!departments.length ? <p className="text-sm font-semibold text-red-600">No active departments found.</p> : null}
+                {departments.length ? (
+                  <div className="flex justify-end border-t border-line pt-3">
+                    <Button type="button" variant="secondary" onClick={() => setEditDepartmentPickerOpen(false)}>
+                      OK
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+            {selectedEditDepartments.length ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {selectedEditDepartments.map((department) => (
+                  <span key={department.id} className="rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-bold text-primary">
+                    {department.name}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+            <p className="mt-2 text-xs font-semibold text-muted">
+              Only {editTargetAudienceLabel} in the selected departments can view this file.
+            </p>
+          </div>
+        ) : null}
         <label className="mt-3 block">
           <span className="text-xs font-semibold uppercase text-muted">Tags</span>
           <input

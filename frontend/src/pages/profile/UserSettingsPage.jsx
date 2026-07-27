@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { PageHeader } from '../../components/super-admin/PageHeader';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -32,7 +32,7 @@ export function UserSettingsPage() {
   const [isResetting, setIsResetting] = useState(false);
   const [isFilteringHistory, setIsFilteringHistory] = useState(false);
 
-  const loadSettings = async (filters = {}, { initial = false } = {}) => {
+  const loadSettings = useCallback(async (filters = {}, { initial = false } = {}) => {
     if (initial) {
       setIsLoading(true);
     } else {
@@ -80,11 +80,11 @@ export function UserSettingsPage() {
       setIsLoading(false);
       setIsFilteringHistory(false);
     }
-  };
+  }, [setLanguagePreference, setThemePreference]);
 
   useEffect(() => {
     loadSettings({}, { initial: true });
-  }, []);
+  }, [loadSettings]);
 
   const handleSave = async () => {
     setIsSaving(true);

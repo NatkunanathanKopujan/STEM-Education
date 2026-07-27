@@ -42,10 +42,23 @@ async function listFiles(params = {}) {
   return (data.files || []).map(normalizeFile);
 }
 
+async function listFileResult(params = {}) {
+  const data = await fileService.list({ status: 'active', visibility: 'public', limit: 20, ...params });
+  return {
+    materials: (data.files || []).map(normalizeFile),
+    total: data.total || 0,
+    page: data.page || Number(params.page || 1),
+    limit: data.limit || Number(params.limit || 20),
+  };
+}
+
 export const studentLearningService = {
   listMaterials: (params = {}) => listFiles(params),
+  listMaterialsResult: (params = {}) => listFileResult(params),
   listVideos: (params = {}) => listFiles({ fileType: 'videos', ...params }),
-  listNotes: (params = {}) => listFiles({ fileType: 'documents', ...params }),
+  listNotes: (params = {}) => listFiles({ fileType: 'pdf,documents', ...params }),
+  listVideosResult: (params = {}) => listFileResult({ fileType: 'videos', ...params }),
+  listNotesResult: (params = {}) => listFileResult({ fileType: 'pdf,documents', ...params }),
   preview: (id) => fileService.previewBlob(id),
   download: (id) => fileService.downloadBlob(id),
 

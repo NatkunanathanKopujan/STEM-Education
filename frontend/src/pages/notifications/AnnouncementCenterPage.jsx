@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { FiEdit3, FiEye, FiRefreshCw, FiTrash2 } from 'react-icons/fi';
+import { FiChevronDown, FiEdit3, FiEye, FiRefreshCw, FiTrash2 } from 'react-icons/fi';
 import { useAuth } from '../../hooks/useAuth';
 import { PageHeader } from '../../components/super-admin/PageHeader';
 import { StatusBadge } from '../../components/super-admin/StatusBadge';
@@ -9,6 +9,7 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { Loader } from '../../components/ui/Loader';
 import { ConfirmationDialog, Modal } from '../../components/ui/Modal';
 import { USER_ROLES } from '../../utils/constants';
+import { departmentService } from '../../services/departmentService';
 import { notificationService } from '../../services/notificationService';
 
 const publisherRoles = [USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN, USER_ROLES.TEACHER];
@@ -24,6 +25,7 @@ const initialForm = {
   expiryDate: '',
   attachmentPath: '',
   audience: 'all_users',
+  departmentIds: [],
 };
 
 const initialFilters = {
@@ -51,10 +53,17 @@ function toDateTimeLocal(value) {
 }
 
 function buildPayload(form) {
+  const departmentAudience = ['student', 'teacher'].includes(form.audience);
   const targets =
     form.audience === 'all_users'
       ? [{ targetType: 'all_users', targetRole: null, targetId: null }]
-      : [{ targetType: 'role', targetRole: form.audience, targetId: null }];
+      : departmentAudience && form.departmentIds.length
+        ? form.departmentIds.map((departmentId) => ({
+            targetType: 'department',
+            targetRole: form.audience,
+            targetId: Number(departmentId),
+          }))
+        : [{ targetType: 'role', targetRole: form.audience, targetId: null }];
 
   return {
     title: form.title,
@@ -80,6 +89,10 @@ function validateForm(form) {
 
   if (!form.audience) {
     return 'Audience is required.';
+  }
+
+  if (['student', 'teacher'].includes(form.audience) && !form.departmentIds.length) {
+    return 'Select at least one department for Students or Teachers audience.';
   }
 
   if (form.publishDate && form.expiryDate && new Date(form.expiryDate) <= new Date(form.publishDate)) {
@@ -113,9 +126,11 @@ function getEffectiveStatus(announcement) {
 }
 
 function mapAnnouncementToForm(announcement) {
-  const target = announcement.targets?.[0] || {};
+  const targets = announcement.targets || [];
+  const target = targets[0] || {};
   const audience =
     announcement.audienceRole ||
+    (target.targetType === 'department' ? target.targetRole : '') ||
     (target.targetType === 'role' ? target.targetRole : '') ||
     'all_users';
 
@@ -129,11 +144,16 @@ function mapAnnouncementToForm(announcement) {
     expiryDate: toDateTimeLocal(announcement.expiryDate),
     attachmentPath: announcement.attachmentPath || '',
     audience,
+    departmentIds: targets
+      .filter((item) => item.targetType === 'department')
+      .map((item) => Number(item.targetId))
+      .filter(Boolean),
   };
 }
 
 function getAudienceLabel(announcement) {
-  const target = announcement.targets?.[0] || {};
+  const targets = announcement.targets || [];
+  const target = targets[0] || {};
   const audience = announcement.audienceRole || target.targetRole;
 
   if (!audience || target.targetType === 'all_users') {
@@ -147,7 +167,19 @@ function getAudienceLabel(announcement) {
     'super-admin': 'Super Admins',
   };
 
-  return labels[audience] || audience;
+  const roleLabel = labels[audience] || audience;
+  const departmentTargets = targets.filter((item) => item.targetType === 'department');
+
+  if (!departmentTargets.length) {
+    return roleLabel;
+  }
+
+  const departmentNames = departmentTargets
+    .map((item) => item.targetName)
+    .filter(Boolean)
+    .join(', ');
+
+  return departmentNames ? `${roleLabel} - ${departmentNames}` : `${roleLabel} - selected departments`;
 }
 
 export function AnnouncementCenterPage() {
@@ -164,6 +196,9 @@ export function AnnouncementCenterPage() {
   const [filters, setFilters] = useState(initialFilters);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [departments, setDepartments] = useState([]);
+  const [departmentsLoading, setDepartmentsLoading] = useState(false);
+  const [departmentPickerOpen, setDepartmentPickerOpen] = useState(false);
 
   const currentPage = Math.floor((filters.offset || 0) / pageSize) + 1;
   const totalPages = Math.max(Math.ceil(total / pageSize), 1);
@@ -172,6 +207,12 @@ export function AnnouncementCenterPage() {
     () => announcements.filter((announcement) => announcement.status === 'published').length,
     [announcements],
   );
+  const showDepartmentTargets = ['student', 'teacher'].includes(form.audience);
+  const selectedDepartments = useMemo(
+    () => departments.filter((department) => form.departmentIds.includes(Number(department.id))),
+    [departments, form.departmentIds],
+  );
+  const departmentAudienceLabel = form.audience === 'teacher' ? 'teacher' : 'student';
 
   const loadAnnouncements = useCallback(async (nextFilters) => {
     setIsLoading(true);
@@ -190,6 +231,28 @@ export function AnnouncementCenterPage() {
   useEffect(() => {
     loadAnnouncements(initialFilters);
   }, [loadAnnouncements]);
+
+  useEffect(() => {
+    if (!canPublish) return;
+
+    let active = true;
+    setDepartmentsLoading(true);
+    departmentService
+      .list({ status: 'active', limit: 100 })
+      .then((data) => {
+        if (active) setDepartments(data.departments || data.items || []);
+      })
+      .catch(() => {
+        if (active) setDepartments([]);
+      })
+      .finally(() => {
+        if (active) setDepartmentsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [canPublish]);
 
   const updateFilter = (key, value) => {
     setFilters((current) => ({ ...current, [key]: value, offset: 0 }));
@@ -214,6 +277,34 @@ export function AnnouncementCenterPage() {
   const resetForm = () => {
     setForm(initialForm);
     setEditingId(null);
+    setDepartmentPickerOpen(false);
+  };
+
+  const updateAudience = (audience) => {
+    setForm((value) => ({
+      ...value,
+      audience,
+      departmentIds: ['student', 'teacher'].includes(audience) ? value.departmentIds : [],
+    }));
+    setDepartmentPickerOpen(false);
+  };
+
+  const toggleDepartment = (departmentId) => {
+    const id = Number(departmentId);
+    setForm((value) => ({
+      ...value,
+      departmentIds: value.departmentIds.includes(id)
+        ? value.departmentIds.filter((item) => item !== id)
+        : [...value.departmentIds, id],
+    }));
+  };
+
+  const removeDepartment = (departmentId) => {
+    const id = Number(departmentId);
+    setForm((value) => ({
+      ...value,
+      departmentIds: value.departmentIds.filter((item) => item !== id),
+    }));
   };
 
   const handleSubmit = async (event) => {
@@ -319,7 +410,7 @@ export function AnnouncementCenterPage() {
             </select>
             <select
               value={form.audience}
-              onChange={(event) => setForm((value) => ({ ...value, audience: event.target.value }))}
+              onChange={(event) => updateAudience(event.target.value)}
               className="min-h-11 rounded-xl border border-line px-4 text-sm outline-none focus:border-primary"
             >
               <option value="all_users">All Users</option>
@@ -362,6 +453,64 @@ export function AnnouncementCenterPage() {
               className="min-h-24 rounded-xl border border-line px-4 py-3 text-sm outline-none focus:border-primary lg:col-span-3"
               required
             />
+            {showDepartmentTargets ? (
+              <div className="rounded-2xl border border-line bg-page p-3 lg:col-span-3">
+                <button
+                  type="button"
+                  onClick={() => setDepartmentPickerOpen((open) => !open)}
+                  disabled={departmentsLoading || !departments.length}
+                  className="flex min-h-11 w-full items-center justify-between rounded-xl border border-line bg-card px-4 text-left text-sm font-semibold text-ink outline-none transition hover:border-primary disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  <span>
+                    {departmentsLoading
+                      ? 'Loading departments...'
+                      : selectedDepartments.length
+                        ? `${selectedDepartments.length} department${selectedDepartments.length === 1 ? '' : 's'} selected`
+                        : `Select ${departmentAudienceLabel} departments`}
+                  </span>
+                  <FiChevronDown className={`transition ${departmentPickerOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {departmentPickerOpen ? (
+                  <div className="mt-3 max-h-56 space-y-2 overflow-y-auto rounded-xl border border-line bg-card p-3">
+                    {departments.map((department) => (
+                      <label key={department.id} className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-page">
+                        <input
+                          type="checkbox"
+                          checked={form.departmentIds.includes(Number(department.id))}
+                          onChange={() => toggleDepartment(department.id)}
+                          className="size-4 accent-primary"
+                        />
+                        <span className="text-sm font-semibold text-ink">{department.name}</span>
+                      </label>
+                    ))}
+                    <div className="flex justify-end border-t border-line pt-3">
+                      <Button type="button" variant="secondary" onClick={() => setDepartmentPickerOpen(false)}>
+                        OK
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+                {selectedDepartments.length ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {selectedDepartments.map((department) => (
+                      <span key={department.id} className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-bold text-primary">
+                        {department.name}
+                        <button type="button" onClick={() => removeDepartment(department.id)} aria-label={`Remove ${department.name}`}>
+                          x
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+                {!departmentsLoading && !departments.length ? (
+                  <p className="mt-2 text-xs font-semibold text-red-600">No active departments found.</p>
+                ) : (
+                  <p className="mt-2 text-xs font-semibold text-muted">
+                    Only {departmentAudienceLabel}s in the selected departments will receive and view this announcement.
+                  </p>
+                )}
+              </div>
+            ) : null}
             <div className="flex gap-3 lg:col-span-3">
               <Button type="submit">
                 {editingId ? 'Update Announcement' : form.status === 'draft' ? 'Save Draft' : 'Publish Announcement'}

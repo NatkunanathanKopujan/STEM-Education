@@ -25,6 +25,7 @@ const MATERIAL_CATEGORY_TYPES = {
 };
 
 function normalizeCategory(category) {
+  if (!category || category === 'all') return '';
   return CATEGORY_ALIASES[category] || category;
 }
 
@@ -55,8 +56,9 @@ function canSearch(user, category) {
 }
 
 function categoryMatches(selected, category, aliases = []) {
-  if (!selected) return true;
-  return selected === category || aliases.includes(selected) || normalizeCategory(selected) === category;
+  const normalizedSelected = normalizeCategory(selected);
+  if (!normalizedSelected) return true;
+  return selected === category || aliases.includes(selected) || normalizedSelected === category;
 }
 
 function result(row) {
@@ -109,7 +111,7 @@ async function executeSearch(category, selectedCategory, user, sql, params, resu
 
 export async function runRoleSearch(user, filters) {
   const term = String(filters.q || '').trim();
-  const selectedCategory = filters.category;
+  const selectedCategory = filters.category === 'all' ? '' : filters.category;
   const results = [];
   const studentId = user.role === ROLES.STUDENT ? await findStudentId(user.id) : null;
 

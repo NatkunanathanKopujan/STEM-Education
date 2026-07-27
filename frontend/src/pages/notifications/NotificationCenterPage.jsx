@@ -44,7 +44,7 @@ export function NotificationCenterPage() {
   const currentPage = Math.floor((data.offset || 0) / (data.limit || pageSize)) + 1;
   const totalPages = Math.max(Math.ceil((data.total || 0) / (data.limit || pageSize)), 1);
 
-  const loadNotifications = useCallback(async (nextFilters) => {
+  const loadNotifications = useCallback(async (nextFilters, { clampPage = false } = {}) => {
     setIsLoading(true);
     setError('');
     try {
@@ -52,6 +52,25 @@ export function NotificationCenterPage() {
         ...nextFilters,
         limit: pageSize,
       });
+
+      if (
+        clampPage &&
+        Number(nextFilters?.offset || 0) > 0 &&
+        !result.notifications?.length &&
+        Number(result.total || 0) > 0
+      ) {
+        const lastOffset = Math.max(Math.ceil(Number(result.total || 0) / pageSize) - 1, 0) * pageSize;
+        const clampedFilters = { ...nextFilters, offset: lastOffset };
+        setFilters(clampedFilters);
+        const clampedResult = await notificationService.getNotifications({
+          ...clampedFilters,
+          limit: pageSize,
+        });
+        setData(clampedResult);
+        setSelectedIds([]);
+        return;
+      }
+
       setData(result);
       setSelectedIds([]);
     } catch (apiError) {
@@ -101,7 +120,7 @@ export function NotificationCenterPage() {
     try {
       await notificationService.markRead(ids);
       setMessage('Notification marked as read.');
-      await loadNotifications(filters);
+      await loadNotifications(filters, { clampPage: true });
     } catch (apiError) {
       setError(apiError.response?.data?.message || 'Unable to mark notification as read.');
     }
@@ -127,7 +146,7 @@ export function NotificationCenterPage() {
       setSelectedIds((current) => current.filter((selectedId) => selectedId !== deleteTarget.id));
       setMessage('Notification deleted.');
       setDeleteTarget(null);
-      await loadNotifications(filters);
+      await loadNotifications(filters, { clampPage: true });
     } catch (apiError) {
       if (isNotFoundError(apiError)) {
         setData((current) => ({
@@ -138,7 +157,7 @@ export function NotificationCenterPage() {
         setSelectedIds((current) => current.filter((selectedId) => selectedId !== deleteTarget.id));
         setMessage('Notification was already removed.');
         setDeleteTarget(null);
-        await loadNotifications(filters);
+        await loadNotifications(filters, { clampPage: true });
         return;
       }
       setError(apiError.response?.data?.message || 'Unable to delete notification.');
@@ -161,7 +180,7 @@ export function NotificationCenterPage() {
 
       setMessage(`${selectedIds.length} notification${selectedIds.length === 1 ? '' : 's'} deleted.`);
       setBulkDeleteOpen(false);
-      await loadNotifications(filters);
+      await loadNotifications(filters, { clampPage: true });
     } catch (apiError) {
       setError(apiError.response?.data?.message || 'Unable to delete selected notifications.');
     }

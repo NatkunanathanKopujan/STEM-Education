@@ -49,26 +49,26 @@ export function Navbar({ user, onMenuClick, onLogout }) {
   };
 
   return (
-    <header className="sticky top-0 z-30 border-b border-line bg-white/95 shadow-sm backdrop-blur">
+    <header className="sticky top-0 z-30 border-b border-line bg-white/90 shadow-soft backdrop-blur">
       <div className="flex h-[72px] min-h-16 items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
         <div className="flex min-w-0 items-center gap-3">
           <button
             type="button"
-            className="focus-ring rounded-lg p-2 text-muted hover:bg-orange-50 hover:text-primary lg:hidden"
+            className="focus-ring rounded-xl p-2 text-muted hover:bg-orange-50 hover:text-primary lg:hidden"
             onClick={onMenuClick}
             aria-label="Open sidebar"
           >
             <FiMenu className="size-5" />
           </button>
           <div className="min-w-0">
-            <h1 className="truncate text-lg font-bold text-ink">{pageTitle}</h1>
+            <h1 className="truncate text-xl font-extrabold text-ink">{pageTitle}</h1>
             <p className="hidden text-xs font-semibold uppercase tracking-wide text-muted sm:block">
               {ROLE_LABELS[user?.role] || 'LMS User'}
             </p>
           </div>
         </div>
 
-        <div className="hidden w-full max-w-md md:block">
+        <div className="hidden w-full max-w-xl md:block">
           <GlobalSearchBox />
         </div>
 
@@ -100,7 +100,7 @@ export function Navbar({ user, onMenuClick, onLogout }) {
                     <FiUser className="size-4" />
                   )}
                 </span>
-                <span className="hidden max-w-32 truncate sm:inline">{displayName}</span>
+                <span className="hidden max-w-32 truncate font-semibold sm:inline">{displayName}</span>
               </span>
             }
             items={[

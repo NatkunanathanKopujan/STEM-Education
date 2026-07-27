@@ -41,6 +41,10 @@ export async function search(user, query, deviceInfo) {
     if (query.sort === 'oldest') return new Date(a.createdAt || 0) - new Date(b.createdAt || 0);
     if (query.sort === 'az') return String(a.title).localeCompare(String(b.title));
     if (query.sort === 'za') return String(b.title).localeCompare(String(a.title));
+    if (query.sort === 'relevance') {
+      return Number(b.relevance || 0) - Number(a.relevance || 0) ||
+        new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+    }
     return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
   });
   const page = Number(query.page) || 1;
@@ -90,10 +94,12 @@ export const clearHistory = (user) => clearSearchHistory(user.id);
 export const getSaved = (user) => listSavedSearches(user.id);
 
 export async function createSaved(user, payload) {
+  const term = payload.searchTerm ?? payload.term ?? payload.query ?? '';
+  if (!String(term).trim()) throw new AppError('Search term is required', 400);
   const id = await saveSearch({
     userId: user.id,
     name: payload.name,
-    term: payload.searchTerm,
+    term,
     filters: payload.filters,
     isPinned: payload.isPinned,
   });
@@ -101,7 +107,13 @@ export async function createSaved(user, payload) {
 }
 
 export async function editSaved(user, id, payload) {
-  const updated = await updateSavedSearch({ userId: user.id, id, payload });
+  const normalizedPayload = { ...payload };
+  if (payload.term !== undefined || payload.query !== undefined) {
+    normalizedPayload.searchTerm = payload.searchTerm ?? payload.term ?? payload.query;
+    delete normalizedPayload.term;
+    delete normalizedPayload.query;
+  }
+  const updated = await updateSavedSearch({ userId: user.id, id, payload: normalizedPayload });
   if (!updated) throw new AppError('Saved search not found', 404);
   return { updated: true };
 }

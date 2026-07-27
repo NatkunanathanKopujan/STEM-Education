@@ -5,6 +5,7 @@ export const searchQueryValidator = [
   query('category')
     .optional()
     .isIn([
+      'all',
       'users',
       'admins',
       'teachers',
@@ -53,7 +54,15 @@ export const searchQueryValidator = [
 
 export const saveSearchValidator = [
   body('name').trim().isLength({ min: 2, max: 120 }),
-  body('searchTerm').trim().isLength({ min: 1, max: 255 }),
+  body().custom((value) => {
+    const term = value.searchTerm ?? value.term ?? value.query ?? '';
+    if (!String(term).trim()) throw new Error('Search term is required');
+    if (String(term).length > 255) throw new Error('Search term must be 255 characters or fewer');
+    return true;
+  }),
+  body('searchTerm').optional().trim().isLength({ min: 1, max: 255 }),
+  body('term').optional().trim().isLength({ min: 1, max: 255 }),
+  body('query').optional().trim().isLength({ min: 1, max: 255 }),
   body('filters').optional().isObject(),
   body('isPinned').optional().isBoolean(),
 ];
@@ -62,6 +71,8 @@ export const updateSavedSearchValidator = [
   param('id').isInt({ min: 1 }),
   body('name').optional().trim().isLength({ min: 2, max: 120 }),
   body('searchTerm').optional().trim().isLength({ min: 1, max: 255 }),
+  body('term').optional().trim().isLength({ min: 1, max: 255 }),
+  body('query').optional().trim().isLength({ min: 1, max: 255 }),
   body('filters').optional().isObject(),
   body('isPinned').optional().isBoolean(),
 ];

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { FiChevronDown, FiChevronLeft, FiChevronRight, FiHelpCircle, FiMail, FiPhone } from 'react-icons/fi';
+import { FiChevronDown, FiChevronLeft, FiChevronRight, FiHelpCircle, FiMail, FiPhone, FiTrash2 } from 'react-icons/fi';
+import { calendarNoteService } from '../../services/calendarNoteService';
 import { settingsService } from '../../services/settingsService';
 
 const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -97,11 +98,25 @@ function isToday(viewDate, day) {
   );
 }
 
+function currentDateKey() {
+  const today = new Date();
+  return dateKey(today.getFullYear(), today.getMonth(), today.getDate());
+}
+
+function monthKey(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
 export function SupportCalendarPanel() {
   const [viewDate, setViewDate] = useState(() => new Date());
   const [support, setSupport] = useState({ email: '', phone: '' });
   const [isOpen, setIsOpen] = useState(false);
   const [selectedSpecialDay, setSelectedSpecialDay] = useState(null);
+  const [selectedDateKey, setSelectedDateKey] = useState(() => currentDateKey());
+  const [notes, setNotes] = useState({});
+  const [noteDraft, setNoteDraft] = useState('');
+  const [noteStatus, setNoteStatus] = useState('');
+  const [isSavingNote, setIsSavingNote] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -126,6 +141,31 @@ export function SupportCalendarPanel() {
     };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+
+    calendarNoteService
+      .list({ month: monthKey(viewDate) })
+      .then((data) => {
+        if (!active) return;
+        const monthNotes = Object.fromEntries((data.notes || []).map((item) => [item.noteDate, item.note]));
+        setNotes((current) => ({ ...current, ...monthNotes }));
+      })
+      .catch(() => {
+        if (active) setNoteStatus('Unable to load saved calendar notes.');
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [viewDate]);
+
+  useEffect(() => {
+    if (selectedDateKey) {
+      setNoteDraft(notes[selectedDateKey] || '');
+    }
+  }, [notes, selectedDateKey]);
+
   const days = useMemo(() => buildCalendarDays(viewDate), [viewDate]);
   const specialDays = useMemo(() => getSriLankanSpecialDays(viewDate), [viewDate]);
   const monthLabel = useMemo(
@@ -136,7 +176,61 @@ export function SupportCalendarPanel() {
   const moveMonth = (direction) => {
     setViewDate((current) => new Date(current.getFullYear(), current.getMonth() + direction, 1));
     setSelectedSpecialDay(null);
+    setSelectedDateKey(null);
+    setNoteStatus('');
   };
+
+  const selectDate = (day, specialDay) => {
+    const key = dateKey(viewDate.getFullYear(), viewDate.getMonth(), day);
+    setSelectedDateKey(key);
+    setSelectedSpecialDay(specialDay || null);
+    setNoteDraft(notes[key] || '');
+    setNoteStatus('');
+  };
+
+  const saveNote = async () => {
+    if (!selectedDateKey) return;
+    const trimmedNote = noteDraft.trim();
+    if (!trimmedNote) {
+      setNoteStatus('Type a note before saving.');
+      return;
+    }
+
+    setIsSavingNote(true);
+    setNoteStatus('');
+    try {
+      const saved = await calendarNoteService.save(selectedDateKey, trimmedNote);
+      setNotes((current) => ({ ...current, [saved.noteDate]: saved.note }));
+      setNoteStatus('Note saved for this date.');
+    } catch (error) {
+      setNoteStatus(error.response?.data?.message || 'Unable to save note.');
+    } finally {
+      setIsSavingNote(false);
+    }
+  };
+
+  const clearNote = async () => {
+    if (!selectedDateKey) return;
+
+    setIsSavingNote(true);
+    setNoteStatus('');
+    try {
+      await calendarNoteService.remove(selectedDateKey);
+      setNotes((current) => {
+        const next = { ...current };
+        delete next[selectedDateKey];
+        return next;
+      });
+      setNoteDraft('');
+      setNoteStatus('Note removed from this date.');
+    } catch (error) {
+      setNoteStatus(error.response?.data?.message || 'Unable to remove note.');
+    } finally {
+      setIsSavingNote(false);
+    }
+  };
+
+  const hasTodayNote = Boolean(notes[currentDateKey()]);
 
   return (
     <div className="fixed bottom-5 right-5 z-40 flex flex-col items-end gap-3">
@@ -221,16 +315,21 @@ export function SupportCalendarPanel() {
                 type="button"
                 key={`${day || 'empty'}-${index}`}
                 disabled={!day}
-                onClick={() => setSelectedSpecialDay(specialDay || null)}
+                onClick={() => selectDate(day, specialDay)}
                 className={`relative flex aspect-square items-center justify-center rounded-full text-xs font-semibold transition ${
                   isToday(viewDate, day)
                     ? 'bg-primary text-white shadow-lg shadow-primary/20'
+                    : selectedDateKey === dateKey(viewDate.getFullYear(), viewDate.getMonth(), day)
+                      ? 'bg-white/15 text-white'
                     : day
                       ? 'text-[#d9e8e2] hover:bg-white/10'
                       : 'text-transparent'
                 }`}
               >
                 {day || 0}
+                {day && notes[dateKey(viewDate.getFullYear(), viewDate.getMonth(), day)] ? (
+                  <span className="absolute right-1 top-1 size-1.5 rounded-full bg-[#7dd3fc]" />
+                ) : null}
                 {specialDay ? (
                   <span className="absolute bottom-0.5 size-1.5 rounded-full bg-primary" />
                 ) : null}
@@ -248,16 +347,61 @@ export function SupportCalendarPanel() {
               Gold point means a Sri Lankan special day. Click the date to view details.
             </p>
           )}
+          {selectedDateKey ? (
+            <div className="mt-3 rounded-xl border border-white/10 bg-white/10 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-bold text-white">Note for {selectedDateKey}</p>
+                {notes[selectedDateKey] ? (
+                  <span className="rounded-full bg-[#7dd3fc]/20 px-2 py-0.5 text-[0.68rem] font-bold uppercase text-[#bae6fd]">
+                    Saved
+                  </span>
+                ) : null}
+              </div>
+              <textarea
+                className="mt-2 min-h-24 w-full resize-y rounded-xl border border-white/10 bg-[#1b2731] px-3 py-2 text-sm font-semibold text-white outline-none transition placeholder:text-[#9fb3ad] focus:border-primary"
+                maxLength={1000}
+                placeholder="Type note for this date"
+                value={noteDraft}
+                onChange={(event) => setNoteDraft(event.target.value)}
+              />
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  className="rounded-xl bg-primary px-4 py-2 text-sm font-bold text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={isSavingNote}
+                  onClick={saveNote}
+                >
+                  {isSavingNote ? 'Saving...' : 'Save Note'}
+                </button>
+                {notes[selectedDateKey] ? (
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-bold text-white transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={isSavingNote}
+                    onClick={clearNote}
+                  >
+                    <FiTrash2 /> Clear
+                  </button>
+                ) : null}
+              </div>
+              {noteStatus ? <p className="mt-2 text-xs font-semibold text-[#c8ded6]">{noteStatus}</p> : null}
+            </div>
+          ) : null}
         </div>
           </div>
         </section>
       ) : null}
       <button
         type="button"
-        className="flex size-14 items-center justify-center rounded-full border border-[#3d505d] bg-[#263541] text-primary shadow-[0_16px_36px_rgba(15,23,42,0.28)] transition hover:-translate-y-0.5 hover:bg-[#22303b]"
+        className="relative flex size-14 items-center justify-center rounded-full border border-[#3d505d] bg-[#263541] text-primary shadow-[0_16px_36px_rgba(15,23,42,0.28)] transition hover:-translate-y-0.5 hover:bg-[#22303b]"
         aria-label={isOpen ? 'Hide support calendar' : 'Show support calendar'}
         onClick={() => setIsOpen((current) => !current)}
       >
+        {hasTodayNote ? (
+          <span className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-red-500 text-[0.65rem] font-black text-white ring-2 ring-[#263541]">
+            !
+          </span>
+        ) : null}
         <FiHelpCircle className="size-6" />
       </button>
     </div>
