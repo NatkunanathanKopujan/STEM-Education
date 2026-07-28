@@ -17,6 +17,7 @@ const preferenceByType = {
 };
 
 let announcementTargetSchemaReady = false;
+let announcementScopeSchemaReady = false;
 
 async function ensureAnnouncementTargetSchema() {
   if (announcementTargetSchemaReady) return;
@@ -39,6 +40,49 @@ async function ensureAnnouncementTargetSchema() {
   }
 
   announcementTargetSchemaReady = true;
+}
+
+async function ensureAnnouncementScopeSchema() {
+  if (announcementScopeSchemaReady) return;
+
+  const requiredColumns = [
+    ['department_id', 'BIGINT UNSIGNED NULL AFTER audience_role', 'idx_announcements_department_id'],
+    ['curriculum_id', 'BIGINT UNSIGNED NULL AFTER department_id', 'idx_announcements_curriculum_id'],
+    ['course_id', 'BIGINT UNSIGNED NULL AFTER curriculum_id', 'idx_announcements_course_id'],
+    ['week_no', 'INT NULL AFTER course_id', 'idx_announcements_week_no'],
+  ];
+
+  for (const [columnName, columnDefinition, indexName] of requiredColumns) {
+    const [columns] = await db.query(
+      `SELECT COLUMN_NAME
+       FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = 'announcements'
+        AND COLUMN_NAME = ?
+       LIMIT 1`,
+      [columnName],
+    );
+
+    if (!columns.length) {
+      await db.query(`ALTER TABLE announcements ADD COLUMN ${columnName} ${columnDefinition}`);
+    }
+
+    const [indexes] = await db.query(
+      `SELECT INDEX_NAME
+       FROM INFORMATION_SCHEMA.STATISTICS
+       WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = 'announcements'
+        AND INDEX_NAME = ?
+       LIMIT 1`,
+      [indexName],
+    );
+
+    if (!indexes.length) {
+      await db.query(`CREATE INDEX ${indexName} ON announcements (${columnName})`);
+    }
+  }
+
+  announcementScopeSchemaReady = true;
 }
 
 function toDatabaseBoolean(value) {
@@ -287,16 +331,22 @@ export async function recordNotificationHistory({ notificationId, userId, eventT
 }
 
 export async function createAnnouncement(payload) {
+  await ensureAnnouncementScopeSchema();
   const [result] = await db.execute(
     `INSERT INTO announcements
-      (uuid, title, body, attachment_path, audience_role, priority, status, expiry_at, created_by, publish_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (uuid, title, body, attachment_path, audience_role, department_id, curriculum_id, course_id, week_no,
+       priority, status, expiry_at, created_by, publish_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       generateId(),
       payload.title,
       payload.description,
       payload.attachmentPath || null,
       payload.audienceRole || null,
+      payload.departmentId || null,
+      payload.curriculumId || null,
+      payload.courseId || null,
+      payload.weekNo || null,
       payload.priority || 'normal',
       payload.status || 'draft',
       toMysqlDateTime(payload.expiryDate),
@@ -334,9 +384,11 @@ export async function createAnnouncement(payload) {
 }
 
 export async function findAnnouncementRawById(id) {
+  await ensureAnnouncementScopeSchema();
   const [rows] = await db.execute(
     `SELECT id, uuid, title, body AS description, attachment_path AS attachmentPath,
-      audience_role AS audienceRole, priority, status, expiry_at AS expiryDate,
+      audience_role AS audienceRole, department_id AS departmentId, curriculum_id AS curriculumId,
+      course_id AS courseId, week_no AS weekNo, priority, status, expiry_at AS expiryDate,
       created_by AS createdBy, publish_at AS publishDate, created_at AS createdAt,
       updated_at AS updatedAt
      FROM announcements
@@ -349,11 +401,16 @@ export async function findAnnouncementRawById(id) {
 }
 
 export async function updateAnnouncement(id, payload) {
+  await ensureAnnouncementScopeSchema();
   const allowed = {
     title: 'title',
     description: 'body',
     attachmentPath: 'attachment_path',
     audienceRole: 'audience_role',
+    departmentId: 'department_id',
+    curriculumId: 'curriculum_id',
+    courseId: 'course_id',
+    weekNo: 'week_no',
     priority: 'priority',
     status: 'status',
     expiryDate: 'expiry_at',
@@ -449,6 +506,40 @@ function getAnnouncementVisibilitySql(user, canManage = false) {
   }
 
   const targetValues = [user.id, user.id, user.role, user.role, user.id, user.id];
+  const departmentScopeSql = user.role === 'teacher'
+    ? `AND (
+      a.department_id IS NULL
+      OR EXISTS (
+        SELECT 1
+        FROM teacher_departments scope_td
+        WHERE scope_td.teacher_id = t.id
+          AND scope_td.department_id = a.department_id
+      )
+    )`
+    : user.role === 'student'
+      ? `AND (
+        a.department_id IS NULL
+        OR EXISTS (
+          SELECT 1
+          FROM student_departments scope_sd
+          WHERE scope_sd.student_id = s.id
+            AND scope_sd.department_id = a.department_id
+        )
+      )`
+      : '';
+  const curriculumScopeSql = user.role === 'teacher'
+    ? `AND (
+      a.curriculum_id IS NULL
+      OR EXISTS (
+        SELECT 1
+        FROM curriculum_teachers scope_ct
+        WHERE scope_ct.teacher_id = t.id
+          AND scope_ct.curriculum_id = a.curriculum_id
+      )
+    )`
+    : user.role === 'student'
+      ? `AND (a.curriculum_id IS NULL OR s.curriculum_id = a.curriculum_id)`
+      : '';
   const targetSql = `
     (a.audience_role IS NULL OR a.audience_role = ?)
     AND (
@@ -470,9 +561,13 @@ function getAnnouncementVisibilitySql(user, canManage = false) {
           AND visible_sd.department_id = at.target_id
       ))
       OR (at.target_type = 'curriculum' AND EXISTS (
-        SELECT 1 FROM courses c WHERE c.curriculum_id = at.target_id AND c.teacher_id = t.id
+        SELECT 1 FROM curriculum_teachers visible_ct
+        WHERE visible_ct.curriculum_id = at.target_id
+          AND visible_ct.teacher_id = t.id
       ))
-    )`;
+    )
+    ${departmentScopeSql}
+    ${curriculumScopeSql}`;
 
   return { targetSql, targetValues };
 }
@@ -513,6 +608,7 @@ export async function listAnnouncements({
   offset = 0,
 }) {
   await ensureAnnouncementTargetSchema();
+  await ensureAnnouncementScopeSchema();
   await ensureUserAssignmentSchema();
   const safeLimit = Math.min(Math.max(Number(limit) || 30, 1), 100);
   const safeOffset = Math.max(Number(offset) || 0, 0);
@@ -537,11 +633,16 @@ export async function listAnnouncements({
   const orderBy = getAnnouncementOrderBy(sort);
   const [rows] = await db.query(
     `SELECT DISTINCT a.id, a.uuid, a.title, a.body AS description, a.attachment_path AS attachmentPath,
-      audience_role AS audienceRole, priority, status, expiry_at AS expiryDate,
-      created_by AS createdBy, publish_at AS publishDate, a.created_at AS createdAt,
+      audience_role AS audienceRole, a.department_id AS departmentId, d.name AS departmentName,
+      a.curriculum_id AS curriculumId, c.title AS curriculumName, a.course_id AS courseId,
+      course.title AS subjectName, a.week_no AS weekNo, a.priority, a.status, a.expiry_at AS expiryDate,
+      a.created_by AS createdBy, a.publish_at AS publishDate, a.created_at AS createdAt,
       a.updated_at AS updatedAt
      FROM announcements a
      LEFT JOIN announcement_targets at ON at.announcement_id = a.id
+     LEFT JOIN departments d ON d.id = a.department_id
+     LEFT JOIN curriculums c ON c.id = a.curriculum_id
+     LEFT JOIN courses course ON course.id = a.course_id
      LEFT JOIN teachers t ON t.user_id = ?
      LEFT JOIN students s ON s.user_id = ?
      WHERE ${targetSql}
@@ -554,6 +655,9 @@ export async function listAnnouncements({
     `SELECT COUNT(DISTINCT a.id) AS total
      FROM announcements a
      LEFT JOIN announcement_targets at ON at.announcement_id = a.id
+     LEFT JOIN departments d ON d.id = a.department_id
+     LEFT JOIN curriculums c ON c.id = a.curriculum_id
+     LEFT JOIN courses course ON course.id = a.course_id
      LEFT JOIN teachers t ON t.user_id = ?
      LEFT JOIN students s ON s.user_id = ?
      WHERE ${targetSql}
@@ -579,6 +683,7 @@ export async function listAnnouncements({
 
 export async function findAnnouncementById({ user, id }) {
   await ensureAnnouncementTargetSchema();
+  await ensureAnnouncementScopeSchema();
   await ensureUserAssignmentSchema();
   const canManage = ['super-admin', 'admin', 'teacher'].includes(user.role);
   const { targetSql, targetValues } = getAnnouncementVisibilitySql(user, canManage);
@@ -593,11 +698,16 @@ export async function findAnnouncementById({ user, id }) {
 
   const [rows] = await db.query(
     `SELECT DISTINCT a.id, a.uuid, a.title, a.body AS description, a.attachment_path AS attachmentPath,
-      audience_role AS audienceRole, priority, status, expiry_at AS expiryDate,
-      created_by AS createdBy, publish_at AS publishDate, a.created_at AS createdAt,
+      audience_role AS audienceRole, a.department_id AS departmentId, d.name AS departmentName,
+      a.curriculum_id AS curriculumId, c.title AS curriculumName, a.course_id AS courseId,
+      course.title AS subjectName, a.week_no AS weekNo, a.priority, a.status, a.expiry_at AS expiryDate,
+      a.created_by AS createdBy, a.publish_at AS publishDate, a.created_at AS createdAt,
       a.updated_at AS updatedAt
      FROM announcements a
      LEFT JOIN announcement_targets at ON at.announcement_id = a.id
+     LEFT JOIN departments d ON d.id = a.department_id
+     LEFT JOIN curriculums c ON c.id = a.curriculum_id
+     LEFT JOIN courses course ON course.id = a.course_id
      LEFT JOIN teachers t ON t.user_id = ?
      LEFT JOIN students s ON s.user_id = ?
      WHERE ${targetSql}
@@ -643,8 +753,9 @@ export async function replaceAnnouncementTargets(announcementId, targets = []) {
   );
 }
 
-async function listUsersByTarget(target) {
+async function listUsersByTarget(target, scope = {}) {
   await ensureAnnouncementTargetSchema();
+  await ensureAnnouncementScopeSchema();
 
   if (target.targetType === 'role') {
     const [rows] = await db.execute(
@@ -692,6 +803,9 @@ async function listUsersByTarget(target) {
     await ensureUserAssignmentSchema();
 
     if (target.targetRole === 'teacher') {
+      const curriculumFilter = scope.curriculumId
+        ? 'AND EXISTS (SELECT 1 FROM curriculum_teachers ct WHERE ct.teacher_id = t.id AND ct.curriculum_id = ?)'
+        : '';
       const [rows] = await db.execute(
         `SELECT DISTINCT u.id, u.role, u.full_name AS fullName
          FROM users u
@@ -701,13 +815,15 @@ async function listUsersByTarget(target) {
          WHERE u.status = 'active'
           AND u.role = 'teacher'
           AND d.status = 'active'
-          AND td.department_id = ?`,
-        [target.targetId],
+          AND td.department_id = ?
+          ${curriculumFilter}`,
+        scope.curriculumId ? [target.targetId, scope.curriculumId] : [target.targetId],
       );
       return rows;
     }
 
     if (target.targetRole === 'student') {
+      const curriculumFilter = scope.curriculumId ? 'AND s.curriculum_id = ?' : '';
       const [rows] = await db.execute(
         `SELECT DISTINCT u.id, u.role, u.full_name AS fullName
          FROM users u
@@ -717,8 +833,9 @@ async function listUsersByTarget(target) {
          WHERE u.status = 'active'
           AND u.role = 'student'
           AND d.status = 'active'
-          AND sd.department_id = ?`,
-        [target.targetId],
+          AND sd.department_id = ?
+          ${curriculumFilter}`,
+        scope.curriculumId ? [target.targetId, scope.curriculumId] : [target.targetId],
       );
       return rows;
     }
@@ -738,7 +855,7 @@ async function listUsersByTarget(target) {
   return [];
 }
 
-export async function listUsersForAnnouncement({ audienceRole, targets = [] }) {
+export async function listUsersForAnnouncement({ audienceRole, targets = [], scope = {} }) {
   const normalizedTargets = targets.length
     ? targets
     : [{ targetType: audienceRole ? 'role' : 'all_users', targetRole: audienceRole || null }];
@@ -750,7 +867,7 @@ export async function listUsersForAnnouncement({ audienceRole, targets = [] }) {
     return rows;
   }
 
-  const targetUsers = await Promise.all(normalizedTargets.map((target) => listUsersByTarget(target)));
+  const targetUsers = await Promise.all(normalizedTargets.map((target) => listUsersByTarget(target, scope)));
   const byId = new Map();
 
   targetUsers.flat().forEach((targetUser) => {

@@ -21,14 +21,24 @@ export async function upsertTopicStatus({
   status,
   teacherId,
 }) {
+  const existing = await findCompletedTopic({ curriculumId, courseId, subject, weekNo, topic });
+  if (existing) {
+    await db.execute(
+      `UPDATE question_topics
+       SET status = ?,
+        completed_at = IF(? = 'completed', COALESCE(completed_at, NOW()), NULL),
+        teacher_id = ?,
+        updated_at = NOW()
+       WHERE id = ?`,
+      [status, status, teacherId || null, existing.id],
+    );
+    return;
+  }
+
   await db.execute(
     `INSERT INTO question_topics
       (uuid, curriculum_id, course_id, subject, week_no, topic, status, completed_at, teacher_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, IF(? = 'completed', NOW(), NULL), ?)
-     ON DUPLICATE KEY UPDATE
-      status = VALUES(status),
-      completed_at = IF(VALUES(status) = 'completed', COALESCE(completed_at, NOW()), NULL),
-      teacher_id = VALUES(teacher_id)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, IF(? = 'completed', NOW(), NULL), ?)`,
     [
       generateId(),
       curriculumId || null,
@@ -71,7 +81,7 @@ export async function createKnowledgeEntry(payload) {
       payload.sourceType,
       payload.aiVersion || 'foundation-v1',
       payload.version || 1,
-      payload.status || 'active',
+      payload.knowledgeStatus || 'active',
     ],
   );
   return result.insertId;

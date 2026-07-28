@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { FiChevronDown, FiEdit3, FiEye, FiRefreshCw, FiTrash2 } from 'react-icons/fi';
+import { FiEdit3, FiEye, FiRefreshCw, FiTrash2 } from 'react-icons/fi';
 import { useAuth } from '../../hooks/useAuth';
 import { PageHeader } from '../../components/super-admin/PageHeader';
 import { StatusBadge } from '../../components/super-admin/StatusBadge';
@@ -11,6 +11,7 @@ import { ConfirmationDialog, Modal } from '../../components/ui/Modal';
 import { USER_ROLES } from '../../utils/constants';
 import { departmentService } from '../../services/departmentService';
 import { notificationService } from '../../services/notificationService';
+import { userManagementService } from '../../services/userManagementService';
 
 const publisherRoles = [USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN, USER_ROLES.TEACHER];
 const pageSize = 20;
@@ -26,6 +27,10 @@ const initialForm = {
   attachmentPath: '',
   audience: 'all_users',
   departmentIds: [],
+  departmentId: '',
+  curriculumId: '',
+  courseId: '',
+  weekNo: '',
 };
 
 const initialFilters = {
@@ -54,15 +59,16 @@ function toDateTimeLocal(value) {
 
 function buildPayload(form) {
   const departmentAudience = ['student', 'teacher'].includes(form.audience);
+  const selectedDepartmentId = departmentAudience ? Number(form.departmentId || form.departmentIds[0] || 0) : null;
   const targets =
     form.audience === 'all_users'
       ? [{ targetType: 'all_users', targetRole: null, targetId: null }]
-      : departmentAudience && form.departmentIds.length
-        ? form.departmentIds.map((departmentId) => ({
+      : departmentAudience && selectedDepartmentId
+        ? [{
             targetType: 'department',
             targetRole: form.audience,
-            targetId: Number(departmentId),
-          }))
+            targetId: selectedDepartmentId,
+          }]
         : [{ targetType: 'role', targetRole: form.audience, targetId: null }];
 
   return {
@@ -74,6 +80,10 @@ function buildPayload(form) {
     publishDate: form.publishDate || null,
     expiryDate: form.expiryDate || null,
     attachmentPath: form.attachmentPath || null,
+    departmentId: selectedDepartmentId,
+    curriculumId: departmentAudience ? Number(form.curriculumId || 0) : null,
+    courseId: departmentAudience ? Number(form.courseId || 0) : null,
+    weekNo: departmentAudience ? Number(form.weekNo || 0) : null,
     targets,
   };
 }
@@ -91,8 +101,11 @@ function validateForm(form) {
     return 'Audience is required.';
   }
 
-  if (['student', 'teacher'].includes(form.audience) && !form.departmentIds.length) {
-    return 'Select at least one department for Students or Teachers audience.';
+  if (['student', 'teacher'].includes(form.audience)) {
+    if (!form.departmentId) return 'Department is required for Students or Teachers audience.';
+    if (!form.curriculumId) return 'Curriculum is required for Students or Teachers audience.';
+    if (!form.courseId) return 'Subject/Module is required for Students or Teachers audience.';
+    if (!form.weekNo || Number(form.weekNo) < 1) return 'Week number is required for Students or Teachers audience.';
   }
 
   if (form.publishDate && form.expiryDate && new Date(form.expiryDate) <= new Date(form.publishDate)) {
@@ -148,6 +161,10 @@ function mapAnnouncementToForm(announcement) {
       .filter((item) => item.targetType === 'department')
       .map((item) => Number(item.targetId))
       .filter(Boolean),
+    departmentId: announcement.departmentId || targets.find((item) => item.targetType === 'department')?.targetId || '',
+    curriculumId: announcement.curriculumId || '',
+    courseId: announcement.courseId || '',
+    weekNo: announcement.weekNo || '',
   };
 }
 
@@ -179,7 +196,14 @@ function getAudienceLabel(announcement) {
     .filter(Boolean)
     .join(', ');
 
-  return departmentNames ? `${roleLabel} - ${departmentNames}` : `${roleLabel} - selected departments`;
+  const scope = [
+    departmentNames || 'selected department',
+    announcement.curriculumName,
+    announcement.subjectName,
+    announcement.weekNo ? `Week ${announcement.weekNo}` : '',
+  ].filter(Boolean).join(' / ');
+
+  return `${roleLabel} - ${scope}`;
 }
 
 export function AnnouncementCenterPage() {
@@ -197,8 +221,9 @@ export function AnnouncementCenterPage() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [departments, setDepartments] = useState([]);
+  const [curriculums, setCurriculums] = useState([]);
+  const [modules, setModules] = useState([]);
   const [departmentsLoading, setDepartmentsLoading] = useState(false);
-  const [departmentPickerOpen, setDepartmentPickerOpen] = useState(false);
 
   const currentPage = Math.floor((filters.offset || 0) / pageSize) + 1;
   const totalPages = Math.max(Math.ceil(total / pageSize), 1);
@@ -208,9 +233,9 @@ export function AnnouncementCenterPage() {
     [announcements],
   );
   const showDepartmentTargets = ['student', 'teacher'].includes(form.audience);
-  const selectedDepartments = useMemo(
-    () => departments.filter((department) => form.departmentIds.includes(Number(department.id))),
-    [departments, form.departmentIds],
+  const availableCurriculums = useMemo(
+    () => curriculums.filter((curriculum) => !form.departmentId || Number(curriculum.departmentId) === Number(form.departmentId)),
+    [curriculums, form.departmentId],
   );
   const departmentAudienceLabel = form.audience === 'teacher' ? 'teacher' : 'student';
 
@@ -254,6 +279,45 @@ export function AnnouncementCenterPage() {
     };
   }, [canPublish]);
 
+  useEffect(() => {
+    if (!canPublish) return;
+
+    let active = true;
+    userManagementService
+      .list('curriculum', { status: 'Active', limit: 100 })
+      .then((data) => {
+        if (active) setCurriculums(data.curriculums || data.items || []);
+      })
+      .catch(() => {
+        if (active) setCurriculums([]);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [canPublish]);
+
+  useEffect(() => {
+    if (!form.curriculumId) {
+      setModules([]);
+      return;
+    }
+
+    let active = true;
+    userManagementService
+      .listModules(form.curriculumId)
+      .then((data) => {
+        if (active) setModules((data.modules || []).filter((module) => module.status === 'Active'));
+      })
+      .catch(() => {
+        if (active) setModules([]);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [form.curriculumId]);
+
   const updateFilter = (key, value) => {
     setFilters((current) => ({ ...current, [key]: value, offset: 0 }));
   };
@@ -277,33 +341,26 @@ export function AnnouncementCenterPage() {
   const resetForm = () => {
     setForm(initialForm);
     setEditingId(null);
-    setDepartmentPickerOpen(false);
   };
 
   const updateAudience = (audience) => {
     setForm((value) => ({
       ...value,
       audience,
-      departmentIds: ['student', 'teacher'].includes(audience) ? value.departmentIds : [],
-    }));
-    setDepartmentPickerOpen(false);
-  };
-
-  const toggleDepartment = (departmentId) => {
-    const id = Number(departmentId);
-    setForm((value) => ({
-      ...value,
-      departmentIds: value.departmentIds.includes(id)
-        ? value.departmentIds.filter((item) => item !== id)
-        : [...value.departmentIds, id],
+      departmentIds: [],
+      departmentId: ['student', 'teacher'].includes(audience) ? value.departmentId : '',
+      curriculumId: ['student', 'teacher'].includes(audience) ? value.curriculumId : '',
+      courseId: ['student', 'teacher'].includes(audience) ? value.courseId : '',
+      weekNo: ['student', 'teacher'].includes(audience) ? value.weekNo : '',
     }));
   };
 
-  const removeDepartment = (departmentId) => {
-    const id = Number(departmentId);
-    setForm((value) => ({
-      ...value,
-      departmentIds: value.departmentIds.filter((item) => item !== id),
+  const updateScope = (key, value) => {
+    setForm((current) => ({
+      ...current,
+      [key]: value,
+      ...(key === 'departmentId' ? { departmentIds: value ? [Number(value)] : [], curriculumId: '', courseId: '' } : {}),
+      ...(key === 'curriculumId' ? { courseId: '' } : {}),
     }));
   };
 
@@ -454,61 +511,62 @@ export function AnnouncementCenterPage() {
               required
             />
             {showDepartmentTargets ? (
-              <div className="rounded-2xl border border-line bg-page p-3 lg:col-span-3">
-                <button
-                  type="button"
-                  onClick={() => setDepartmentPickerOpen((open) => !open)}
-                  disabled={departmentsLoading || !departments.length}
-                  className="flex min-h-11 w-full items-center justify-between rounded-xl border border-line bg-card px-4 text-left text-sm font-semibold text-ink outline-none transition hover:border-primary disabled:cursor-not-allowed disabled:opacity-70"
-                >
-                  <span>
-                    {departmentsLoading
-                      ? 'Loading departments...'
-                      : selectedDepartments.length
-                        ? `${selectedDepartments.length} department${selectedDepartments.length === 1 ? '' : 's'} selected`
-                        : `Select ${departmentAudienceLabel} departments`}
-                  </span>
-                  <FiChevronDown className={`transition ${departmentPickerOpen ? 'rotate-180' : ''}`} />
-                </button>
-                {departmentPickerOpen ? (
-                  <div className="mt-3 max-h-56 space-y-2 overflow-y-auto rounded-xl border border-line bg-card p-3">
+              <div className="rounded-2xl border border-line bg-page p-4 lg:col-span-3">
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <select
+                    value={form.departmentId}
+                    onChange={(event) => updateScope('departmentId', event.target.value)}
+                    disabled={departmentsLoading || !departments.length}
+                    className="min-h-11 rounded-xl border border-line bg-card px-4 text-sm font-semibold text-ink outline-none focus:border-primary disabled:opacity-70"
+                  >
+                    <option value="">{departmentsLoading ? 'Loading departments...' : 'Select department'}</option>
                     {departments.map((department) => (
-                      <label key={department.id} className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-page">
-                        <input
-                          type="checkbox"
-                          checked={form.departmentIds.includes(Number(department.id))}
-                          onChange={() => toggleDepartment(department.id)}
-                          className="size-4 accent-primary"
-                        />
-                        <span className="text-sm font-semibold text-ink">{department.name}</span>
-                      </label>
+                      <option key={department.id} value={department.id}>{department.name}</option>
                     ))}
-                    <div className="flex justify-end border-t border-line pt-3">
-                      <Button type="button" variant="secondary" onClick={() => setDepartmentPickerOpen(false)}>
-                        OK
-                      </Button>
-                    </div>
-                  </div>
-                ) : null}
-                {selectedDepartments.length ? (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {selectedDepartments.map((department) => (
-                      <span key={department.id} className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-bold text-primary">
-                        {department.name}
-                        <button type="button" onClick={() => removeDepartment(department.id)} aria-label={`Remove ${department.name}`}>
-                          x
-                        </button>
-                      </span>
+                  </select>
+                  <select
+                    value={form.curriculumId}
+                    onChange={(event) => updateScope('curriculumId', event.target.value)}
+                    disabled={!form.departmentId}
+                    className="min-h-11 rounded-xl border border-line bg-card px-4 text-sm font-semibold text-ink outline-none focus:border-primary disabled:opacity-70"
+                  >
+                    <option value="">Select curriculum</option>
+                    {availableCurriculums.map((curriculum) => (
+                      <option key={curriculum.id} value={curriculum.id}>{curriculum.name}</option>
                     ))}
-                  </div>
-                ) : null}
+                  </select>
+                  <select
+                    value={form.courseId}
+                    onChange={(event) => updateScope('courseId', event.target.value)}
+                    disabled={!form.curriculumId}
+                    className="min-h-11 rounded-xl border border-line bg-card px-4 text-sm font-semibold text-ink outline-none focus:border-primary disabled:opacity-70"
+                  >
+                    <option value="">Select subject/module</option>
+                    {modules.map((module) => (
+                      <option key={module.id} value={module.id}>{module.title}</option>
+                    ))}
+                  </select>
+                  <input
+                    value={form.weekNo}
+                    onChange={(event) => updateScope('weekNo', event.target.value)}
+                    type="number"
+                    min="1"
+                    placeholder="Week number"
+                    className="min-h-11 rounded-xl border border-line bg-card px-4 text-sm font-semibold text-ink outline-none focus:border-primary"
+                  />
+                </div>
+                <p className="mt-2 text-xs font-semibold text-muted">
+                  Only {departmentAudienceLabel}s under the selected department, curriculum, subject/module, and week will receive and view this announcement.
+                </p>
                 {!departmentsLoading && !departments.length ? (
                   <p className="mt-2 text-xs font-semibold text-red-600">No active departments found.</p>
-                ) : (
-                  <p className="mt-2 text-xs font-semibold text-muted">
-                    Only {departmentAudienceLabel}s in the selected departments will receive and view this announcement.
-                  </p>
-                )}
+                ) : null}
+                {form.departmentId && !availableCurriculums.length ? (
+                  <p className="mt-2 text-xs font-semibold text-red-600">No active curriculums found under this department.</p>
+                ) : null}
+                {form.curriculumId && !modules.length ? (
+                  <p className="mt-2 text-xs font-semibold text-red-600">No active subjects/modules found under this curriculum.</p>
+                ) : null}
               </div>
             ) : null}
             <div className="flex gap-3 lg:col-span-3">

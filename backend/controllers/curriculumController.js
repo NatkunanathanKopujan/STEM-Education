@@ -83,4 +83,67 @@ export const curriculumController = {
       return next(error);
     }
   },
+
+  listModules: async (req, res, next) => {
+    try {
+      return sendSuccess(
+        res,
+        await curriculumService.listModules(req.params.id, req.user),
+        'Subject/Modules fetched successfully',
+      );
+    } catch (error) {
+      return next(error);
+    }
+  },
+
+  createModule: async (req, res, next) => {
+    try {
+      const module = await curriculumService.createModule(req.params.id, req.body, req.user);
+      await auditAction({
+        user: req.user,
+        action: 'curriculum_module_created',
+        module: 'curriculum',
+        description: `Subject/Module ${module.title || module.id} created`,
+        ...requestMeta(req),
+        metadata: { curriculumId: Number(req.params.id), moduleId: module.id },
+      });
+      return sendSuccess(res, module, 'Subject/Module created successfully', 201);
+    } catch (error) {
+      return next(error);
+    }
+  },
+
+  updateModule: async (req, res, next) => {
+    try {
+      const module = await curriculumService.updateModule(req.params.id, req.params.moduleId, req.body, req.user);
+      await auditAction({
+        user: req.user,
+        action: 'curriculum_module_updated',
+        module: 'curriculum',
+        description: `Subject/Module ${module.title || module.id} updated`,
+        ...requestMeta(req),
+        metadata: { curriculumId: Number(req.params.id), moduleId: Number(req.params.moduleId) },
+      });
+      return sendSuccess(res, module, 'Subject/Module updated successfully');
+    } catch (error) {
+      return next(error);
+    }
+  },
+
+  removeModule: async (req, res, next) => {
+    try {
+      const result = await curriculumService.removeModule(req.params.id, req.params.moduleId, req.user);
+      await auditAction({
+        user: req.user,
+        action: 'curriculum_module_deleted',
+        module: 'curriculum',
+        description: `Subject/Module ${req.params.moduleId} deleted`,
+        ...requestMeta(req),
+        metadata: { curriculumId: Number(req.params.id), moduleId: Number(req.params.moduleId) },
+      });
+      return sendSuccess(res, result, 'Subject/Module deleted successfully');
+    } catch (error) {
+      return next(error);
+    }
+  },
 };

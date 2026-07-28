@@ -1,5 +1,7 @@
 import { ROLES } from '../config/roles.js';
 import { AppError } from '../utils/appError.js';
+import { findDepartmentById } from '../repositories/departmentRepository.js';
+import { findCurriculumById, findCurriculumModuleById } from '../repositories/curriculumRepository.js';
 import {
   countUnreadNotifications,
   createAnnouncement,
@@ -18,6 +20,7 @@ import {
   updateAnnouncement,
   updateNotificationPreferences,
 } from '../repositories/notificationRepository.js';
+import { findTeacherDepartmentsByUserId } from '../repositories/userManagementRepository.js';
 import { auditAction } from './securityService.js';
 
 const announcementPublishRoles = [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.TEACHER];
@@ -168,6 +171,65 @@ export async function getAnnouncement(user, id) {
   return announcement;
 }
 
+function getUserId(user) {
+  return user?.id || user?.userId;
+}
+
+async function resolveAnnouncementScope(user, payload = {}) {
+  const targetRole = payload.audienceRole;
+  if (!['student', 'teacher'].includes(targetRole)) {
+    return {
+      departmentId: null,
+      curriculumId: null,
+      courseId: null,
+      weekNo: null,
+    };
+  }
+
+  const departmentId = Number(payload.departmentId || 0);
+  const curriculumId = Number(payload.curriculumId || 0);
+  const courseId = Number(payload.courseId || 0);
+  const weekNo = Number(payload.weekNo || 0);
+
+  if (!departmentId) throw new AppError('Department is required for student or teacher announcements', 400);
+  if (!curriculumId) throw new AppError('Curriculum is required for student or teacher announcements', 400);
+  if (!courseId) throw new AppError('Subject/Module is required for student or teacher announcements', 400);
+  if (!weekNo || weekNo < 1) throw new AppError('Week number is required for student or teacher announcements', 400);
+
+  const department = await findDepartmentById(departmentId);
+  if (!department || department.status !== 'Active') {
+    throw new AppError('Select a valid active department', 400);
+  }
+  if (user.role === ROLES.ADMIN && Number(department.createdBy) !== Number(getUserId(user))) {
+    throw new AppError('You can only publish announcements under your campus departments', 403);
+  }
+  if (user.role === ROLES.TEACHER) {
+    const assignedDepartments = await findTeacherDepartmentsByUserId(getUserId(user));
+    const assignedIds = assignedDepartments.map((item) => Number(item.departmentId));
+    if (!assignedIds.includes(departmentId)) {
+      throw new AppError('You can only publish announcements under your assigned departments', 403);
+    }
+  }
+
+  const curriculum = await findCurriculumById(curriculumId);
+  if (!curriculum || curriculum.status !== 'Active') {
+    throw new AppError('Select a valid active curriculum', 400);
+  }
+  if (Number(curriculum.departmentId) !== departmentId) {
+    throw new AppError('Selected curriculum does not belong to the selected department', 400);
+  }
+  if (user.role === ROLES.ADMIN && Number(curriculum.createdBy) !== Number(getUserId(user))) {
+    throw new AppError('You can only publish announcements under your campus curriculums', 403);
+  }
+
+  const module = await findCurriculumModuleById(curriculumId, courseId);
+  if (!module || module.status !== 'Active') {
+    throw new AppError('Select a valid active subject/module', 400);
+  }
+
+  return { departmentId, curriculumId, courseId, weekNo };
+}
+
 async function notifyAnnouncementAudience(announcement, createdBy) {
   if (announcement.status !== 'published') {
     return { delivered: 0 };
@@ -184,6 +246,12 @@ async function notifyAnnouncementAudience(announcement, createdBy) {
   const users = await listUsersForAnnouncement({
     audienceRole: announcement.audienceRole,
     targets: announcement.targets || [],
+    scope: {
+      departmentId: announcement.departmentId,
+      curriculumId: announcement.curriculumId,
+      courseId: announcement.courseId,
+      weekNo: announcement.weekNo,
+    },
   });
 
   const notificationIds = await Promise.all(
@@ -210,8 +278,10 @@ export async function publishAnnouncement(user, payload) {
     throw new AppError('You do not have permission to publish announcements', 403);
   }
 
+  const scope = await resolveAnnouncementScope(user, payload);
   const announcement = {
     ...payload,
+    ...scope,
     createdBy: user.id,
     status: payload.status || 'published',
     publishDate: payload.publishDate || new Date(),
@@ -241,7 +311,16 @@ export async function editAnnouncement(user, id, payload) {
     throw new AppError('Announcement not found', 404);
   }
 
-  const updated = await updateAnnouncement(id, payload);
+  const nextPayload = {
+    ...existing,
+    ...payload,
+    audienceRole: Object.prototype.hasOwnProperty.call(payload, 'audienceRole')
+      ? payload.audienceRole
+      : existing.audienceRole,
+  };
+  const scope = await resolveAnnouncementScope(user, nextPayload);
+  const scopedPayload = { ...payload, ...scope };
+  const updated = await updateAnnouncement(id, scopedPayload);
 
   if (!updated && !payload.targets) {
     throw new AppError('Announcement not found or no changes supplied', 404);

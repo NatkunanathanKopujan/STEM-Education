@@ -39,6 +39,9 @@ export const fileListValidator = [
 export const fileIdValidator = [param('id').isInt({ min: 1 }).withMessage('Valid file ID is required')];
 
 export const uploadMetadataValidator = [
+  body('departmentId').optional(optionalField).isInt({ min: 1 }),
+  body('curriculumId').optional(optionalField).isInt({ min: 1 }),
+  body('courseId').optional(optionalField).isInt({ min: 1 }),
   body('curriculum').optional(optionalField).trim().isLength({ max: 150 }),
   body('subject').optional(optionalField).trim().isLength({ max: 150 }),
   body('weekNo').optional(optionalField).isInt({ min: 1 }),
@@ -56,6 +59,9 @@ export const uploadMetadataValidator = [
 
 export const fileUpdateValidator = [
   ...fileIdValidator,
+  body('departmentId').optional(optionalField).isInt({ min: 1 }),
+  body('curriculumId').optional(optionalField).isInt({ min: 1 }),
+  body('courseId').optional(optionalField).isInt({ min: 1 }),
   body('curriculum').optional(optionalField).trim().isLength({ max: 150 }),
   body('subject').optional(optionalField).trim().isLength({ max: 150 }),
   body('weekNo').optional(optionalField).isInt({ min: 1 }),

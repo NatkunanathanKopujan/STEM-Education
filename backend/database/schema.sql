@@ -276,6 +276,10 @@ CREATE TABLE IF NOT EXISTS announcements (
   body TEXT NOT NULL,
   attachment_path VARCHAR(255) NULL,
   audience_role ENUM('super-admin', 'admin', 'teacher', 'student') NULL,
+  department_id BIGINT UNSIGNED NULL,
+  curriculum_id BIGINT UNSIGNED NULL,
+  course_id BIGINT UNSIGNED NULL,
+  week_no INT NULL,
   priority ENUM('normal', 'important', 'urgent') NOT NULL DEFAULT 'normal',
   status ENUM('draft', 'published', 'expired') NOT NULL DEFAULT 'draft',
   expiry_at TIMESTAMP NULL,
@@ -283,7 +287,11 @@ CREATE TABLE IF NOT EXISTS announcements (
   publish_at TIMESTAMP NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  CONSTRAINT fk_announcements_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+  CONSTRAINT fk_announcements_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+  INDEX idx_announcements_department_id (department_id),
+  INDEX idx_announcements_curriculum_id (curriculum_id),
+  INDEX idx_announcements_course_id (course_id),
+  INDEX idx_announcements_week_no (week_no)
 );
 
 CREATE TABLE IF NOT EXISTS announcement_targets (

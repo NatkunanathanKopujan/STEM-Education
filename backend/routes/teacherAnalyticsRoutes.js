@@ -9,6 +9,7 @@ import {
   studentAnalyticsController,
   topicAnalyticsController,
 } from '../controllers/teacherAnalyticsController.js';
+import { weeklyPlanController } from '../controllers/weeklyPlanController.js';
 import { authenticate } from '../middleware/authMiddleware.js';
 import { authorize } from '../middleware/rbacMiddleware.js';
 import { validateRequest } from '../middleware/validateRequest.js';
@@ -18,6 +19,12 @@ import {
   reportQueryValidator,
   studentAnalyticsValidator,
 } from '../validators/teacherAnalyticsValidators.js';
+import {
+  weeklyPlanCreateValidator,
+  weeklyPlanIdValidator,
+  weeklyPlanQueryValidator,
+  weeklyPlanUpdateValidator,
+} from '../validators/weeklyPlanValidators.js';
 
 const router = Router();
 
@@ -31,5 +38,9 @@ router.get('/analytics/question-exposure', questionExposureController);
 router.get('/analytics/reports', reportQueryValidator, validateRequest, reportsController);
 router.get('/analytics/attempts/:attemptId/review', attemptReviewValidator, validateRequest, attemptReviewController);
 router.post('/reports/export', exportReportValidator, validateRequest, exportReportController);
+router.get('/weekly-plans', weeklyPlanQueryValidator, validateRequest, weeklyPlanController.index);
+router.post('/weekly-plans', weeklyPlanCreateValidator, validateRequest, weeklyPlanController.create);
+router.put('/weekly-plans/:id', weeklyPlanUpdateValidator, validateRequest, weeklyPlanController.update);
+router.delete('/weekly-plans/:id', weeklyPlanIdValidator, validateRequest, weeklyPlanController.remove);
 
 export default router;

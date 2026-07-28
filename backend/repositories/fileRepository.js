@@ -6,7 +6,7 @@ import { ensureUserAssignmentSchema, findTeacherDepartmentsByUserId } from './us
 const fileSelect = `SELECT f.id, f.uuid, f.file_name AS fileName, f.original_file_name AS originalFileName,
   f.file_type AS fileType, f.mime_type AS mimeType, f.file_size AS fileSize, f.file_path AS filePath,
   f.storage_provider AS storageProvider, f.uploaded_by AS uploadedBy, f.uploaded_role AS uploadedRole,
-  f.curriculum, f.subject, f.week_no AS weekNo, f.topic, f.logical_folder AS logicalFolder,
+  f.curriculum, f.subject, f.course_id AS courseId, f.week_no AS weekNo, f.topic, f.logical_folder AS logicalFolder,
   f.version, f.current_version_id AS currentVersionId, f.description, f.visibility, f.audience, f.status,
   f.tags, f.download_count AS downloadCount, f.view_count AS viewCount, f.created_at AS createdAt,
   f.updated_at AS updatedAt, u.full_name AS owner,
@@ -22,6 +22,26 @@ const fileSelect = `SELECT f.id, f.uuid, f.file_name AS fileName, f.original_fil
 
 let fileAudienceSchemaReady = false;
 let fileDepartmentSchemaReady = false;
+let fileCourseSchemaReady = false;
+
+export async function ensureFileCourseSchema() {
+  if (fileCourseSchemaReady) return;
+
+  const [columns] = await db.query(
+    `SELECT COLUMN_NAME
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'files'
+      AND COLUMN_NAME = 'course_id'`,
+  );
+
+  if (!columns.length) {
+    await db.query('ALTER TABLE files ADD COLUMN course_id BIGINT UNSIGNED NULL AFTER subject');
+    await db.query('CREATE INDEX idx_files_course_id ON files (course_id)');
+  }
+
+  fileCourseSchemaReady = true;
+}
 
 export async function ensureFileAudienceSchema() {
   if (fileAudienceSchemaReady) return;
@@ -84,8 +104,7 @@ function applyRoleScope(user, where, values) {
         AND f.uploaded_role <> ?
         AND f.audience IN (?, ?)
         AND (
-          f.audience <> ?
-          OR NOT EXISTS (
+          NOT EXISTS (
             SELECT 1
             FROM file_departments scoped_fd_any
             WHERE scoped_fd_any.file_id = f.id
@@ -102,7 +121,7 @@ function applyRoleScope(user, where, values) {
         )
       )
     )`);
-    values.push(getUserId(user), 'public', 'active', ROLES.STUDENT, 'all', ROLES.TEACHER, ROLES.TEACHER, getUserId(user));
+    values.push(getUserId(user), 'public', 'active', ROLES.STUDENT, 'all', ROLES.TEACHER, getUserId(user));
     return;
   }
 
@@ -120,11 +139,6 @@ function applyRoleScope(user, where, values) {
             FROM students scoped_student
             INNER JOIN student_departments scoped_sd
               ON scoped_sd.student_id = scoped_student.id
-            INNER JOIN teacher_departments scoped_td
-              ON scoped_td.department_id = scoped_sd.department_id
-            INNER JOIN teachers scoped_teacher
-              ON scoped_teacher.id = scoped_td.teacher_id
-              AND scoped_teacher.user_id = f.uploaded_by
             WHERE scoped_student.user_id = ?
               AND (
                 NOT EXISTS (
@@ -242,6 +256,7 @@ function sortClause(sort = 'newest') {
 export async function listFiles(user, filters = {}) {
   await ensureFileAudienceSchema();
   await ensureFileDepartmentSchema();
+  await ensureFileCourseSchema();
   if (user.role === ROLES.STUDENT) {
     await ensureUserAssignmentSchema();
   }
@@ -288,6 +303,7 @@ export async function listFiles(user, filters = {}) {
 export async function findFileById(id) {
   await ensureFileAudienceSchema();
   await ensureFileDepartmentSchema();
+  await ensureFileCourseSchema();
   const [rows] = await db.execute(`${fileSelect} WHERE f.id = ? LIMIT 1`, [id]);
   if (!rows[0]) return null;
 
@@ -331,7 +347,7 @@ export async function canAccessFileRecord(user, file, action = 'read') {
   if (
     action === 'read' &&
     user.role === ROLES.TEACHER &&
-    file.audience === ROLES.TEACHER &&
+    ['all', ROLES.TEACHER].includes(file.audience) &&
     file.uploadedBy !== getUserId(user)
   ) {
     await ensureUserAssignmentSchema();
@@ -363,7 +379,7 @@ export async function canAccessFileRecord(user, file, action = 'read') {
   if (
     action === 'read' &&
     user.role === ROLES.STUDENT &&
-    file.uploadedRole === ROLES.TEACHER &&
+    ['all', ROLES.STUDENT].includes(file.audience) &&
     file.uploadedBy !== getUserId(user)
   ) {
     await ensureUserAssignmentSchema();
@@ -372,12 +388,7 @@ export async function canAccessFileRecord(user, file, action = 'read') {
        FROM students scoped_student
        INNER JOIN student_departments scoped_sd
         ON scoped_sd.student_id = scoped_student.id
-       INNER JOIN teacher_departments scoped_td
-        ON scoped_td.department_id = scoped_sd.department_id
-       INNER JOIN teachers scoped_teacher
-        ON scoped_teacher.id = scoped_td.teacher_id
        WHERE scoped_student.user_id = ?
-        AND scoped_teacher.user_id = ?
         AND (
           NOT EXISTS (
             SELECT 1
@@ -392,7 +403,7 @@ export async function canAccessFileRecord(user, file, action = 'read') {
           )
         )
        LIMIT 1`,
-      [getUserId(user), file.uploadedBy, file.id, file.id],
+      [getUserId(user), file.id, file.id],
     );
     return rows.length > 0;
   }
@@ -420,12 +431,13 @@ export async function findDuplicate({ originalFileName, fileSize, uploadedBy, cu
 export async function createFileRecord(payload) {
   await ensureFileAudienceSchema();
   await ensureFileDepartmentSchema();
+  await ensureFileCourseSchema();
   const [result] = await db.execute(
     `INSERT INTO files
       (uuid, file_name, original_file_name, file_type, mime_type, file_size, file_path,
-       storage_provider, uploaded_by, uploaded_role, curriculum, subject, week_no, topic,
+       storage_provider, uploaded_by, uploaded_role, curriculum, subject, course_id, week_no, topic,
        logical_folder, version, description, visibility, audience, status, tags, checksum)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       generateId(),
       payload.fileName,
@@ -439,6 +451,7 @@ export async function createFileRecord(payload) {
       payload.uploadedRole,
       payload.curriculum || null,
       payload.subject || null,
+      payload.courseId || null,
       payload.weekNo || null,
       payload.topic || null,
       payload.logicalFolder || null,
@@ -528,8 +541,10 @@ export async function createFileVersion(fileId, payload) {
 export async function updateFileRecord(id, payload) {
   await ensureFileAudienceSchema();
   await ensureFileDepartmentSchema();
-  const allowed = ['curriculum', 'subject', 'weekNo', 'topic', 'description', 'visibility', 'audience', 'status', 'tags'];
+  await ensureFileCourseSchema();
+  const allowed = ['curriculum', 'subject', 'courseId', 'weekNo', 'topic', 'description', 'visibility', 'audience', 'status', 'tags'];
   const columns = {
+    courseId: 'course_id',
     weekNo: 'week_no',
   };
   const assignments = [];
@@ -619,6 +634,7 @@ export async function recordPreview({ fileId, userId, ipAddress, deviceInfo }) {
 export async function getStorageStatistics(user, providerName = 'local') {
   await ensureFileAudienceSchema();
   await ensureFileDepartmentSchema();
+  await ensureFileCourseSchema();
   const where = [];
   const values = [];
   applyRoleScope(user, where, values);

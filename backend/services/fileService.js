@@ -6,6 +6,7 @@ import { ROLES } from '../config/roles.js';
 import { AppError } from '../utils/appError.js';
 import { getFileCategory, getFileExtension } from '../utils/fileHelper.js';
 import { findDepartmentById } from '../repositories/departmentRepository.js';
+import { findCurriculumById, findCurriculumModuleById } from '../repositories/curriculumRepository.js';
 import {
   canAccessFile,
   canAccessFileRecord,
@@ -48,6 +49,60 @@ function buildLogicalFolder({ curriculum, subject, weekNo, topic, uploadedRole }
   return parts.filter(Boolean).join('/');
 }
 
+async function resolveLearningScope(user, body = {}) {
+  if (user.role === ROLES.STUDENT || body.parentFileId) return {};
+
+  const departmentId = Number(body.departmentId || body.departmentIds || 0);
+  const curriculumId = Number(body.curriculumId || 0);
+  const courseId = Number(body.courseId || 0);
+  const weekNo = Number(body.weekNo || 0);
+
+  if (!departmentId) throw new AppError('Department is required', 400);
+  if (!curriculumId) throw new AppError('Curriculum is required', 400);
+  if (!courseId) throw new AppError('Subject/Module is required', 400);
+  if (!weekNo || weekNo < 1) throw new AppError('Week number is required', 400);
+
+  const department = await findDepartmentById(departmentId);
+  if (!department || department.status !== 'Active') {
+    throw new AppError('Select a valid active department', 400);
+  }
+  if (user.role === ROLES.ADMIN && Number(department.createdBy) !== Number(getUserId(user))) {
+    throw new AppError('You can only upload materials under your campus departments', 403);
+  }
+  if (user.role === ROLES.TEACHER) {
+    const assignedDepartments = await findTeacherAssignableFileDepartments(getUserId(user));
+    const assignedIds = assignedDepartments.map((item) => Number(item.departmentId));
+    if (!assignedIds.includes(departmentId)) {
+      throw new AppError('You can only upload materials under your assigned departments', 403);
+    }
+  }
+
+  const curriculum = await findCurriculumById(curriculumId);
+  if (!curriculum || curriculum.status !== 'Active') {
+    throw new AppError('Select a valid active curriculum', 400);
+  }
+  if (Number(curriculum.departmentId) !== departmentId) {
+    throw new AppError('Selected curriculum does not belong to the selected department', 400);
+  }
+  if (user.role === ROLES.ADMIN && Number(curriculum.createdBy) !== Number(getUserId(user))) {
+    throw new AppError('You can only upload materials under your campus curriculums', 403);
+  }
+
+  const module = await findCurriculumModuleById(curriculumId, courseId);
+  if (!module || module.status !== 'Active') {
+    throw new AppError('Select a valid active subject/module', 400);
+  }
+
+  return {
+    departmentId,
+    curriculumId,
+    courseId,
+    curriculum: curriculum.name,
+    subject: module.title,
+    weekNo,
+  };
+}
+
 async function calculateChecksum(filePath) {
   const hash = crypto.createHash('sha256');
   const stream = fs.createReadStream(filePath);
@@ -80,6 +135,7 @@ function normalizeMetadata(user, file, body = {}) {
     uploadedRole,
     curriculum: body.curriculum,
     subject: body.subject,
+    courseId: body.courseId ? Number(body.courseId) : null,
     weekNo: body.weekNo ? Number(body.weekNo) : null,
     topic: body.topic,
     description: body.description,
@@ -100,7 +156,12 @@ function normalizeDepartmentIds(value) {
 }
 
 async function resolveFileTargetDepartments(user, body = {}) {
-  if (![ROLES.STUDENT, ROLES.TEACHER].includes(body.audience)) {
+  const learningDepartmentId = Number(body.departmentId || 0);
+  if (learningDepartmentId) {
+    body.departmentIds = [learningDepartmentId];
+  }
+
+  if (!learningDepartmentId && ![ROLES.STUDENT, ROLES.TEACHER].includes(body.audience)) {
     return [];
   }
 
@@ -165,8 +226,10 @@ export async function uploadManagedFile(user, file, body = {}) {
   ensureStudentUploadAllowed(user, body);
   if (!file) throw new AppError('File is required', 400);
 
-  const targetDepartmentIds = await resolveFileTargetDepartments(user, body);
-  const metadata = normalizeMetadata(user, file, body);
+  const learningScope = await resolveLearningScope(user, body);
+  const scopedBody = { ...body, ...learningScope };
+  const targetDepartmentIds = await resolveFileTargetDepartments(user, scopedBody);
+  const metadata = normalizeMetadata(user, file, scopedBody);
   metadata.checksum = await calculateChecksum(file.path);
 
   if (body.parentFileId) {
@@ -257,15 +320,21 @@ export async function getFile(user, id) {
 export async function updateFile(user, id, payload) {
   const file = await getFile(user, id);
   ensureManageAllowed(user, file);
-  const nextAudience = payload.audience || file.audience;
-  const targetDepartmentIds = await resolveFileTargetDepartments(user, {
-    ...payload,
-    audience: nextAudience,
-  });
-  await updateFileRecord(file.id, payload);
-  if ([ROLES.STUDENT, ROLES.TEACHER].includes(nextAudience)) {
+  const shouldUpdateLearningScope = payload.departmentId || payload.curriculumId || payload.courseId;
+  const learningScope = shouldUpdateLearningScope ? await resolveLearningScope(user, payload) : {};
+  const scopedPayload = { ...payload, ...learningScope };
+  const nextAudience = scopedPayload.audience || file.audience;
+  const shouldUpdateDepartmentScope = shouldUpdateLearningScope || payload.audience !== undefined || payload.departmentIds !== undefined;
+  const targetDepartmentIds = shouldUpdateDepartmentScope
+    ? await resolveFileTargetDepartments(user, {
+      ...scopedPayload,
+      audience: nextAudience,
+    })
+    : null;
+  await updateFileRecord(file.id, scopedPayload);
+  if (targetDepartmentIds) {
     await syncFileDepartments(file.id, targetDepartmentIds);
-  } else if (payload.audience && ![ROLES.STUDENT, ROLES.TEACHER].includes(payload.audience)) {
+  } else if (scopedPayload.audience && ![ROLES.STUDENT, ROLES.TEACHER].includes(scopedPayload.audience)) {
     await syncFileDepartments(file.id, []);
   }
   const updated = await findFileById(file.id);

@@ -25,4 +25,15 @@ describe('RBAC middleware', () => {
 
     expect(next).toHaveBeenCalledTimes(1);
   });
+
+  test('allows every admin account to manage learning materials', () => {
+    const req = { user: testUsers.admin };
+    const res = createMockResponse();
+    const next = createMockNext();
+
+    checkPermissions(PERMISSIONS.MATERIALS_WRITE)(req, res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(res.status).not.toHaveBeenCalled();
+  });
 });

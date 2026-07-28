@@ -29,6 +29,7 @@ import { ConfirmationDialog, Modal } from '../../components/ui/Modal';
 import { useAuth } from '../../hooks/useAuth';
 import { departmentService } from '../../services/departmentService';
 import { fileService } from '../../services/fileService';
+import { userManagementService } from '../../services/userManagementService';
 
 const acceptedTypes = '.pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx,.zip,.jpg,.jpeg,.png,.webp,.mp4,.mov,.avi,.mp3,.wav';
 const audienceOptions = [
@@ -67,6 +68,9 @@ function formatBytes(value = 0) {
 
 function buildDefaultMetadata() {
   return {
+    departmentId: '',
+    curriculumId: '',
+    courseId: '',
     curriculum: '',
     subject: '',
     weekNo: '',
@@ -76,7 +80,6 @@ function buildDefaultMetadata() {
     audience: 'all',
     status: 'active',
     tags: '',
-    departmentIds: [],
   };
 }
 
@@ -122,28 +125,17 @@ export function FileManagerPage({
   const [archiveTarget, setArchiveTarget] = useState(null);
   const [editForm, setEditForm] = useState(buildDefaultMetadata);
   const [departments, setDepartments] = useState([]);
-  const [departmentPickerOpen, setDepartmentPickerOpen] = useState(false);
-  const [editDepartmentPickerOpen, setEditDepartmentPickerOpen] = useState(false);
+  const [curriculums, setCurriculums] = useState([]);
+  const [modules, setModules] = useState([]);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
 
   const totalPages = useMemo(() => Math.max(Math.ceil((files.total || 0) / (files.limit || 20)), 1), [files]);
-  const isDepartmentTargetAudience = (audience) => ['student', 'teacher'].includes(audience);
-  const showDepartmentTargets = role !== 'student' && isDepartmentTargetAudience(metadata.audience);
-  const showEditDepartmentTargets = role !== 'student' && isDepartmentTargetAudience(editForm.audience);
-  const targetAudienceLabel = metadata.audience === 'teacher' ? 'teachers' : 'students';
-  const editTargetAudienceLabel = editForm.audience === 'teacher' ? 'teachers' : 'students';
-
-  const selectedUploadDepartments = useMemo(
-    () => departments.filter((department) => metadata.departmentIds.includes(Number(department.id))),
-    [departments, metadata.departmentIds],
-  );
-
-  const selectedEditDepartments = useMemo(
-    () => departments.filter((department) => editForm.departmentIds.includes(Number(department.id))),
-    [departments, editForm.departmentIds],
+  const availableCurriculums = useMemo(
+    () => curriculums.filter((curriculum) => !metadata.departmentId || Number(curriculum.departmentId) === Number(metadata.departmentId)),
+    [curriculums, metadata.departmentId],
   );
 
   const loadData = useCallback(async () => {
@@ -185,38 +177,74 @@ export function FileManagerPage({
     };
   }, [role]);
 
+  useEffect(() => {
+    if (role === 'student') return;
+
+    let active = true;
+    userManagementService
+      .list('curriculum', { status: 'Active', limit: 100 })
+      .then((data) => {
+        if (active) setCurriculums(data.curriculums || data.items || []);
+      })
+      .catch(() => {
+        if (active) setCurriculums([]);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [role]);
+
+  useEffect(() => {
+    if (!metadata.curriculumId) {
+      setModules([]);
+      return;
+    }
+
+    let active = true;
+    userManagementService
+      .listModules(metadata.curriculumId)
+      .then((data) => {
+        if (active) setModules((data.modules || []).filter((module) => module.status === 'Active'));
+      })
+      .catch(() => {
+        if (active) setModules([]);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [metadata.curriculumId]);
+
+  const updateMetadataField = (key, value) => {
+    setMetadata((current) => {
+      if (key === 'departmentId') {
+        return { ...current, departmentId: value, curriculumId: '', courseId: '', curriculum: '', subject: '' };
+      }
+      if (key === 'curriculumId') {
+        const selected = curriculums.find((curriculum) => Number(curriculum.id) === Number(value));
+        return {
+          ...current,
+          curriculumId: value,
+          courseId: '',
+          curriculum: selected?.name || '',
+          subject: '',
+        };
+      }
+      if (key === 'courseId') {
+        const selected = modules.find((module) => Number(module.id) === Number(value));
+        return { ...current, courseId: value, subject: selected?.title || '' };
+      }
+      return { ...current, [key]: value };
+    });
+  };
+
   const enqueueFiles = (fileList) => {
     setQueue(Array.from(fileList || []).map((file) => ({ file, progress: 0, status: 'queued', error: '' })));
   };
 
   const selectedFiles = (event) => {
     enqueueFiles(event.target.files);
-  };
-
-  const toggleMetadataDepartment = (departmentId) => {
-    setMetadata((current) => {
-      const id = Number(departmentId);
-      const selected = current.departmentIds.includes(id);
-      return {
-        ...current,
-        departmentIds: selected
-          ? current.departmentIds.filter((value) => value !== id)
-          : [...current.departmentIds, id],
-      };
-    });
-  };
-
-  const toggleEditDepartment = (departmentId) => {
-    setEditForm((current) => {
-      const id = Number(departmentId);
-      const selected = current.departmentIds.includes(id);
-      return {
-        ...current,
-        departmentIds: selected
-          ? current.departmentIds.filter((value) => value !== id)
-          : [...current.departmentIds, id],
-      };
-    });
   };
 
   const uploadQueue = async (onlyFailed = false) => {
@@ -344,7 +372,7 @@ export function FileManagerPage({
       status: file.status || 'active',
       audience: file.audience || 'all',
       tags: file.tags || '',
-      departmentIds: file.targetDepartmentIds || [],
+      departmentId: file.targetDepartmentIds?.[0] || '',
     });
   };
 
@@ -429,91 +457,80 @@ export function FileManagerPage({
             <span className="mt-1 block text-xs text-muted">PDF, Office files, ZIP, images, videos, and audio-ready formats.</span>
           </label>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            {['curriculum', 'subject', 'weekNo', 'topic'].map((field) => (
-              <input
-                key={field}
-                value={metadata[field]}
-                onChange={(event) => setMetadata((current) => ({ ...current, [field]: event.target.value }))}
-                placeholder={field === 'weekNo' ? 'Week' : field}
-                className="min-h-11 rounded-xl border border-line px-3 text-sm outline-none focus:border-primary"
-              />
-            ))}
+            <select
+              value={metadata.departmentId}
+              onChange={(event) => updateMetadataField('departmentId', event.target.value)}
+              className="min-h-11 rounded-xl border border-line px-3 text-sm outline-none focus:border-primary"
+            >
+              <option value="">Select department</option>
+              {departments.map((department) => (
+                <option key={department.id} value={department.id}>{department.name}</option>
+              ))}
+            </select>
+            <select
+              value={metadata.curriculumId}
+              onChange={(event) => updateMetadataField('curriculumId', event.target.value)}
+              disabled={!metadata.departmentId}
+              className="min-h-11 rounded-xl border border-line px-3 text-sm outline-none focus:border-primary disabled:bg-page disabled:text-muted"
+            >
+              <option value="">Select curriculum</option>
+              {availableCurriculums.map((curriculum) => (
+                <option key={curriculum.id} value={curriculum.id}>{curriculum.name}</option>
+              ))}
+            </select>
+            <select
+              value={metadata.courseId}
+              onChange={(event) => updateMetadataField('courseId', event.target.value)}
+              disabled={!metadata.curriculumId}
+              className="min-h-11 rounded-xl border border-line px-3 text-sm outline-none focus:border-primary disabled:bg-page disabled:text-muted"
+            >
+              <option value="">Select subject/module</option>
+              {modules.map((module) => (
+                <option key={module.id} value={module.id}>{module.title}</option>
+              ))}
+            </select>
+            <input
+              type="number"
+              min="1"
+              value={metadata.weekNo}
+              onChange={(event) => updateMetadataField('weekNo', event.target.value)}
+              placeholder="Week number"
+              className="min-h-11 rounded-xl border border-line px-3 text-sm outline-none focus:border-primary"
+            />
+            <input
+              value={metadata.topic}
+              onChange={(event) => updateMetadataField('topic', event.target.value)}
+              placeholder="Topic"
+              className="min-h-11 rounded-xl border border-line px-3 text-sm outline-none focus:border-primary sm:col-span-2"
+            />
           </div>
           <textarea
             value={metadata.description}
-            onChange={(event) => setMetadata((current) => ({ ...current, description: event.target.value }))}
+            onChange={(event) => updateMetadataField('description', event.target.value)}
             placeholder="Description"
             className="mt-3 min-h-20 w-full rounded-xl border border-line px-3 py-2 text-sm outline-none focus:border-primary"
           />
           <input
             value={metadata.versionNote || ''}
-            onChange={(event) => setMetadata((current) => ({ ...current, versionNote: event.target.value }))}
+            onChange={(event) => updateMetadataField('versionNote', event.target.value)}
             placeholder="Version note"
             className="mt-3 min-h-11 w-full rounded-xl border border-line px-3 text-sm outline-none focus:border-primary"
           />
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <select value={metadata.visibility} onChange={(event) => setMetadata((current) => ({ ...current, visibility: event.target.value }))} className="min-h-11 rounded-xl border border-line px-3 text-sm">
+            <select value={metadata.visibility} onChange={(event) => updateMetadataField('visibility', event.target.value)} className="min-h-11 rounded-xl border border-line px-3 text-sm">
               <option value="private">Private</option>
               <option value="public">Public</option>
               <option value="restricted">Restricted</option>
               <option value="draft">Draft</option>
             </select>
-            <select value={metadata.audience} onChange={(event) => setMetadata((current) => ({ ...current, audience: event.target.value }))} className="min-h-11 rounded-xl border border-line px-3 text-sm">
+            <select value={metadata.audience} onChange={(event) => updateMetadataField('audience', event.target.value)} className="min-h-11 rounded-xl border border-line px-3 text-sm">
               {audienceOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
-            <input value={metadata.tags} onChange={(event) => setMetadata((current) => ({ ...current, tags: event.target.value }))} placeholder="Tags" className="min-h-11 rounded-xl border border-line px-3 text-sm sm:col-span-2" />
+            <input value={metadata.tags} onChange={(event) => updateMetadataField('tags', event.target.value)} placeholder="Tags" className="min-h-11 rounded-xl border border-line px-3 text-sm sm:col-span-2" />
           </div>
-          {showDepartmentTargets ? (
-            <div className="mt-3 rounded-2xl border border-line bg-page p-3">
-              <button
-                type="button"
-                onClick={() => setDepartmentPickerOpen((open) => !open)}
-                className="flex min-h-11 w-full items-center justify-between rounded-xl border border-line bg-card px-3 text-left text-sm font-semibold text-ink"
-              >
-                <span>
-                  {selectedUploadDepartments.length
-                    ? `${selectedUploadDepartments.length} department${selectedUploadDepartments.length === 1 ? '' : 's'} selected`
-                    : `Select ${targetAudienceLabel} departments`}
-                </span>
-                <span className="text-primary">{departmentPickerOpen ? 'Close' : 'Choose'}</span>
-              </button>
-              {departmentPickerOpen ? (
-                <div className="mt-3 max-h-52 space-y-2 overflow-y-auto rounded-xl border border-line bg-card p-3">
-                  {departments.map((department) => (
-                    <label key={department.id} className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-page">
-                      <input
-                        type="checkbox"
-                        checked={metadata.departmentIds.includes(Number(department.id))}
-                        onChange={() => toggleMetadataDepartment(department.id)}
-                        className="size-4 accent-primary"
-                      />
-                      <span className="text-sm font-semibold text-ink">{department.name}</span>
-                    </label>
-                  ))}
-                  {!departments.length ? <p className="text-sm font-semibold text-red-600">No active departments found.</p> : null}
-                  {departments.length ? (
-                    <div className="flex justify-end border-t border-line pt-3">
-                      <Button type="button" variant="secondary" onClick={() => setDepartmentPickerOpen(false)}>
-                        OK
-                      </Button>
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-              {selectedUploadDepartments.length ? (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {selectedUploadDepartments.map((department) => (
-                    <span key={department.id} className="rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-bold text-primary">
-                      {department.name}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
-              <p className="mt-2 text-xs font-semibold text-muted">
-                Only {targetAudienceLabel} in the selected departments can view this file.
-              </p>
-            </div>
-          ) : null}
+          <p className="mt-3 text-xs font-semibold text-muted">
+            Files are scoped to the selected department, curriculum, subject/module, and week.
+          </p>
           <div className="mt-4 space-y-2">
             {queue.map((item) => (
               <div key={item.file.name} className="rounded-xl bg-page p-3 text-sm">
@@ -815,57 +832,6 @@ export function FileManagerPage({
             </select>
           </label>
         </div>
-        {showEditDepartmentTargets ? (
-          <div className="mt-3 rounded-2xl border border-line bg-page p-3">
-            <button
-              type="button"
-              onClick={() => setEditDepartmentPickerOpen((open) => !open)}
-              className="flex min-h-11 w-full items-center justify-between rounded-xl border border-line bg-card px-3 text-left text-sm font-semibold text-ink"
-            >
-              <span>
-                  {selectedEditDepartments.length
-                    ? `${selectedEditDepartments.length} department${selectedEditDepartments.length === 1 ? '' : 's'} selected`
-                    : `Select ${editTargetAudienceLabel} departments`}
-              </span>
-              <span className="text-primary">{editDepartmentPickerOpen ? 'Close' : 'Choose'}</span>
-            </button>
-            {editDepartmentPickerOpen ? (
-              <div className="mt-3 max-h-52 space-y-2 overflow-y-auto rounded-xl border border-line bg-card p-3">
-                {departments.map((department) => (
-                  <label key={department.id} className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-page">
-                    <input
-                      type="checkbox"
-                      checked={editForm.departmentIds.includes(Number(department.id))}
-                      onChange={() => toggleEditDepartment(department.id)}
-                      className="size-4 accent-primary"
-                    />
-                    <span className="text-sm font-semibold text-ink">{department.name}</span>
-                  </label>
-                ))}
-                {!departments.length ? <p className="text-sm font-semibold text-red-600">No active departments found.</p> : null}
-                {departments.length ? (
-                  <div className="flex justify-end border-t border-line pt-3">
-                    <Button type="button" variant="secondary" onClick={() => setEditDepartmentPickerOpen(false)}>
-                      OK
-                    </Button>
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-            {selectedEditDepartments.length ? (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {selectedEditDepartments.map((department) => (
-                  <span key={department.id} className="rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-bold text-primary">
-                    {department.name}
-                  </span>
-                ))}
-              </div>
-            ) : null}
-            <p className="mt-2 text-xs font-semibold text-muted">
-              Only {editTargetAudienceLabel} in the selected departments can view this file.
-            </p>
-          </div>
-        ) : null}
         <label className="mt-3 block">
           <span className="text-xs font-semibold uppercase text-muted">Tags</span>
           <input

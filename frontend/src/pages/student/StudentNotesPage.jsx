@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { PageHeader } from '../../components/super-admin/PageHeader';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { MaterialHierarchy } from '../../components/learning/MaterialHierarchy';
 import { SelectBox } from '../../components/ui/FormControls';
 import { SearchBar } from '../../components/ui/SearchBar';
 import { studentLearningService } from '../../services/studentLearningService';
@@ -88,22 +89,14 @@ export function StudentNotesPage() {
       </Card>
       {error ? <Card className="p-5 text-sm text-red-600">{error}</Card> : null}
       {loading ? <Card className="p-5 text-sm text-muted">Loading notes...</Card> : null}
-      {!loading && !notes.length ? <Card className="p-5 text-sm text-muted">No public teacher notes found in the database.</Card> : null}
-      <div className="grid gap-5 lg:grid-cols-2">
-        {notes.map((note) => (
-          <Card key={note.id} className="p-5">
-            <h2 className="text-lg font-bold text-ink">{note.title}</h2>
-            <p className="mt-2 text-sm text-muted">{note.teacher} - {note.topic}</p>
-            <div className="mt-4 rounded-xl bg-page p-4 text-sm leading-6 text-ink">
-              {note.description || `${note.subject} ${note.week}`}
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Button variant="secondary" onClick={() => previewNote(note.id)}>Preview</Button>
-              <Button onClick={() => downloadNote(note)}>Download</Button>
-            </div>
-          </Card>
-        ))}
-      </div>
+      {!loading ? (
+        <MaterialHierarchy
+          items={notes}
+          emptyMessage="No public teacher notes found in the database."
+          onPreview={previewNote}
+          onDownload={downloadNote}
+        />
+      ) : null}
       {!loading && totalPages > 1 ? (
         <Card className="flex items-center justify-end gap-3 p-4">
           <Button variant="secondary" disabled={page <= 1} onClick={() => setPage((current) => Math.max(current - 1, 1))}>Previous</Button>

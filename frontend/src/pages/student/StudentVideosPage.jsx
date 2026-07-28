@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { PageHeader } from '../../components/super-admin/PageHeader';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { MaterialHierarchy } from '../../components/learning/MaterialHierarchy';
 import { SelectBox } from '../../components/ui/FormControls';
 import { SearchBar } from '../../components/ui/SearchBar';
 import { studentLearningService } from '../../services/studentLearningService';
@@ -88,23 +89,14 @@ export function StudentVideosPage() {
       </Card>
       {error ? <Card className="p-5 text-sm text-red-600">{error}</Card> : null}
       {loading ? <Card className="p-5 text-sm text-muted">Loading videos...</Card> : null}
-      {!loading && !videos.length ? <Card className="p-5 text-sm text-muted">No public videos found in the database.</Card> : null}
-      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-        {videos.map((video) => (
-          <Card key={video.id} className="overflow-hidden">
-            <div className="grid aspect-video place-items-center bg-page text-sm font-bold text-primary">Video Lesson</div>
-            <div className="p-5">
-              <h2 className="text-lg font-bold text-ink">{video.title}</h2>
-              <p className="mt-2 text-sm text-muted">{video.teacher} - {video.week}</p>
-              <p className="mt-2 text-sm text-muted">{video.topic} - {video.type}</p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <Button onClick={() => watchVideo(video.id)}>Watch Video</Button>
-                <Button variant="secondary" onClick={() => downloadVideo(video)}>Download</Button>
-              </div>
-            </div>
-          </Card>
-        ))}
-      </div>
+      {!loading ? (
+        <MaterialHierarchy
+          items={videos}
+          emptyMessage="No public videos found in the database."
+          onPreview={watchVideo}
+          onDownload={downloadVideo}
+        />
+      ) : null}
       {!loading && totalPages > 1 ? (
         <Card className="flex items-center justify-end gap-3 p-4">
           <Button variant="secondary" disabled={page <= 1} onClick={() => setPage((current) => Math.max(current - 1, 1))}>Previous</Button>

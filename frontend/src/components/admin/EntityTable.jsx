@@ -19,7 +19,7 @@ export function EntityTable({
 }) {
   const isTeacher = type === 'teacher';
   const isStudent = type === 'student';
-  const columnCount = isStudent ? 10 : isTeacher ? 10 : 9;
+  const columnCount = isStudent ? 11 : isTeacher ? 10 : 9;
 
   return (
     <Card className="overflow-hidden">
@@ -35,6 +35,7 @@ export function EntityTable({
                 'Email',
                 'Department',
                 isTeacher ? 'Curriculums' : null,
+                isStudent ? 'Curriculum' : null,
                 'Phone',
                 'Status',
                 'Created Date',
@@ -63,6 +64,7 @@ export function EntityTable({
                 <td className="px-4 py-3 text-muted">{item.email}</td>
                 <td className="px-4 py-3 text-muted">{item.department || '-'}</td>
                 {isTeacher ? <td className="px-4 py-3 text-muted">{item.curriculum || '-'}</td> : null}
+                {isStudent ? <td className="px-4 py-3 text-muted">{item.curriculum || '-'}</td> : null}
                 <td className="px-4 py-3 text-muted">{item.phone}</td>
                 <td className="px-4 py-3"><StatusBadge status={item.status} /></td>
                 <td className="px-4 py-3 text-muted">{item.createdDate || '-'}</td>

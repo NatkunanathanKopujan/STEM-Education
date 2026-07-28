@@ -39,12 +39,13 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
   const [draftDepartmentIds, setDraftDepartmentIds] = useState([]);
   const [departmentsLoading, setDepartmentsLoading] = useState(false);
   const [departmentError, setDepartmentError] = useState('');
-  const [teacherOptions, setTeacherOptions] = useState([]);
-  const [teacherSearch, setTeacherSearch] = useState('');
-  const [teacherPickerOpen, setTeacherPickerOpen] = useState(false);
-  const [draftTeacherIds, setDraftTeacherIds] = useState([]);
-  const [teachersLoading, setTeachersLoading] = useState(false);
-  const [teacherError, setTeacherError] = useState('');
+  const [curriculumOptions, setCurriculumOptions] = useState([]);
+  const [curriculumSearch, setCurriculumSearch] = useState('');
+  const [curriculumPickerOpen, setCurriculumPickerOpen] = useState(false);
+  const [draftCurriculumId, setDraftCurriculumId] = useState('');
+  const [draftCurriculumIds, setDraftCurriculumIds] = useState([]);
+  const [curriculumsLoading, setCurriculumsLoading] = useState(false);
+  const [curriculumError, setCurriculumError] = useState('');
   const {
     register,
     handleSubmit,
@@ -59,9 +60,9 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
       departmentIds: [],
       curriculum: '',
       curriculumId: '',
+      curriculumIds: [],
       academicYear: '',
       duration: '',
-      assignedTeacherIds: [],
     },
   });
 
@@ -72,20 +73,21 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
           setValue(key, Array.isArray(value) ? value.join(', ') : value);
         }
       }
-      if (isCurriculum) {
-        setValue('assignedTeacherIds', (item.teachers || []).map((teacher) => teacher.id));
-      }
       if (isTeacher) {
         setValue('departmentId', item.departmentId || '');
         setValue('departmentIds', item.departmentIds || (item.departmentId ? [item.departmentId] : []));
+        setValue('curriculumIds', item.curriculumIds || []);
+        setValue('curriculum', item.curriculum || '');
       }
       if (isStudent) {
         setValue('departmentId', item.departmentId || '');
         setValue('departmentIds', item.departmentIds || (item.departmentId ? [item.departmentId] : []));
         setValue('department', item.department || '');
+        setValue('curriculumId', item.curriculumId || '');
+        setValue('curriculum', item.curriculum || '');
       }
     }
-  }, [isCurriculum, isStudent, isTeacher, item, setValue]);
+  }, [isStudent, isTeacher, item, setValue]);
 
   useEffect(() => {
     if (!isCurriculum) return;
@@ -110,47 +112,6 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
 
     return () => {
       isMounted = false;
-    };
-  }, [isCurriculum]);
-
-  useEffect(() => {
-    if (!isCurriculum) return undefined;
-
-    let isMounted = true;
-    const loadTeachers = async () => {
-      setTeachersLoading(true);
-      setTeacherError('');
-      try {
-        const data = await userManagementService.list('teacher', {
-          status: 'Active',
-          limit: 100,
-          sort: 'fullName',
-          direction: 'asc',
-        });
-        if (!isMounted) return;
-        setTeacherOptions(data.users || []);
-      } catch {
-        if (isMounted) {
-          setTeacherOptions([]);
-          setTeacherError('Unable to load active teachers.');
-        }
-      } finally {
-        if (isMounted) setTeachersLoading(false);
-      }
-    };
-
-    loadTeachers();
-
-    const reloadTeachers = (event) => {
-      if (!event.detail || event.detail.type === 'teacher') {
-        loadTeachers();
-      }
-    };
-    window.addEventListener('lms:data-changed', reloadTeachers);
-
-    return () => {
-      isMounted = false;
-      window.removeEventListener('lms:data-changed', reloadTeachers);
     };
   }, [isCurriculum]);
 
@@ -316,51 +277,86 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
     };
   }, [isStudent, isTeacherUser, item, setValue]);
 
+  useEffect(() => {
+    if (!isStudent && !isTeacher) return undefined;
+
+    let isMounted = true;
+    const loadSelectableCurriculums = async () => {
+      setCurriculumsLoading(true);
+      setCurriculumError('');
+      try {
+        const data = await userManagementService.list('curriculum', {
+          status: 'Active',
+          limit: 100,
+          sort: 'name',
+          direction: 'asc',
+        });
+        if (!isMounted) return;
+        const activeCurriculums = data.curriculums || [];
+        setCurriculumOptions(activeCurriculums);
+        if (isStudent) {
+          const selected = activeCurriculums.find((curriculum) =>
+            String(curriculum.id) === String(item?.curriculumId),
+          );
+          if (selected) {
+            setValue('curriculumId', selected.id, { shouldDirty: true, shouldValidate: true });
+            setValue('curriculum', selected.name, { shouldDirty: true, shouldValidate: true });
+          }
+        }
+        if (isTeacher) {
+          const selectedIds = (item?.curriculumIds || []).map(Number).filter((id) =>
+            activeCurriculums.some((curriculum) => Number(curriculum.id) === id),
+          );
+          const selectedCurriculums = activeCurriculums.filter((curriculum) =>
+            selectedIds.includes(Number(curriculum.id)),
+          );
+          setValue('curriculumIds', selectedIds, { shouldDirty: true, shouldValidate: true });
+          setValue('curriculum', selectedCurriculums.map((curriculum) => curriculum.name).join(', '), {
+            shouldDirty: true,
+            shouldValidate: true,
+          });
+        }
+      } catch {
+        if (isMounted) {
+          setCurriculumOptions([]);
+          setCurriculumError('Unable to load active curriculums.');
+        }
+      } finally {
+        if (isMounted) setCurriculumsLoading(false);
+      }
+    };
+
+    loadSelectableCurriculums();
+
+    const reloadCurriculums = (event) => {
+      if (!event.detail || event.detail.type === 'curriculum') {
+        loadSelectableCurriculums();
+      }
+    };
+    window.addEventListener('lms:data-changed', reloadCurriculums);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('lms:data-changed', reloadCurriculums);
+    };
+  }, [isStudent, isTeacher, item, setValue]);
+
   const password = watch('password');
-  const selectedTeacherIds = (watch('assignedTeacherIds') || []).map(Number);
   const selectedDepartmentIds = (watch('departmentIds') || []).map(Number).filter(Boolean);
+  const selectedCurriculumId = watch('curriculumId');
+  const selectedCurriculumIds = (watch('curriculumIds') || []).map(Number).filter(Boolean);
+  const selectedCurriculum = curriculumOptions.find((curriculum) => String(curriculum.id) === String(selectedCurriculumId));
+  const selectedCurriculums = curriculumOptions.filter((curriculum) => selectedCurriculumIds.includes(Number(curriculum.id)));
   const selectedDepartments = departmentOptions.filter((department) => selectedDepartmentIds.includes(Number(department.id)));
   const searchedDepartments = departmentOptions.filter((department) =>
     department.name.toLowerCase().includes(departmentSearch.trim().toLowerCase()),
   );
   const visibleDepartmentOptions = departmentSearch.trim() ? searchedDepartments : departmentOptions;
-  const selectedTeachers = teacherOptions.filter((teacher) => selectedTeacherIds.includes(Number(teacher.id)));
-  const visibleTeacherOptions = teacherOptions.filter((teacher) =>
-    `${teacher.fullName} ${teacher.username || ''} ${teacher.employeeNo || ''} ${teacher.email || ''}`
+  const visibleCurriculumOptions = curriculumOptions.filter((curriculum) =>
+    `${curriculum.name} ${curriculum.code || ''} ${curriculum.departmentName || ''}`
       .toLowerCase()
-      .includes(teacherSearch.trim().toLowerCase()),
+      .includes(curriculumSearch.trim().toLowerCase()),
   );
-
-  const toggleAssignedTeacher = (teacherId) => {
-    const normalizedId = Number(teacherId);
-    const nextIds = selectedTeacherIds.includes(normalizedId)
-      ? selectedTeacherIds.filter((id) => id !== normalizedId)
-      : [...selectedTeacherIds, normalizedId];
-    setValue('assignedTeacherIds', nextIds, { shouldDirty: true, shouldValidate: true });
-  };
-
-  const openTeacherPicker = () => {
-    if (teachersLoading || !teacherOptions.length) return;
-    setDraftTeacherIds(selectedTeacherIds);
-    setTeacherPickerOpen((isOpen) => !isOpen);
-  };
-
-  const toggleDraftTeacher = (teacherId) => {
-    const normalizedId = Number(teacherId);
-    setDraftTeacherIds((ids) =>
-      ids.includes(normalizedId) ? ids.filter((id) => id !== normalizedId) : [...ids, normalizedId],
-    );
-  };
-
-  const applyTeacherSelection = () => {
-    setValue('assignedTeacherIds', draftTeacherIds, { shouldDirty: true, shouldValidate: true });
-    setTeacherPickerOpen(false);
-  };
-
-  const cancelTeacherSelection = () => {
-    setDraftTeacherIds(selectedTeacherIds);
-    setTeacherPickerOpen(false);
-  };
 
   const syncSelectedDepartments = (ids) => {
     const departments = departmentOptions.filter((department) => ids.map(String).includes(String(department.id)));
@@ -394,6 +390,57 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
   const cancelDepartmentSelection = () => {
     setDraftDepartmentIds(selectedDepartmentIds);
     setDepartmentPickerOpen(false);
+  };
+
+  const syncSelectedCurriculums = (ids) => {
+    const curriculums = curriculumOptions.filter((curriculum) => ids.map(String).includes(String(curriculum.id)));
+    setValue('curriculumIds', ids, { shouldDirty: true, shouldValidate: true });
+    setValue('curriculum', curriculums.map((curriculum) => curriculum.name).join(', '), {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+  };
+
+  const removeCurriculum = (curriculumId) => {
+    syncSelectedCurriculums(selectedCurriculumIds.filter((id) => Number(id) !== Number(curriculumId)));
+  };
+
+  const openCurriculumPicker = () => {
+    if (curriculumsLoading || !curriculumOptions.length) return;
+    if (isTeacher) {
+      setDraftCurriculumIds(selectedCurriculumIds);
+    } else {
+      setDraftCurriculumId(selectedCurriculumId || '');
+    }
+    setCurriculumPickerOpen((isOpen) => !isOpen);
+  };
+
+  const toggleDraftCurriculum = (curriculumId) => {
+    const normalizedId = Number(curriculumId);
+    setDraftCurriculumIds((ids) =>
+      ids.includes(normalizedId) ? ids.filter((id) => id !== normalizedId) : [...ids, normalizedId],
+    );
+  };
+
+  const applyCurriculumSelection = () => {
+    if (isTeacher) {
+      syncSelectedCurriculums(draftCurriculumIds);
+      setCurriculumPickerOpen(false);
+      return;
+    }
+    const selected = curriculumOptions.find((curriculum) => String(curriculum.id) === String(draftCurriculumId));
+    setValue('curriculumId', selected?.id || '', { shouldDirty: true, shouldValidate: true });
+    setValue('curriculum', selected?.name || '', { shouldDirty: true, shouldValidate: true });
+    setCurriculumPickerOpen(false);
+  };
+
+  const cancelCurriculumSelection = () => {
+    if (isTeacher) {
+      setDraftCurriculumIds(selectedCurriculumIds);
+    } else {
+      setDraftCurriculumId(selectedCurriculumId || '');
+    }
+    setCurriculumPickerOpen(false);
   };
 
   if (isCurriculum) {
@@ -443,100 +490,6 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
           <p className="mt-1 text-xs text-muted">
             {departmentsLoading ? 'Refreshing active departments...' : 'Only active departments can be selected.'}
           </p>
-        </div>
-        <div className="md:col-span-2">
-          <input type="hidden" {...register('assignedTeacherIds')} />
-          <label className="mb-2 block text-sm font-semibold text-ink">Assigned Teachers</label>
-          <button
-            type="button"
-            onClick={openTeacherPicker}
-            disabled={teachersLoading || !teacherOptions.length}
-            className="flex w-full items-center justify-between rounded-lg border border-line bg-white px-4 py-3 text-left text-sm font-semibold text-ink shadow-sm transition hover:border-primary disabled:cursor-not-allowed disabled:text-muted"
-          >
-            <span>
-              {teachersLoading
-                ? 'Loading teachers...'
-                : selectedTeacherIds.length
-                  ? `${selectedTeacherIds.length} teacher${selectedTeacherIds.length === 1 ? '' : 's'} selected`
-                  : teacherOptions.length
-                    ? 'Select teachers'
-                    : 'No active teachers found'}
-            </span>
-            <FiChevronDown className={`transition ${teacherPickerOpen ? 'rotate-180' : ''}`} />
-          </button>
-          {teacherPickerOpen ? (
-            <div className="mt-2 rounded-lg border border-line bg-white p-3 shadow-lg">
-              <div className="relative">
-                <FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-                <input
-                  type="search"
-                  value={teacherSearch}
-                  onChange={(event) => setTeacherSearch(event.target.value)}
-                  placeholder="Search teachers"
-                  className="w-full rounded-lg border border-line bg-page py-2.5 pl-10 pr-3 text-sm font-semibold text-ink outline-none transition focus:border-primary"
-                />
-              </div>
-              <div className="mt-3 grid max-h-44 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
-                {visibleTeacherOptions.length ? (
-                  visibleTeacherOptions.map((teacher) => {
-                    const isSelected = draftTeacherIds.includes(Number(teacher.id));
-                    return (
-                      <button
-                        key={teacher.id}
-                        type="button"
-                        onClick={() => toggleDraftTeacher(teacher.id)}
-                        className={`flex items-center justify-between rounded-lg border px-3 py-2 text-left text-sm font-semibold transition ${
-                          isSelected
-                            ? 'border-primary bg-primary/10 text-primary'
-                            : 'border-line bg-page text-ink hover:border-primary hover:text-primary'
-                        }`}
-                      >
-                        <span>
-                          {teacher.fullName}
-                          <span className="block text-xs font-medium text-muted">
-                            {teacher.employeeNo || teacher.username || teacher.email}
-                          </span>
-                        </span>
-                        {isSelected ? <FiCheck /> : null}
-                      </button>
-                    );
-                  })
-                ) : (
-                  <p className="rounded-lg border border-line bg-page px-3 py-2 text-sm font-semibold text-muted sm:col-span-2">
-                    No teachers found.
-                  </p>
-                )}
-              </div>
-              <div className="mt-3 flex justify-end gap-2">
-                <SecondaryButton onClick={cancelTeacherSelection}>Cancel</SecondaryButton>
-                <Button type="button" onClick={applyTeacherSelection}>OK</Button>
-              </div>
-            </div>
-          ) : null}
-          {selectedTeachers.length ? (
-            <div className="mt-2 flex flex-wrap gap-2">
-              {selectedTeachers.map((teacher) => (
-                <span
-                  key={teacher.id}
-                  className="inline-flex items-center gap-2 rounded-full border border-line bg-white px-3 py-1.5 text-xs font-semibold text-ink shadow-sm"
-                >
-                  {teacher.fullName}
-                  <button
-                    type="button"
-                    className="text-muted transition hover:text-red-600"
-                    onClick={() => toggleAssignedTeacher(teacher.id)}
-                    aria-label={`Remove ${teacher.fullName}`}
-                  >
-                    <FiX />
-                  </button>
-                </span>
-              ))}
-            </div>
-          ) : null}
-          {!teachersLoading && !teacherOptions.length ? (
-            <p className="mt-1 text-xs text-muted">No active teachers found. Create active teachers first.</p>
-          ) : null}
-          {teacherError ? <p className="mt-1 text-xs text-red-600">{teacherError}</p> : null}
         </div>
         <SelectBox
           label="Status"
@@ -672,6 +625,108 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
               {departmentsLoading ? 'Refreshing active departments...' : 'Only active departments can be selected.'}
             </p>
           </div>
+          <div>
+            <input
+              type="hidden"
+              {...register('curriculumIds', {
+                validate: (value) => (Array.isArray(value) ? value.length : selectedCurriculumIds.length) > 0 || 'Curriculum is required',
+              })}
+            />
+            <input type="hidden" {...register('curriculum')} />
+            <label className="mb-2 block text-sm font-semibold text-ink">Curriculums</label>
+            <button
+              type="button"
+              onClick={openCurriculumPicker}
+              disabled={curriculumsLoading || !curriculumOptions.length}
+              className="flex w-full items-center justify-between rounded-lg border border-line bg-white px-4 py-3 text-left text-sm font-semibold text-ink shadow-sm transition hover:border-primary disabled:cursor-not-allowed disabled:text-muted"
+            >
+              <span>
+                {curriculumsLoading
+                  ? 'Loading curriculums...'
+                  : selectedCurriculumIds.length
+                    ? `${selectedCurriculumIds.length} curriculum${selectedCurriculumIds.length === 1 ? '' : 's'} selected`
+                    : curriculumOptions.length
+                      ? 'Select curriculums'
+                      : 'No active curriculums found'}
+              </span>
+              <FiChevronDown className={`transition ${curriculumPickerOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {curriculumPickerOpen ? (
+              <div className="mt-2 rounded-lg border border-line bg-white p-3 shadow-lg">
+                <div className="relative">
+                  <FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+                  <input
+                    type="search"
+                    value={curriculumSearch}
+                    onChange={(event) => setCurriculumSearch(event.target.value)}
+                    placeholder="Search curriculums"
+                    className="w-full rounded-lg border border-line bg-page py-2.5 pl-10 pr-3 text-sm font-semibold text-ink outline-none transition focus:border-primary"
+                  />
+                </div>
+                <div className="mt-3 grid max-h-36 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+                  {visibleCurriculumOptions.length ? (
+                    visibleCurriculumOptions.map((curriculum) => {
+                      const isSelected = draftCurriculumIds.includes(Number(curriculum.id));
+                      return (
+                        <button
+                          key={curriculum.id}
+                          type="button"
+                          onClick={() => toggleDraftCurriculum(curriculum.id)}
+                          className={`flex items-center justify-between rounded-lg border px-3 py-2 text-left text-sm font-semibold transition ${
+                            isSelected
+                              ? 'border-primary bg-primary/10 text-primary'
+                              : 'border-line bg-page text-ink hover:border-primary hover:text-primary'
+                          }`}
+                        >
+                          <span>
+                            {curriculum.name}
+                            <span className="block text-xs font-medium text-muted">
+                              {curriculum.departmentName || curriculum.code || 'Curriculum'}
+                            </span>
+                          </span>
+                          {isSelected ? <FiCheck /> : null}
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <p className="rounded-lg border border-line bg-page px-3 py-2 text-sm font-semibold text-muted sm:col-span-2">
+                      No active curriculums found.
+                    </p>
+                  )}
+                </div>
+                <div className="mt-3 flex justify-end gap-2">
+                  <SecondaryButton onClick={cancelCurriculumSelection}>Cancel</SecondaryButton>
+                  <Button type="button" onClick={applyCurriculumSelection}>OK</Button>
+                </div>
+              </div>
+            ) : null}
+            {(errors.curriculumIds?.message || curriculumError) ? (
+              <p className="mt-1 text-xs text-red-600">{errors.curriculumIds?.message || curriculumError}</p>
+            ) : null}
+            {selectedCurriculums.length ? (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {selectedCurriculums.map((curriculum) => (
+                  <span
+                    key={curriculum.id}
+                    className="inline-flex items-center gap-2 rounded-full border border-line bg-white px-3 py-1.5 text-xs font-semibold text-ink shadow-sm"
+                  >
+                    {curriculum.name}
+                    <button
+                      type="button"
+                      className="text-muted transition hover:text-red-600"
+                      onClick={() => removeCurriculum(curriculum.id)}
+                      aria-label={`Remove ${curriculum.name}`}
+                    >
+                      <FiX />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            ) : null}
+            <p className="mt-1 text-xs text-muted">
+              {curriculumsLoading ? 'Refreshing active curriculums...' : 'Only active curriculums can be selected.'}
+            </p>
+          </div>
           <SelectBox
             label="Qualification"
             error={errors.qualification?.message}
@@ -789,6 +844,85 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
             </p>
           </div>
         </>
+      ) : null}
+      {isStudent ? (
+        <div className="md:col-span-2">
+          <input type="hidden" {...register('curriculumId', { required: 'Curriculum is required' })} />
+          <input type="hidden" {...register('curriculum')} />
+          <label className="mb-2 block text-sm font-semibold text-ink">Curriculum</label>
+          <button
+            type="button"
+            onClick={openCurriculumPicker}
+            disabled={curriculumsLoading || !curriculumOptions.length}
+            className="flex w-full items-center justify-between rounded-lg border border-line bg-white px-4 py-3 text-left text-sm font-semibold text-ink shadow-sm transition hover:border-primary disabled:cursor-not-allowed disabled:text-muted"
+          >
+            <span>
+              {curriculumsLoading
+                ? 'Loading curriculums...'
+                : selectedCurriculum
+                  ? selectedCurriculum.name
+                  : curriculumOptions.length
+                    ? 'Select curriculum'
+                    : 'No active curriculums found'}
+            </span>
+            <FiChevronDown className={`transition ${curriculumPickerOpen ? 'rotate-180' : ''}`} />
+          </button>
+          {curriculumPickerOpen ? (
+            <div className="mt-2 rounded-lg border border-line bg-white p-3 shadow-lg">
+              <div className="relative">
+                <FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+                <input
+                  type="search"
+                  value={curriculumSearch}
+                  onChange={(event) => setCurriculumSearch(event.target.value)}
+                  placeholder="Search curriculums"
+                  className="w-full rounded-lg border border-line bg-page py-2.5 pl-10 pr-3 text-sm font-semibold text-ink outline-none transition focus:border-primary"
+                />
+              </div>
+              <div className="mt-3 grid max-h-44 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+                {visibleCurriculumOptions.length ? (
+                  visibleCurriculumOptions.map((curriculum) => {
+                    const isSelected = String(draftCurriculumId) === String(curriculum.id);
+                    return (
+                      <button
+                        key={curriculum.id}
+                        type="button"
+                        onClick={() => setDraftCurriculumId(curriculum.id)}
+                        className={`flex items-center justify-between rounded-lg border px-3 py-2 text-left text-sm font-semibold transition ${
+                          isSelected
+                            ? 'border-primary bg-primary/10 text-primary'
+                            : 'border-line bg-page text-ink hover:border-primary hover:text-primary'
+                        }`}
+                      >
+                        <span>
+                          {curriculum.name}
+                          <span className="block text-xs font-medium text-muted">
+                            {curriculum.departmentName || curriculum.code || 'Curriculum'}
+                          </span>
+                        </span>
+                        {isSelected ? <FiCheck /> : null}
+                      </button>
+                    );
+                  })
+                ) : (
+                  <p className="rounded-lg border border-line bg-page px-3 py-2 text-sm font-semibold text-muted sm:col-span-2">
+                    No curriculums found.
+                  </p>
+                )}
+              </div>
+              <div className="mt-3 flex justify-end gap-2">
+                <SecondaryButton onClick={cancelCurriculumSelection}>Cancel</SecondaryButton>
+                <Button type="button" onClick={applyCurriculumSelection}>OK</Button>
+              </div>
+            </div>
+          ) : null}
+          {(errors.curriculumId?.message || curriculumError) ? (
+            <p className="mt-1 text-xs text-red-600">{errors.curriculumId?.message || curriculumError}</p>
+          ) : null}
+          <p className="mt-1 text-xs text-muted">
+            {curriculumsLoading ? 'Refreshing active curriculums...' : 'Only active curriculums can be selected.'}
+          </p>
+        </div>
       ) : null}
       <div className="flex items-end gap-2">
         <PasswordInput label="Password" error={errors.password?.message} {...register('password', { required: item ? false : 'Password is required', minLength: { value: 8, message: 'Password must be at least 8 characters' } })} />

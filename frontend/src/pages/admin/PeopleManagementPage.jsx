@@ -117,6 +117,7 @@ export function PeopleManagementPage({ type }) {
                 ['Email', viewingItem.email],
                 ['Phone', viewingItem.phone || '-'],
                 ['Department', viewingItem.department || '-'],
+                isStudent ? ['Curriculum', viewingItem.curriculum || '-'] : null,
                 isTeacher ? ['Curriculums', viewingItem.curriculum || '-'] : null,
                 isTeacher ? ['Qualification', viewingItem.qualification || '-'] : ['Batch', viewingItem.batch || '-'],
                 ['Status', viewingItem.status],

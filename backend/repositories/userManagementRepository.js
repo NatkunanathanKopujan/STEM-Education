@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 import { db } from '../config/database.js';
-import { ensureStudentCurriculumSchema } from './curriculumRepository.js';
+import { ensureCurriculumManagementSchema, ensureStudentCurriculumSchema } from './curriculumRepository.js';
 import { ensureDepartmentSchema } from './departmentRepository.js';
 
 const roleConfig = {
@@ -76,6 +76,7 @@ export async function ensureStudentDepartmentSchema() {
 
 export async function ensureUserAssignmentSchema() {
   await ensureDepartmentSchema();
+  await ensureCurriculumManagementSchema();
   await ensureStudentDepartmentSchema();
   if (userAssignmentSchemaReady) return;
 
@@ -443,6 +444,25 @@ async function syncProfileDepartments(connection, role, profileId, departmentIds
   );
 }
 
+async function syncTeacherCurriculums(connection, teacherId, curriculumIds = []) {
+  const uniqueIds = [...new Set((curriculumIds || []).map(Number).filter(Boolean))];
+  await connection.query('DELETE FROM curriculum_teachers WHERE teacher_id = ?', [teacherId]);
+
+  if (!uniqueIds.length) return;
+
+  const [curriculums] = await connection.query(
+    `SELECT id FROM curriculums WHERE id IN (${uniqueIds.map(() => '?').join(',')}) AND is_active = 1`,
+    uniqueIds,
+  );
+  const validIds = curriculums.map((curriculum) => curriculum.id);
+  if (!validIds.length) return;
+
+  await connection.query(
+    `INSERT INTO curriculum_teachers (curriculum_id, teacher_id) VALUES ${validIds.map(() => '(?, ?)').join(', ')}`,
+    validIds.flatMap((curriculumId) => [curriculumId, teacherId]),
+  );
+}
+
 export async function createManagedUser(role, payload) {
   if (role === 'teacher') {
     await ensureUserAssignmentSchema();
@@ -511,6 +531,7 @@ export async function createManagedUser(role, payload) {
 
     if (role === 'teacher') {
       await syncProfileDepartments(connection, 'teacher', profileResult.insertId, payload.departmentIds);
+      await syncTeacherCurriculums(connection, profileResult.insertId, payload.curriculumIds);
     }
     await connection.commit();
     return findManagedUserById(role, profileResult.insertId);
@@ -594,6 +615,9 @@ export async function updateManagedUser(role, id, payload) {
 
     if (role === 'teacher' || role === 'student') {
       await syncProfileDepartments(connection, role, id, payload.departmentIds);
+    }
+    if (role === 'teacher') {
+      await syncTeacherCurriculums(connection, id, payload.curriculumIds);
     }
     await connection.commit();
     return findManagedUserById(role, id);

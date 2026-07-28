@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { MaterialHierarchy } from '../../components/learning/MaterialHierarchy';
 import { SelectBox } from '../../components/ui/FormControls';
 import { SearchBar } from '../../components/ui/SearchBar';
 import { PageHeader } from '../../components/super-admin/PageHeader';
@@ -107,7 +108,16 @@ export function StudentMaterialsPage() {
         </div>
       </Card>
       {error ? <Card className="p-5 text-sm text-red-600">{error}</Card> : null}
-      <Card className="overflow-hidden"><div className="overflow-x-auto"><table className="min-w-full divide-y divide-line text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-muted"><tr>{['Title', 'Teacher', 'Week', 'Topic', 'Type', 'Upload Date', 'Actions'].map((h) => <th key={h} className="px-4 py-3">{h}</th>)}</tr></thead><tbody className="divide-y divide-line bg-white">{loading ? <tr><td className="px-4 py-6 text-muted" colSpan={7}>Loading materials...</td></tr> : null}{!loading && items.map((item) => <tr key={item.id}><td className="px-4 py-3 font-semibold text-ink">{item.title}</td><td className="px-4 py-3 text-muted">{item.teacher}</td><td className="px-4 py-3">{item.week}</td><td className="px-4 py-3 text-muted">{item.topic}</td><td className="px-4 py-3">{item.type}</td><td className="px-4 py-3 text-muted">{item.uploadDate}</td><td className="px-4 py-3"><div className="flex gap-2"><Button variant="secondary" onClick={() => previewFile(item.id)}>Preview</Button><Button onClick={() => downloadFile(item)}>Download</Button></div></td></tr>)}{!loading && !items.length ? <tr><td className="px-4 py-6 text-muted" colSpan={7}>No learning materials found in the database.</td></tr> : null}</tbody></table></div><div className="flex items-center justify-end gap-3 border-t border-line p-4"><Button variant="secondary" disabled={page <= 1} onClick={() => setPage((current) => Math.max(current - 1, 1))}>Previous</Button><span className="text-sm font-semibold text-muted">Page {page} of {totalPages}</span><Button variant="secondary" disabled={page >= totalPages} onClick={() => setPage((current) => current + 1)}>Next</Button></div></Card>
+      {loading ? <Card className="p-5 text-sm text-muted">Loading materials...</Card> : null}
+      {!loading ? (
+        <MaterialHierarchy
+          items={items}
+          emptyMessage="No learning materials found in the database."
+          onPreview={previewFile}
+          onDownload={downloadFile}
+        />
+      ) : null}
+      <Card className="flex items-center justify-end gap-3 p-4"><Button variant="secondary" disabled={page <= 1} onClick={() => setPage((current) => Math.max(current - 1, 1))}>Previous</Button><span className="text-sm font-semibold text-muted">Page {page} of {totalPages}</span><Button variant="secondary" disabled={page >= totalPages} onClick={() => setPage((current) => current + 1)}>Next</Button></Card>
     </div>
   );
 }

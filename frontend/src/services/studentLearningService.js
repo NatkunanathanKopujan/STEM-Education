@@ -28,6 +28,12 @@ function normalizeFile(file) {
     weekNo: file.weekNo,
     topic: file.topic || file.subject || '-',
     subject: file.subject || '-',
+    curriculum: file.curriculum || '-',
+    department: typeof file.targetDepartments === 'string'
+      ? file.targetDepartments
+      : Array.isArray(file.targetDepartments)
+        ? file.targetDepartments.map((department) => department.name || department).filter(Boolean).join(', ')
+        : file.targetDepartmentNames || '-',
     type: fileTypeLabels[file.fileType] || String(file.fileType || 'FILE').toUpperCase(),
     fileType: file.fileType,
     uploadDate: formatDate(file.createdAt),

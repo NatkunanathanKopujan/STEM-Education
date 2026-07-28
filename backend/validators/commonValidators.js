@@ -4,6 +4,10 @@ export const idParamValidator = [
   param('id').notEmpty().withMessage('ID is required'),
 ];
 
+export const moduleIdParamValidator = [
+  param('moduleId').notEmpty().withMessage('Subject/Module ID is required'),
+];
+
 export const paginationValidator = [
   query('page').optional().isInt({ min: 1 }).withMessage('Page must be a positive integer'),
   query('limit')

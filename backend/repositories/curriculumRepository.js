@@ -4,7 +4,12 @@ import { db } from '../config/database.js';
 const parseTeachers = (value) => {
   if (!value) return [];
   const parsed = typeof value === 'string' ? JSON.parse(value) : value;
-  return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+  if (!Array.isArray(parsed)) return [];
+  const uniqueTeachers = new Map();
+  parsed.filter(Boolean).forEach((teacher) => {
+    if (teacher?.id) uniqueTeachers.set(Number(teacher.id), teacher);
+  });
+  return Array.from(uniqueTeachers.values());
 };
 
 const mapCurriculum = (row) => ({
@@ -27,6 +32,26 @@ const mapCurriculum = (row) => ({
 
 let studentCurriculumSchemaReady = false;
 let curriculumManagementSchemaReady = false;
+let curriculumFileCourseSchemaReady = false;
+
+async function ensureCurriculumFileCourseSchema() {
+  if (curriculumFileCourseSchemaReady) return;
+
+  const [columns] = await db.query(
+    `SELECT COLUMN_NAME
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'files'
+      AND COLUMN_NAME = 'course_id'`,
+  );
+
+  if (!columns.length) {
+    await db.query('ALTER TABLE files ADD COLUMN course_id BIGINT UNSIGNED NULL AFTER subject');
+    await db.query('CREATE INDEX idx_files_course_id ON files (course_id)');
+  }
+
+  curriculumFileCourseSchemaReady = true;
+}
 
 export async function ensureCurriculumManagementSchema() {
   if (curriculumManagementSchemaReady) return;
@@ -180,9 +205,6 @@ export async function listCurriculums({ search = '', status = '', page = 1, limi
      LEFT JOIN students s ON s.curriculum_id = c.id OR (s.curriculum_id IS NULL AND s.program = c.title)
      LEFT JOIN courses co ON co.curriculum_id = c.id
      LEFT JOIN materials m ON m.course_id = co.id
-     LEFT JOIN curriculum_teachers ct ON ct.curriculum_id = c.id
-     LEFT JOIN teachers t ON t.id = ct.teacher_id
-     LEFT JOIN users u ON u.id = t.user_id
      ${where}`;
 
   const [rows] = await db.query(
@@ -202,11 +224,12 @@ export async function listCurriculums({ search = '', status = '', page = 1, limi
        COUNT(DISTINCT co.id) AS subjects,
        COUNT(DISTINCT m.id) AS materials,
        COALESCE(
-        JSON_ARRAYAGG(
-          CASE
-            WHEN t.id IS NULL THEN NULL
-            ELSE JSON_OBJECT('id', t.id, 'fullName', u.full_name, 'username', u.username, 'employeeNo', t.employee_no)
-          END
+        (
+          SELECT JSON_ARRAYAGG(JSON_OBJECT('id', t.id, 'fullName', u.full_name, 'username', u.username, 'employeeNo', t.employee_no))
+          FROM curriculum_teachers ct
+          INNER JOIN teachers t ON t.id = ct.teacher_id
+          INNER JOIN users u ON u.id = t.user_id
+          WHERE ct.curriculum_id = c.id
         ),
         JSON_ARRAY()
        ) AS teachersJson
@@ -250,11 +273,12 @@ export async function findCurriculumById(id) {
        COUNT(DISTINCT co.id) AS subjects,
        COUNT(DISTINCT m.id) AS materials,
        COALESCE(
-        JSON_ARRAYAGG(
-          CASE
-            WHEN t.id IS NULL THEN NULL
-            ELSE JSON_OBJECT('id', t.id, 'fullName', u.full_name, 'username', u.username, 'employeeNo', t.employee_no)
-          END
+        (
+          SELECT JSON_ARRAYAGG(JSON_OBJECT('id', t.id, 'fullName', u.full_name, 'username', u.username, 'employeeNo', t.employee_no))
+          FROM curriculum_teachers ct
+          INNER JOIN teachers t ON t.id = ct.teacher_id
+          INNER JOIN users u ON u.id = t.user_id
+          WHERE ct.curriculum_id = c.id
         ),
         JSON_ARRAY()
        ) AS teachersJson
@@ -263,9 +287,6 @@ export async function findCurriculumById(id) {
      LEFT JOIN students s ON s.curriculum_id = c.id OR (s.curriculum_id IS NULL AND s.program = c.title)
      LEFT JOIN courses co ON co.curriculum_id = c.id
      LEFT JOIN materials m ON m.course_id = co.id
-     LEFT JOIN curriculum_teachers ct ON ct.curriculum_id = c.id
-     LEFT JOIN teachers t ON t.id = ct.teacher_id
-     LEFT JOIN users u ON u.id = t.user_id
      WHERE c.id = ?
      GROUP BY c.id, c.title, c.code, c.description, c.duration, c.academic_year, c.department_id, d.name, c.created_by, c.is_active, c.created_at
      LIMIT 1`,
@@ -274,30 +295,159 @@ export async function findCurriculumById(id) {
   return rows[0] ? mapCurriculum(rows[0]) : null;
 }
 
-async function syncCurriculumTeachers(connection, curriculumId, teacherIds = []) {
-  const uniqueIds = [...new Set((teacherIds || []).map(Number).filter(Boolean))];
-  await connection.query('DELETE FROM curriculum_teachers WHERE curriculum_id = ?', [curriculumId]);
+const mapModule = (row) => ({
+  id: row.id,
+  curriculumId: row.curriculumId,
+  teacherId: row.teacherId || null,
+  title: row.title,
+  code: row.code,
+  description: row.description || '',
+  creditHours: row.creditHours === null || row.creditHours === undefined ? '' : String(row.creditHours),
+  status: row.isActive ? 'Active' : 'Inactive',
+  materials: Number(row.materials || 0),
+  weeks: row.weeks || [],
+  createdDate: row.createdDate,
+});
 
-  if (!uniqueIds.length) return;
-
-  const [teachers] = await connection.query(
-    `SELECT t.id
-     FROM teachers t
-     INNER JOIN users u ON u.id = t.user_id
-     WHERE t.id IN (${uniqueIds.map(() => '?').join(',')})
-      AND u.role = 'teacher'
-      AND u.status = 'active'`,
-    uniqueIds,
+export async function listCurriculumModules(curriculumId) {
+  await ensureCurriculumManagementSchema();
+  await ensureCurriculumFileCourseSchema();
+  const [rows] = await db.query(
+    `SELECT
+       co.id,
+       co.curriculum_id AS curriculumId,
+       co.teacher_id AS teacherId,
+       co.title,
+       co.code,
+       co.description,
+       co.credit_hours AS creditHours,
+       co.is_active AS isActive,
+       DATE_FORMAT(co.created_at, '%Y-%m-%d') AS createdDate,
+       COUNT(DISTINCT m.id) AS materials
+     FROM courses co
+     LEFT JOIN materials m ON m.course_id = co.id
+     WHERE co.curriculum_id = ?
+     GROUP BY co.id, co.curriculum_id, co.teacher_id, co.title, co.code, co.description, co.credit_hours, co.is_active, co.created_at
+     ORDER BY co.created_at DESC, co.id DESC`,
+    [curriculumId],
   );
-  const validIds = teachers.map((teacher) => teacher.id);
+  const modules = rows.map(mapModule);
+  if (!modules.length) return modules;
 
-  if (!validIds.length) return;
-
-  await connection.query(
-    `INSERT INTO curriculum_teachers (curriculum_id, teacher_id)
-     VALUES ${validIds.map(() => '(?, ?)').join(', ')}`,
-    validIds.flatMap((teacherId) => [curriculumId, teacherId]),
+  const moduleIds = modules.map((module) => module.id);
+  const [files] = await db.query(
+    `SELECT
+       id,
+       course_id AS courseId,
+       original_file_name AS originalFileName,
+       file_type AS fileType,
+       file_size AS fileSize,
+       week_no AS weekNo,
+       topic,
+       description,
+       visibility,
+       audience,
+       status,
+       version,
+       download_count AS downloadCount,
+       view_count AS viewCount,
+       DATE_FORMAT(created_at, '%Y-%m-%d') AS createdDate
+     FROM files
+     WHERE course_id IN (${moduleIds.map(() => '?').join(', ')})
+      AND status <> 'deleted'
+     ORDER BY week_no ASC, created_at DESC, id DESC`,
+    moduleIds,
   );
+
+  const filesByModule = new Map();
+  files.forEach((file) => {
+    const list = filesByModule.get(Number(file.courseId)) || [];
+    list.push(file);
+    filesByModule.set(Number(file.courseId), list);
+  });
+
+  return modules.map((module) => {
+    const weeks = new Map();
+    (filesByModule.get(Number(module.id)) || []).forEach((file) => {
+      const weekNo = Number(file.weekNo || 0);
+      const key = weekNo || 'unassigned';
+      if (!weeks.has(key)) {
+        weeks.set(key, { weekNo, files: [] });
+      }
+      weeks.get(key).files.push(file);
+    });
+
+    return {
+      ...module,
+      weeks: Array.from(weeks.values()).sort((a, b) => Number(a.weekNo || 0) - Number(b.weekNo || 0)),
+    };
+  });
+}
+
+export async function findCurriculumModuleById(curriculumId, moduleId) {
+  await ensureCurriculumManagementSchema();
+  const [rows] = await db.query(
+    `SELECT
+       co.id,
+       co.curriculum_id AS curriculumId,
+       co.teacher_id AS teacherId,
+       co.title,
+       co.code,
+       co.description,
+       co.credit_hours AS creditHours,
+       co.is_active AS isActive,
+       DATE_FORMAT(co.created_at, '%Y-%m-%d') AS createdDate,
+       COUNT(DISTINCT m.id) AS materials
+     FROM courses co
+     LEFT JOIN materials m ON m.course_id = co.id
+     WHERE co.curriculum_id = ? AND co.id = ?
+     GROUP BY co.id, co.curriculum_id, co.teacher_id, co.title, co.code, co.description, co.credit_hours, co.is_active, co.created_at
+     LIMIT 1`,
+    [curriculumId, moduleId],
+  );
+  return rows[0] ? mapModule(rows[0]) : null;
+}
+
+export async function createCurriculumModule(curriculumId, payload) {
+  await ensureCurriculumManagementSchema();
+  const [result] = await db.query(
+    `INSERT INTO courses (uuid, curriculum_id, title, code, description, credit_hours, is_active)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      randomUUID(),
+      curriculumId,
+      payload.title,
+      payload.code,
+      payload.description || null,
+      payload.creditHours,
+      payload.status === 'Active' ? 1 : 0,
+    ],
+  );
+  return findCurriculumModuleById(curriculumId, result.insertId);
+}
+
+export async function updateCurriculumModule(curriculumId, moduleId, payload) {
+  await ensureCurriculumManagementSchema();
+  const [result] = await db.query(
+    `UPDATE courses
+     SET title = ?, code = ?, description = ?, credit_hours = ?, is_active = ?
+     WHERE curriculum_id = ? AND id = ?`,
+    [
+      payload.title,
+      payload.code,
+      payload.description || null,
+      payload.creditHours,
+      payload.status === 'Active' ? 1 : 0,
+      curriculumId,
+      moduleId,
+    ],
+  );
+  return result.affectedRows ? findCurriculumModuleById(curriculumId, moduleId) : null;
+}
+
+export async function deleteCurriculumModule(curriculumId, moduleId) {
+  const [result] = await db.query('DELETE FROM courses WHERE curriculum_id = ? AND id = ?', [curriculumId, moduleId]);
+  return result.affectedRows > 0;
 }
 
 export async function createCurriculumRecord(payload) {
@@ -321,7 +471,6 @@ export async function createCurriculumRecord(payload) {
         payload.status === 'Active' ? 1 : 0,
       ],
     );
-    await syncCurriculumTeachers(connection, result.insertId, payload.assignedTeacherIds);
     await connection.commit();
     return findCurriculumById(result.insertId);
   } catch (error) {
@@ -353,9 +502,6 @@ export async function updateCurriculumRecord(id, payload) {
         id,
       ],
     );
-    if (result.affectedRows) {
-      await syncCurriculumTeachers(connection, id, payload.assignedTeacherIds);
-    }
     await connection.commit();
     return result.affectedRows ? findCurriculumById(id) : null;
   } catch (error) {

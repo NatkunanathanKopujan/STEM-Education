@@ -61,6 +61,10 @@ export const announcementValidator = [
   body('audienceRole')
     .optional({ nullable: true, values: 'falsy' })
     .isIn(['super-admin', 'admin', 'teacher', 'student']),
+  body('departmentId').optional({ nullable: true, values: 'falsy' }).isInt({ min: 1 }),
+  body('curriculumId').optional({ nullable: true, values: 'falsy' }).isInt({ min: 1 }),
+  body('courseId').optional({ nullable: true, values: 'falsy' }).isInt({ min: 1 }),
+  body('weekNo').optional({ nullable: true, values: 'falsy' }).isInt({ min: 1 }),
   body('priority').optional(optionalField).isIn(['normal', 'important', 'urgent']),
   body('status').optional(optionalField).isIn(['draft', 'published', 'expired']),
   body('attachmentPath').optional({ nullable: true, values: 'falsy' }).trim().isLength({ max: 255 }),
@@ -89,6 +93,10 @@ export const announcementUpdateValidator = [
   body('audienceRole')
     .optional({ nullable: true, values: 'falsy' })
     .isIn(['super-admin', 'admin', 'teacher', 'student']),
+  body('departmentId').optional({ nullable: true, values: 'falsy' }).isInt({ min: 1 }),
+  body('curriculumId').optional({ nullable: true, values: 'falsy' }).isInt({ min: 1 }),
+  body('courseId').optional({ nullable: true, values: 'falsy' }).isInt({ min: 1 }),
+  body('weekNo').optional({ nullable: true, values: 'falsy' }).isInt({ min: 1 }),
   body('priority').optional(optionalField).isIn(['normal', 'important', 'urgent']),
   body('status').optional(optionalField).isIn(['draft', 'published', 'expired']),
   body('attachmentPath').optional({ nullable: true, values: 'falsy' }).trim().isLength({ max: 255 }),

@@ -16,4 +16,10 @@ export const userManagementService = {
   create: async (type, payload) => unwrap(await apiClient.post(endpointFor(type), payload)),
   update: async (type, id, payload) => unwrap(await apiClient.put(`${endpointFor(type)}/${id}`, payload)),
   remove: async (type, id) => unwrap(await apiClient.delete(`${endpointFor(type)}/${id}`)),
+  listModules: async (curriculumId) => unwrap(await apiClient.get(`/curriculum/${curriculumId}/modules`)),
+  createModule: async (curriculumId, payload) => unwrap(await apiClient.post(`/curriculum/${curriculumId}/modules`, payload)),
+  updateModule: async (curriculumId, moduleId, payload) =>
+    unwrap(await apiClient.put(`/curriculum/${curriculumId}/modules/${moduleId}`, payload)),
+  removeModule: async (curriculumId, moduleId) =>
+    unwrap(await apiClient.delete(`/curriculum/${curriculumId}/modules/${moduleId}`)),
 };
