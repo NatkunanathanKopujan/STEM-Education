@@ -8,6 +8,7 @@ export const teacherDashboardService = {
   getMaterials: async (params) => unwrap(await apiClient.get('/materials', { params })),
   getQuizAnalytics: async (params) => unwrap(await apiClient.get('/quiz', { params })),
   getAnalyticsDashboard: async () => unwrap(await apiClient.get('/teacher/analytics/dashboard')),
+  getLearningHierarchy: async () => unwrap(await apiClient.get('/teacher/learning-hierarchy')),
   getStudentAnalytics: async (studentId) =>
     unwrap(await apiClient.get(`/teacher/analytics/student/${studentId}`)),
   getTopicAnalytics: async () => unwrap(await apiClient.get('/teacher/analytics/topics')),

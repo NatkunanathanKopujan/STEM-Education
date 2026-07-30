@@ -14,6 +14,20 @@ import {
   savePreferences,
 } from '../services/notificationService.js';
 import { sendSuccess } from '../utils/apiResponse.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const backendRoot = path.resolve(__dirname, '..');
+
+function mapAnnouncementAttachments(files = []) {
+  return files.map((file) => ({
+    fileName: file.originalname,
+    filePath: `/${path.relative(backendRoot, file.path).replace(/\\/g, '/')}`,
+    mimeType: file.mimetype,
+  }));
+}
 
 export async function notificationsController(req, res, next) {
   try {
@@ -77,7 +91,15 @@ export async function announcementDetailsController(req, res, next) {
 
 export async function createAnnouncementController(req, res, next) {
   try {
-    return sendSuccess(res, await publishAnnouncement(req.user, req.body), 'Announcement published', 201);
+    return sendSuccess(
+      res,
+      await publishAnnouncement(req.user, {
+        ...req.body,
+        attachments: mapAnnouncementAttachments(req.files || []),
+      }),
+      'Announcement published',
+      201,
+    );
   } catch (error) {
     return next(error);
   }

@@ -1,5 +1,7 @@
 import { db } from '../config/database.js';
 import { ROLES } from '../config/roles.js';
+import { ensureCurriculumManagementSchema } from './curriculumRepository.js';
+import { ensureFileAudienceSchema, ensureFileCourseSchema, ensureFileDepartmentSchema } from './fileRepository.js';
 import { ensureUserAssignmentSchema } from './userManagementRepository.js';
 
 function isTeacher(user) {
@@ -52,6 +54,273 @@ function teacherStudentScope(user, alias = 's') {
     )`,
     values: [user.id],
   };
+}
+
+function normalizeAudienceRole(value) {
+  const role = String(value || '').toLowerCase();
+  if (role === 'all_users' || role === 'all') return 'all';
+  return role;
+}
+
+function pushWeekItem(subject, item) {
+  const weekNo = Number(item.weekNo || 0);
+  if (!weekNo && item.kind === 'announcement') {
+    subject.generalAnnouncements.push(item);
+    return;
+  }
+
+  let week = subject.weeks.find((entry) => Number(entry.weekNo) === weekNo);
+  if (!week) {
+    week = { weekNo, files: [], announcements: [] };
+    subject.weeks.push(week);
+  }
+
+  if (item.kind === 'announcement') {
+    week.announcements.push(item);
+  } else {
+    week.files.push(item);
+  }
+}
+
+export async function getTeacherLearningHierarchy(user) {
+  if (!isTeacher(user)) {
+    return { departments: [] };
+  }
+
+  await ensureUserAssignmentSchema();
+  await ensureCurriculumManagementSchema();
+  await ensureFileAudienceSchema();
+  await ensureFileDepartmentSchema();
+  await ensureFileCourseSchema();
+
+  const [teacherRows] = await db.execute('SELECT id FROM teachers WHERE user_id = ? LIMIT 1', [user.id]);
+  const teacherId = teacherRows[0]?.id;
+
+  if (!teacherId) {
+    return { departments: [] };
+  }
+
+  const [departmentRows] = await db.execute(
+    `SELECT DISTINCT d.id, d.name
+     FROM teacher_departments td
+     INNER JOIN departments d ON d.id = td.department_id
+     WHERE td.teacher_id = ?
+       AND d.status = 'active'
+     ORDER BY d.name ASC`,
+    [teacherId],
+  );
+
+  if (!departmentRows.length) {
+    return { departments: [] };
+  }
+
+  const departmentIds = departmentRows.map((department) => Number(department.id));
+  const departmentPlaceholders = departmentIds.map(() => '?').join(', ');
+
+  const [curriculumRows] = await db.query(
+    `SELECT c.id, c.title AS name, c.code, c.description, c.department_id AS departmentId,
+      d.name AS departmentName, c.is_active AS isActive, c.created_at AS createdAt
+     FROM curriculums c
+     INNER JOIN departments d ON d.id = c.department_id
+     WHERE c.department_id IN (${departmentPlaceholders})
+       AND c.is_active = 1
+     ORDER BY d.name ASC, c.title ASC`,
+    departmentIds,
+  );
+
+  const curriculumIds = curriculumRows.map((curriculum) => Number(curriculum.id));
+  const moduleRows = curriculumIds.length
+    ? (
+        await db.query(
+          `SELECT co.id, co.curriculum_id AS curriculumId, co.title AS name, co.code, co.description,
+            co.credit_hours AS creditHours, co.is_active AS isActive, co.created_at AS createdAt
+           FROM courses co
+           WHERE co.curriculum_id IN (${curriculumIds.map(() => '?').join(', ')})
+             AND co.is_active = 1
+           ORDER BY co.title ASC`,
+          curriculumIds,
+        )
+      )[0]
+    : [];
+
+  const courseIds = moduleRows.map((course) => Number(course.id));
+  const fileRows = courseIds.length
+    ? (
+        await db.query(
+          `SELECT DISTINCT f.id, f.original_file_name AS title, f.file_type AS fileType,
+            f.file_size AS size, f.course_id AS courseId, f.week_no AS weekNo, f.topic,
+            f.description, f.version, f.created_at AS uploadedAt
+           FROM files f
+           LEFT JOIN file_departments fd ON fd.file_id = f.id
+           WHERE f.course_id IN (${courseIds.map(() => '?').join(', ')})
+             AND f.status = 'active'
+             AND (
+               f.uploaded_by = ?
+               OR (
+                 f.visibility = 'public'
+                 AND f.audience IN ('all', 'teacher')
+               )
+             )
+             AND (
+               fd.department_id IS NULL
+               OR fd.department_id IN (${departmentPlaceholders})
+             )
+           ORDER BY COALESCE(f.week_no, 0) ASC, f.created_at DESC, f.id DESC`,
+          [...courseIds, user.id, ...departmentIds],
+        )
+      )[0]
+    : [];
+
+  const announcementRows = courseIds.length || curriculumIds.length
+    ? (
+        await db.query(
+          `SELECT DISTINCT a.id, a.title, a.body AS content, a.department_id AS departmentId,
+            a.curriculum_id AS curriculumId, a.course_id AS courseId, a.week_no AS weekNo,
+            a.audience_role AS audienceRole, a.priority, a.publish_at AS uploadedAt, a.created_at AS createdAt
+           FROM announcements a
+           LEFT JOIN announcement_targets at ON at.announcement_id = a.id
+           WHERE a.status = 'published'
+             AND (a.publish_at IS NULL OR a.publish_at <= NOW())
+             AND (a.expiry_at IS NULL OR a.expiry_at > NOW())
+             AND (
+               a.audience_role IS NULL
+               OR a.audience_role IN ('all_users', 'teacher')
+               OR (at.target_type = 'role' AND at.target_id = ?)
+               OR at.target_type = 'all_users'
+             )
+             AND (
+               a.department_id IS NULL
+               OR a.department_id IN (${departmentPlaceholders})
+               OR (at.target_type = 'department' AND at.target_id IN (${departmentPlaceholders}))
+             )
+             AND (
+               a.curriculum_id IS NULL
+               OR a.curriculum_id IN (${curriculumIds.length ? curriculumIds.map(() => '?').join(', ') : 'NULL'})
+               OR a.course_id IN (${courseIds.length ? courseIds.map(() => '?').join(', ') : 'NULL'})
+             )
+           ORDER BY COALESCE(a.week_no, 0) ASC, COALESCE(a.publish_at, a.created_at) DESC, a.id DESC`,
+          [ROLES.TEACHER, ...departmentIds, ...departmentIds, ...curriculumIds, ...courseIds],
+        )
+      )[0]
+    : [];
+
+  const departments = departmentRows.map((department) => ({
+    id: department.id,
+    name: department.name,
+    fileCount: 0,
+    announcementCount: 0,
+    curriculums: [],
+  }));
+  const departmentsById = new Map(departments.map((department) => [Number(department.id), department]));
+
+  curriculumRows.forEach((curriculum) => {
+    const department = departmentsById.get(Number(curriculum.departmentId));
+    if (!department) return;
+    department.curriculums.push({
+      id: curriculum.id,
+      name: curriculum.name,
+      code: curriculum.code || '',
+      description: curriculum.description || '',
+      fileCount: 0,
+      announcementCount: 0,
+      subjects: [],
+    });
+  });
+
+  const curriculumsById = new Map();
+  departments.forEach((department) => {
+    department.curriculums.forEach((curriculum) => {
+      curriculumsById.set(Number(curriculum.id), { curriculum, department });
+    });
+  });
+
+  moduleRows.forEach((course) => {
+    const linked = curriculumsById.get(Number(course.curriculumId));
+    if (!linked) return;
+    linked.curriculum.subjects.push({
+      id: course.id,
+      name: course.name,
+      code: course.code || '',
+      description: course.description || '',
+      creditHours: course.creditHours,
+      fileCount: 0,
+      announcementCount: 0,
+      generalAnnouncements: [],
+      weeks: [],
+    });
+  });
+
+  const subjectsById = new Map();
+  curriculumsById.forEach((linked) => {
+    linked.curriculum.subjects.forEach((subject) => {
+      subjectsById.set(Number(subject.id), { subject, curriculum: linked.curriculum, department: linked.department });
+    });
+  });
+
+  fileRows.forEach((file) => {
+    const linked = subjectsById.get(Number(file.courseId));
+    if (!linked) return;
+    const item = {
+      ...file,
+      id: `file-${file.id}`,
+      rawId: file.id,
+      kind: 'file',
+      uploadedAt: file.uploadedAt,
+    };
+    linked.department.fileCount += 1;
+    linked.curriculum.fileCount += 1;
+    linked.subject.fileCount += 1;
+    pushWeekItem(linked.subject, item);
+  });
+
+  announcementRows.forEach((announcement) => {
+    if (normalizeAudienceRole(announcement.audienceRole) && !['all', ROLES.TEACHER].includes(normalizeAudienceRole(announcement.audienceRole))) {
+      return;
+    }
+
+    const targetSubjects = [];
+    if (announcement.courseId && subjectsById.has(Number(announcement.courseId))) {
+      targetSubjects.push(subjectsById.get(Number(announcement.courseId)));
+    } else if (announcement.curriculumId && curriculumsById.has(Number(announcement.curriculumId))) {
+      curriculumsById.get(Number(announcement.curriculumId)).curriculum.subjects.forEach((subject) => {
+        targetSubjects.push({
+          subject,
+          curriculum: curriculumsById.get(Number(announcement.curriculumId)).curriculum,
+          department: curriculumsById.get(Number(announcement.curriculumId)).department,
+        });
+      });
+    } else if (announcement.departmentId && departmentsById.has(Number(announcement.departmentId))) {
+      departmentsById.get(Number(announcement.departmentId)).curriculums.forEach((curriculum) => {
+        curriculum.subjects.forEach((subject) => targetSubjects.push({ subject, curriculum, department: departmentsById.get(Number(announcement.departmentId)) }));
+      });
+    } else {
+      subjectsById.forEach((subject) => targetSubjects.push(subject));
+    }
+
+    targetSubjects.forEach((linked) => {
+      const item = {
+        ...announcement,
+        id: `announcement-${announcement.id}-${linked.id}`,
+        rawId: announcement.id,
+        kind: 'announcement',
+        uploadedAt: announcement.uploadedAt || announcement.createdAt,
+      };
+      linked.department.announcementCount += 1;
+      linked.curriculum.announcementCount += 1;
+      linked.subject.announcementCount += 1;
+      pushWeekItem(linked.subject, item);
+    });
+  });
+
+  departments.forEach((department) => {
+    department.curriculums.forEach((curriculum) => {
+      curriculum.subjects.forEach((subject) => {
+        subject.weeks.sort((a, b) => Number(a.weekNo) - Number(b.weekNo));
+      });
+    });
+  });
+
+  return { departments };
 }
 
 export async function getDashboardMetrics(user) {

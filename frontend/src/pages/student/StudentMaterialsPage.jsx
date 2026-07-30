@@ -5,6 +5,8 @@ import { MaterialHierarchy } from '../../components/learning/MaterialHierarchy';
 import { SelectBox } from '../../components/ui/FormControls';
 import { SearchBar } from '../../components/ui/SearchBar';
 import { PageHeader } from '../../components/super-admin/PageHeader';
+import { Modal } from '../../components/ui/Modal';
+import { notificationService } from '../../services/notificationService';
 import { studentLearningService } from '../../services/studentLearningService';
 
 const typeOptions = [
@@ -30,6 +32,8 @@ const sortOptions = [
 
 export function StudentMaterialsPage() {
   const [items, setItems] = useState([]);
+  const [announcements, setAnnouncements] = useState([]);
+  const [selectedAnnouncement, setSelectedAnnouncement] = useState(null);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('');
   const [sort, setSort] = useState('newest');
@@ -50,7 +54,15 @@ export function StudentMaterialsPage() {
         page,
         limit: 20,
       });
+      const announcementData = await notificationService.getAnnouncements({
+        search: query.trim(),
+        visibleOnly: true,
+        status: 'published',
+        sort: 'newest',
+        limit: 100,
+      }).catch(() => ({ announcements: [] }));
       setItems(data.materials || []);
+      setAnnouncements(announcementData.announcements || []);
       setTotal(data.total || 0);
       setLimit(data.limit || 20);
     } catch (err) {
@@ -96,6 +108,11 @@ export function StudentMaterialsPage() {
     URL.revokeObjectURL(url);
   };
 
+  const viewAnnouncement = async (id) => {
+    const details = await notificationService.getAnnouncement(id);
+    setSelectedAnnouncement(details);
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader eyebrow="Student" title="Learning Materials" description="View, preview, search, sort, and download PDFs, PPTs, DOCs, ZIP files, and images." />
@@ -112,12 +129,42 @@ export function StudentMaterialsPage() {
       {!loading ? (
         <MaterialHierarchy
           items={items}
+          announcements={announcements}
           emptyMessage="No learning materials found in the database."
           onPreview={previewFile}
           onDownload={downloadFile}
+          onViewAnnouncement={viewAnnouncement}
+          allowDownload={false}
         />
       ) : null}
       <Card className="flex items-center justify-end gap-3 p-4"><Button variant="secondary" disabled={page <= 1} onClick={() => setPage((current) => Math.max(current - 1, 1))}>Previous</Button><span className="text-sm font-semibold text-muted">Page {page} of {totalPages}</span><Button variant="secondary" disabled={page >= totalPages} onClick={() => setPage((current) => current + 1)}>Next</Button></Card>
+      <Modal
+        open={Boolean(selectedAnnouncement)}
+        title="Announcement"
+        onClose={() => setSelectedAnnouncement(null)}
+      >
+        {selectedAnnouncement ? (
+          <div className="space-y-3 text-sm">
+            <h2 className="text-lg font-bold text-ink">{selectedAnnouncement.title}</h2>
+            <p className="leading-6 text-muted">{selectedAnnouncement.content || selectedAnnouncement.description || 'No announcement details provided.'}</p>
+            {selectedAnnouncement.attachments?.length ? (
+              <div className="flex flex-wrap gap-2">
+                {selectedAnnouncement.attachments.map((attachment) => (
+                  <a
+                    key={attachment.id || attachment.filePath}
+                    href={attachment.filePath}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-full border border-line px-3 py-1 text-xs font-semibold text-primary"
+                  >
+                    {attachment.fileName}
+                  </a>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </Modal>
     </div>
   );
 }

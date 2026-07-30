@@ -83,7 +83,7 @@ function buildPayload(form) {
     departmentId: selectedDepartmentId,
     curriculumId: departmentAudience ? Number(form.curriculumId || 0) : null,
     courseId: departmentAudience ? Number(form.courseId || 0) : null,
-    weekNo: departmentAudience ? Number(form.weekNo || 0) : null,
+    weekNo: departmentAudience && Number(form.weekNo || 0) > 0 ? Number(form.weekNo) : null,
     targets,
   };
 }
@@ -105,7 +105,6 @@ function validateForm(form) {
     if (!form.departmentId) return 'Department is required for Students or Teachers audience.';
     if (!form.curriculumId) return 'Curriculum is required for Students or Teachers audience.';
     if (!form.courseId) return 'Subject/Module is required for Students or Teachers audience.';
-    if (!form.weekNo || Number(form.weekNo) < 1) return 'Week number is required for Students or Teachers audience.';
   }
 
   if (form.publishDate && form.expiryDate && new Date(form.expiryDate) <= new Date(form.publishDate)) {

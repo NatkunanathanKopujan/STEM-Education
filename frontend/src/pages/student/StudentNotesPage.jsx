@@ -67,19 +67,9 @@ export function StudentNotesPage() {
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
-  const downloadNote = async (note) => {
-    const blob = await studentLearningService.download(note.id);
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = note.title;
-    link.click();
-    URL.revokeObjectURL(url);
-  };
-
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow="Student" title="Teacher Notes" description="Read, search, preview, and download teacher notes stored in the database." />
+      <PageHeader eyebrow="Student" title="Teacher Notes" description="Read, search, and preview teacher notes stored in the database." />
       <Card className="p-5">
         <div className="grid gap-3 lg:grid-cols-[1fr_220px_auto]">
           <SearchBar value={query} onChange={updateQuery} placeholder="Search notes, PDF files, topics, subjects, teacher" />
@@ -94,7 +84,7 @@ export function StudentNotesPage() {
           items={notes}
           emptyMessage="No public teacher notes found in the database."
           onPreview={previewNote}
-          onDownload={downloadNote}
+          allowDownload={false}
         />
       ) : null}
       {!loading && totalPages > 1 ? (

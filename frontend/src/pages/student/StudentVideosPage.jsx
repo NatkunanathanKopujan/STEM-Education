@@ -67,19 +67,9 @@ export function StudentVideosPage() {
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
-  const downloadVideo = async (video) => {
-    const blob = await studentLearningService.download(video.id);
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = video.title;
-    link.click();
-    URL.revokeObjectURL(url);
-  };
-
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow="Student" title="Videos" description="Watch, search, sort, preview, and download uploaded video lessons from the database." />
+      <PageHeader eyebrow="Student" title="Videos" description="Watch, search, sort, and preview uploaded video lessons from the database." />
       <Card className="p-5">
         <div className="grid gap-3 lg:grid-cols-[1fr_220px_auto]">
           <SearchBar value={query} onChange={updateQuery} placeholder="Search video title, topic, subject, teacher" />
@@ -94,7 +84,7 @@ export function StudentVideosPage() {
           items={videos}
           emptyMessage="No public videos found in the database."
           onPreview={watchVideo}
-          onDownload={downloadVideo}
+          allowDownload={false}
         />
       ) : null}
       {!loading && totalPages > 1 ? (

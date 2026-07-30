@@ -4,6 +4,7 @@ import {
   attemptReviewController,
   dashboardController,
   exportReportController,
+  learningHierarchyController,
   questionExposureController,
   reportsController,
   studentAnalyticsController,
@@ -32,6 +33,7 @@ router.use(authenticate);
 router.use(authorize(ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.TEACHER));
 
 router.get('/analytics/dashboard', dashboardController);
+router.get('/learning-hierarchy', authorize(ROLES.TEACHER), learningHierarchyController);
 router.get('/analytics/student/:id', studentAnalyticsValidator, validateRequest, studentAnalyticsController);
 router.get('/analytics/topics', topicAnalyticsController);
 router.get('/analytics/question-exposure', questionExposureController);

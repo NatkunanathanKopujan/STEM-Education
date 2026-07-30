@@ -741,8 +741,14 @@ export async function replaceAnnouncementTargets(announcementId, targets = []) {
     return;
   }
 
+  const normalizedTargets = targets.map((target) => ({
+    targetType: target.targetType || target.type || 'all_users',
+    targetRole: target.targetRole || target.role || null,
+    targetId: target.targetId || target.id || null,
+  }));
+
   await Promise.all(
-    targets.map((target) =>
+    normalizedTargets.map((target) =>
       db.execute(
         `INSERT INTO announcement_targets
           (announcement_id, target_type, target_role, target_id)

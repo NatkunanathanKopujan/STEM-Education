@@ -363,6 +363,10 @@ export async function removeFile(user, id) {
 }
 
 export async function getDownloadStream(user, id, requestMeta) {
+  if (user.role === ROLES.STUDENT) {
+    throw new AppError('Students can preview assigned learning materials, but downloads are not allowed', 403);
+  }
+
   const startedAt = Date.now();
   const file = await getFile(user, id);
   const provider = getStorageProvider();

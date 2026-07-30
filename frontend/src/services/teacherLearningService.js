@@ -75,6 +75,10 @@ export const teacherLearningService = {
     };
   },
 
+  async getLearningHierarchy() {
+    return teacherDashboardService.getLearningHierarchy();
+  },
+
   async listStudents() {
     const analytics = await teacherDashboardService.getAnalyticsDashboard();
     return (analytics.studentPerformance || analytics.leaderboard || []).map(normalizeStudent);

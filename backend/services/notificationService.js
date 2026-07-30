@@ -194,7 +194,6 @@ async function resolveAnnouncementScope(user, payload = {}) {
   if (!departmentId) throw new AppError('Department is required for student or teacher announcements', 400);
   if (!curriculumId) throw new AppError('Curriculum is required for student or teacher announcements', 400);
   if (!courseId) throw new AppError('Subject/Module is required for student or teacher announcements', 400);
-  if (!weekNo || weekNo < 1) throw new AppError('Week number is required for student or teacher announcements', 400);
 
   const department = await findDepartmentById(departmentId);
   if (!department || department.status !== 'Active') {
@@ -227,7 +226,7 @@ async function resolveAnnouncementScope(user, payload = {}) {
     throw new AppError('Select a valid active subject/module', 400);
   }
 
-  return { departmentId, curriculumId, courseId, weekNo };
+  return { departmentId, curriculumId, courseId, weekNo: weekNo > 0 ? weekNo : null };
 }
 
 async function notifyAnnouncementAudience(announcement, createdBy) {

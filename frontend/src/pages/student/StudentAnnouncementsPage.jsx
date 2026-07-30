@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import { PageHeader } from '../../components/super-admin/PageHeader';
-import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Loader } from '../../components/ui/Loader';
@@ -71,9 +70,19 @@ export function StudentAnnouncementsPage() {
             </div>
             <p className="mt-4 text-sm leading-6 text-muted">{item.description}</p>
             {item.attachments?.length ? (
-              <Button className="mt-4" variant="secondary">
-                Download {item.attachments[0].fileName}
-              </Button>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {item.attachments.map((attachment) => (
+                  <a
+                    key={attachment.id || attachment.filePath}
+                    href={attachment.filePath}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-full border border-line px-3 py-2 text-xs font-semibold text-primary hover:border-primary"
+                  >
+                    View {attachment.fileName || 'attachment'}
+                  </a>
+                ))}
+              </div>
             ) : null}
           </Card>
         ))}

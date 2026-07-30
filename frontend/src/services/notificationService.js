@@ -8,6 +8,15 @@ function compactValues(values = {}) {
   );
 }
 
+function buildAnnouncementFormData(payload = {}, files = []) {
+  const formData = new FormData();
+  Object.entries(compactValues(payload)).forEach(([key, value]) => {
+    formData.append(key, Array.isArray(value) || typeof value === 'object' ? JSON.stringify(value) : value);
+  });
+  files.forEach((file) => formData.append('attachments', file));
+  return formData;
+}
+
 export const notificationService = {
   getNotifications: async (params) => unwrap(await apiClient.get('/notifications', { params: compactValues(params) })),
   getUnread: async () => unwrap(await apiClient.get('/notifications/unread')),
@@ -16,7 +25,14 @@ export const notificationService = {
   deleteNotification: async (id) => unwrap(await apiClient.delete(`/notifications/${id}`)),
   getAnnouncements: async (params) => unwrap(await apiClient.get('/announcements', { params: compactValues(params) })),
   getAnnouncement: async (id) => unwrap(await apiClient.get(`/announcements/${id}`)),
-  createAnnouncement: async (payload) => unwrap(await apiClient.post('/announcements', payload)),
+  createAnnouncement: async (payload, files = []) => {
+    if (files.length) {
+      return unwrap(await apiClient.post('/announcements', buildAnnouncementFormData(payload, files), {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }));
+    }
+    return unwrap(await apiClient.post('/announcements', payload));
+  },
   updateAnnouncement: async (id, payload) => unwrap(await apiClient.put(`/announcements/${id}`, payload)),
   deleteAnnouncement: async (id) => unwrap(await apiClient.delete(`/announcements/${id}`)),
   getPreferences: async () => unwrap(await apiClient.get('/notification-preferences')),

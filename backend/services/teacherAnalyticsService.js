@@ -1,6 +1,7 @@
 import { parseJson } from '../utils/quizRandomizer.js';
 import {
   getDashboardMetrics,
+  getTeacherLearningHierarchy,
   getQuestionBankAnalytics,
   getQuestionExposure,
   listAttemptReview,
@@ -71,6 +72,10 @@ export async function getTeacherAnalyticsDashboard(user) {
     leaderboard,
     recentStudentActivity,
   };
+}
+
+export async function getTeacherCourseHierarchy(user) {
+  return getTeacherLearningHierarchy(user);
 }
 
 export async function getTeacherStudentAnalytics(user, studentId) {

@@ -29,6 +29,7 @@ import { ConfirmationDialog, Modal } from '../../components/ui/Modal';
 import { useAuth } from '../../hooks/useAuth';
 import { departmentService } from '../../services/departmentService';
 import { fileService } from '../../services/fileService';
+import { notificationService } from '../../services/notificationService';
 import { userManagementService } from '../../services/userManagementService';
 
 const acceptedTypes = '.pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx,.zip,.jpg,.jpeg,.png,.webp,.mp4,.mov,.avi,.mp3,.wav';
@@ -75,11 +76,38 @@ function buildDefaultMetadata() {
     subject: '',
     weekNo: '',
     topic: '',
+    announcementTitle: '',
     description: '',
     visibility: 'private',
     audience: 'all',
     status: 'active',
     tags: '',
+  };
+}
+
+function buildAnnouncementPayload(metadata) {
+  const departmentId = Number(metadata.departmentId || 0);
+  const curriculumId = Number(metadata.curriculumId || 0);
+  const courseId = Number(metadata.courseId || 0);
+  const weekNo = Number(metadata.weekNo || 0);
+  const audienceRole = metadata.audience === 'all' ? null : metadata.audience;
+  const targets = audienceRole && ['student', 'teacher'].includes(audienceRole)
+    ? [{ targetType: 'department', targetRole: audienceRole, targetId: departmentId }]
+    : audienceRole
+      ? [{ targetType: 'role', targetRole: audienceRole, targetId: null }]
+      : [{ targetType: 'all_users', targetRole: null, targetId: null }];
+
+  return {
+    title: metadata.announcementTitle || metadata.topic,
+    description: metadata.description,
+    audienceRole,
+    priority: metadata.priority || 'normal',
+    status: metadata.status === 'draft' ? 'draft' : 'published',
+    departmentId,
+    curriculumId,
+    courseId,
+    weekNo: weekNo > 0 ? weekNo : null,
+    targets,
   };
 }
 
@@ -116,6 +144,7 @@ export function FileManagerPage({
   const [stats, setStats] = useState(null);
   const [filters, setFilters] = useState(() => buildDefaultFilters(initialFilters));
   const [metadata, setMetadata] = useState(buildDefaultMetadata);
+  const [uploadMode, setUploadMode] = useState('files');
   const [queue, setQueue] = useState([]);
   const [versions, setVersions] = useState(null);
   const [versionTarget, setVersionTarget] = useState(null);
@@ -247,7 +276,45 @@ export function FileManagerPage({
     enqueueFiles(event.target.files);
   };
 
+  const validateAnnouncementUpload = () => {
+    if (!metadata.departmentId) return 'Department is required for an announcement.';
+    if (!metadata.curriculumId) return 'Curriculum is required for an announcement.';
+    if (!metadata.courseId) return 'Subject/Module is required for an announcement.';
+    if (!metadata.audience || metadata.audience === 'all') return 'Select Students Only or Teachers Only for scoped announcements.';
+    if (!['student', 'teacher'].includes(metadata.audience)) return 'Announcements in this hierarchy can be sent to Students Only or Teachers Only.';
+    if (!String(metadata.announcementTitle || metadata.topic || '').trim()) return 'Announcement title is required.';
+    if (!String(metadata.description || '').trim()) return 'Announcement content is required.';
+    return '';
+  };
+
   const uploadQueue = async (onlyFailed = false) => {
+    if (uploadMode === 'announcement') {
+      const validationError = validateAnnouncementUpload();
+      if (validationError) {
+        setError(validationError);
+        return;
+      }
+      setIsUploading(true);
+      setError('');
+      try {
+        const pendingFiles = queue
+          .filter((entry) => !onlyFailed || entry.status === 'failed')
+          .map((entry) => entry.file);
+        await notificationService.createAnnouncement(buildAnnouncementPayload(metadata), pendingFiles);
+        setQueue((current) => current.map((entry) => ({ ...entry, progress: 100, status: 'done', error: '' })));
+        setMessage('Announcement published.');
+        await loadData();
+      } catch (apiError) {
+        setError(apiErrorMessage(apiError, 'Unable to publish announcement.'));
+        setQueue((current) =>
+          current.map((entry) => ({ ...entry, status: 'failed', error: apiErrorMessage(apiError, 'Upload failed') })),
+        );
+      } finally {
+        setIsUploading(false);
+      }
+      return;
+    }
+
     if (!queue.length) return;
     setIsUploading(true);
     const uploaded = [];
@@ -438,6 +505,26 @@ export function FileManagerPage({
 
         <Card className="p-5">
           <h2 className="text-lg font-bold text-ink">Upload Files</h2>
+          <div className="mt-4 grid grid-cols-2 rounded-2xl border border-line bg-page p-1 text-sm font-bold">
+            {[
+              ['files', 'Learning files'],
+              ['announcement', 'Announcement'],
+            ].map(([mode, label]) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => {
+                  setUploadMode(mode);
+                  setQueue([]);
+                  setError('');
+                  setMessage('');
+                }}
+                className={`min-h-10 rounded-xl transition ${uploadMode === mode ? 'bg-primary text-white shadow-sm' : 'text-muted hover:text-ink'}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           {versionTarget ? (
             <div className="mt-4 rounded-xl border border-orange-100 bg-orange-50 p-3 text-sm font-semibold text-primary">
               Creating a new version of {versionTarget.originalFileName}
@@ -454,7 +541,11 @@ export function FileManagerPage({
             <input type="file" className="sr-only" multiple accept={acceptedTypes} onChange={selectedFiles} />
             <FiUploadCloud className="mx-auto size-8 text-primary" />
             <span className="mt-3 block text-sm font-bold text-ink">Drag, drop, or browse files</span>
-            <span className="mt-1 block text-xs text-muted">PDF, Office files, ZIP, images, videos, and audio-ready formats.</span>
+            <span className="mt-1 block text-xs text-muted">
+              {uploadMode === 'announcement'
+                ? 'Optional announcement attachments: PDF, Office files, ZIP, images, videos, and audio.'
+                : 'PDF, Office files, ZIP, images, videos, and audio-ready formats.'}
+            </span>
           </label>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <select
@@ -500,22 +591,32 @@ export function FileManagerPage({
             <input
               value={metadata.topic}
               onChange={(event) => updateMetadataField('topic', event.target.value)}
-              placeholder="Topic"
+              placeholder={uploadMode === 'announcement' ? 'Topic or short label' : 'Topic'}
               className="min-h-11 rounded-xl border border-line px-3 text-sm outline-none focus:border-primary sm:col-span-2"
             />
           </div>
+          {uploadMode === 'announcement' ? (
+            <input
+              value={metadata.announcementTitle || ''}
+              onChange={(event) => updateMetadataField('announcementTitle', event.target.value)}
+              placeholder="Announcement title"
+              className="mt-3 min-h-11 w-full rounded-xl border border-line px-3 text-sm outline-none focus:border-primary"
+            />
+          ) : null}
           <textarea
             value={metadata.description}
             onChange={(event) => updateMetadataField('description', event.target.value)}
-            placeholder="Description"
+            placeholder={uploadMode === 'announcement' ? 'Announcement content' : 'Description'}
             className="mt-3 min-h-20 w-full rounded-xl border border-line px-3 py-2 text-sm outline-none focus:border-primary"
           />
-          <input
-            value={metadata.versionNote || ''}
-            onChange={(event) => updateMetadataField('versionNote', event.target.value)}
-            placeholder="Version note"
-            className="mt-3 min-h-11 w-full rounded-xl border border-line px-3 text-sm outline-none focus:border-primary"
-          />
+          {uploadMode === 'files' ? (
+            <input
+              value={metadata.versionNote || ''}
+              onChange={(event) => updateMetadataField('versionNote', event.target.value)}
+              placeholder="Version note"
+              className="mt-3 min-h-11 w-full rounded-xl border border-line px-3 text-sm outline-none focus:border-primary"
+            />
+          ) : null}
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <select value={metadata.visibility} onChange={(event) => updateMetadataField('visibility', event.target.value)} className="min-h-11 rounded-xl border border-line px-3 text-sm">
               <option value="private">Private</option>
@@ -529,7 +630,9 @@ export function FileManagerPage({
             <input value={metadata.tags} onChange={(event) => updateMetadataField('tags', event.target.value)} placeholder="Tags" className="min-h-11 rounded-xl border border-line px-3 text-sm sm:col-span-2" />
           </div>
           <p className="mt-3 text-xs font-semibold text-muted">
-            Files are scoped to the selected department, curriculum, subject/module, and week.
+            {uploadMode === 'announcement'
+              ? 'Announcements are scoped to the selected department, curriculum, and subject/module. Add a week number to place it inside that week; leave week empty to show it above all weeks.'
+              : 'Files are scoped to the selected department, curriculum, subject/module, and week.'}
           </p>
           <div className="mt-4 space-y-2">
             {queue.map((item) => (
@@ -546,7 +649,9 @@ export function FileManagerPage({
             ))}
           </div>
           <div className="mt-4 flex flex-wrap gap-3">
-            <Button disabled={!queue.length} isLoading={isUploading} onClick={() => uploadQueue()}>Upload Queue</Button>
+            <Button disabled={uploadMode === 'files' && !queue.length} isLoading={isUploading} onClick={() => uploadQueue()}>
+              {uploadMode === 'announcement' ? 'Publish Announcement' : 'Upload Queue'}
+            </Button>
             <Button variant="secondary" disabled={!queue.some((item) => item.status === 'failed') || isUploading} onClick={() => uploadQueue(true)}>Retry Failed</Button>
             <Button variant="secondary" disabled={!queue.length || isUploading} onClick={() => setQueue([])}>Cancel Queue</Button>
             {versionTarget ? <Button variant="ghost" onClick={() => setVersionTarget(null)}>Clear Version Target</Button> : null}

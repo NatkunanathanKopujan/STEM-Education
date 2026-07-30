@@ -3,6 +3,7 @@ import {
   exportTeacherReport,
   getTeacherAnalyticsDashboard,
   getTeacherAttemptReview,
+  getTeacherCourseHierarchy,
   getTeacherQuestionExposure,
   getTeacherReports,
   getTeacherStudentAnalytics,
@@ -13,6 +14,15 @@ export async function dashboardController(req, res, next) {
   try {
     const data = await getTeacherAnalyticsDashboard(req.user);
     return sendSuccess(res, data, 'Teacher analytics dashboard fetched');
+  } catch (error) {
+    return next(error);
+  }
+}
+
+export async function learningHierarchyController(req, res, next) {
+  try {
+    const data = await getTeacherCourseHierarchy(req.user);
+    return sendSuccess(res, data, 'Teacher learning hierarchy fetched');
   } catch (error) {
     return next(error);
   }

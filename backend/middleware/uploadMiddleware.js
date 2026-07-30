@@ -40,9 +40,7 @@ const extensionGroups = {
     ...allowedFileGroups.videos,
   ],
   announcements: [
-    ...allowedFileGroups.pdf,
-    ...allowedFileGroups.documents,
-    ...allowedFileGroups.images,
+    ...allManagedFileExtensions,
   ],
   profiles: allowedFileGroups.images,
   settings: allowedFileGroups.images,
