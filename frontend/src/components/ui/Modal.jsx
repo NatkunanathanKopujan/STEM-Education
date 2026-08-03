@@ -13,12 +13,12 @@ export function Modal({ open, title, children, onClose, footer }) {
           exit={{ opacity: 0 }}
         >
           <motion.section
-            className="enterprise-panel w-full max-w-lg rounded-2xl"
+            className="enterprise-panel w-full max-w-lg overflow-hidden rounded-2xl shadow-[0_30px_90px_rgba(0,0,0,0.28)]"
             initial={{ opacity: 0, y: 18, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 18, scale: 0.98 }}
           >
-            <header className="flex items-center justify-between border-b border-line px-5 py-4">
+            <header className="flex items-center justify-between border-b border-line bg-page/70 px-5 py-4">
               <h2 className="text-base font-semibold text-ink">{title}</h2>
               <button
                 type="button"
@@ -30,7 +30,7 @@ export function Modal({ open, title, children, onClose, footer }) {
               </button>
             </header>
             <div className="p-5">{children}</div>
-            {footer ? <footer className="border-t border-line px-5 py-4">{footer}</footer> : null}
+            {footer ? <footer className="border-t border-line bg-page/55 px-5 py-4">{footer}</footer> : null}
           </motion.section>
         </motion.div>
       ) : null}

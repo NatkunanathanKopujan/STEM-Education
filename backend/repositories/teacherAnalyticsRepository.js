@@ -300,7 +300,7 @@ export async function getTeacherLearningHierarchy(user) {
     targetSubjects.forEach((linked) => {
       const item = {
         ...announcement,
-        id: `announcement-${announcement.id}-${linked.id}`,
+        id: `announcement-${announcement.id}-${linked.subject.id}`,
         rawId: announcement.id,
         kind: 'announcement',
         uploadedAt: announcement.uploadedAt || announcement.createdAt,

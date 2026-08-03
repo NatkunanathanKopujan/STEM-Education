@@ -3,7 +3,7 @@ import { Button } from './Button';
 
 export function EmptyState({ title = 'No data found', description, actionLabel, onAction }) {
   return (
-    <div className="enterprise-panel rounded-2xl border-dashed px-6 py-10 text-center">
+    <div className="enterprise-panel rounded-2xl border-dashed px-6 py-12 text-center">
       <span className="mx-auto grid size-12 place-items-center rounded-xl border border-primary/20 bg-orange-50 text-primary shadow-sm">
         <FiInbox className="size-6" />
       </span>

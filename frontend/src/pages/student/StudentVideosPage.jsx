@@ -6,6 +6,7 @@ import { MaterialHierarchy } from '../../components/learning/MaterialHierarchy';
 import { SelectBox } from '../../components/ui/FormControls';
 import { SearchBar } from '../../components/ui/SearchBar';
 import { studentLearningService } from '../../services/studentLearningService';
+import { isVideoFile } from '../../utils/fileTypes';
 
 const sortOptions = [
   { label: 'Newest', value: 'newest' },
@@ -36,7 +37,7 @@ export function StudentVideosPage() {
         page,
         limit: 20,
       });
-      setVideos(data.materials || []);
+      setVideos((data.materials || []).filter(isVideoFile));
       setTotal(data.total || 0);
       setLimit(data.limit || 20);
     } catch (err) {

@@ -16,7 +16,7 @@ import {
   FiUsers,
 } from 'react-icons/fi';
 import { Button } from '../../components/ui/Button';
-import heroImage from '../../assets/landing-hero.png';
+import landingBackground from '../../img/dbit-landing-background.png';
 
 const fadeUp = {
   hidden: { opacity: 0, y: 12 },
@@ -72,54 +72,56 @@ function SectionHeader({ eyebrow, title, description }) {
 export function LandingPage() {
   return (
     <main id="home">
-      <section className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-7xl items-center gap-10 px-4 py-14 sm:px-6 lg:grid-cols-[1fr_0.95fr] lg:px-8">
-        <motion.div initial="hidden" animate="visible" variants={fadeUp} transition={{ duration: 0.4 }}>
-          <p className="text-xs font-bold uppercase tracking-wider text-orange-600">
-            Official University LMS
-          </p>
-          <h1 className="mt-4 max-w-4xl text-4xl font-bold leading-tight text-ink sm:text-5xl lg:text-6xl">
-            AI Smart Learning Management System
-          </h1>
-          <p className="mt-5 max-w-2xl text-base leading-7 text-muted sm:text-lg">
-            A secure academic management platform for teaching, learning materials,
-            assessments, reporting, and role-based institutional administration.
-          </p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Link to="/login">
-              <Button>
-                Get Started
-                <FiArrowRight className="size-4" />
-              </Button>
-            </Link>
-            <Link to="/login">
-              <Button variant="secondary">Login</Button>
-            </Link>
-          </div>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, scale: 0.96, y: 20 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          transition={{ duration: 0.24, delay: 0.05 }}
-          className="relative"
-        >
-          <img
-            src={heroImage}
-            alt="Official LMS dashboard with learning materials and academic analytics"
-            className="w-full rounded-xl border border-line bg-white object-cover shadow-soft"
-            loading="eager"
-          />
-          <div className="absolute -bottom-5 left-5 right-5 rounded-xl border border-line bg-white/95 p-4 shadow-soft backdrop-blur">
-            <div className="grid grid-cols-3 gap-3 text-center">
-              {['Assessments', 'Materials', 'Reports'].map((item) => (
-                <div key={item}>
-                  <p className="text-sm font-bold text-primary">{item}</p>
-                  <p className="mt-1 text-xs text-muted">Role based</p>
-                </div>
-              ))}
+      <section
+        className="relative min-h-[calc(100vh-4rem)] overflow-hidden bg-white"
+      >
+        <div className="absolute -left-16 -top-28 h-52 w-[42rem] rounded-[100%] bg-gradient-to-r from-cyan-400 to-teal-300 opacity-95" />
+        <div className="absolute -right-24 -top-16 h-64 w-[56rem] rounded-[100%] bg-gradient-to-r from-cyan-400 via-sky-500 to-blue-600 opacity-95" />
+        <div className="absolute -bottom-28 left-0 h-48 w-[48rem] rounded-[100%] bg-gradient-to-r from-sky-500 to-teal-400 opacity-90" />
+        <div className="absolute bottom-0 right-0 h-full w-full bg-gradient-to-r from-white via-white/80 to-white/10" />
+        <div
+          className="absolute inset-y-16 right-0 hidden w-[58%] bg-cover bg-center bg-no-repeat lg:block"
+          style={{
+            backgroundImage: `linear-gradient(90deg, rgba(255,255,255,0.92), rgba(255,255,255,0.42), rgba(255,255,255,0.02)), url(${landingBackground})`,
+          }}
+          aria-hidden="true"
+        />
+        <div className="relative mx-auto flex min-h-[calc(100vh-4rem)] max-w-7xl items-center px-4 py-14 sm:px-6 lg:px-8">
+          <motion.div
+            initial="hidden"
+            animate="visible"
+            variants={fadeUp}
+            transition={{ duration: 0.4 }}
+            className="max-w-3xl"
+          >
+            <p className="text-xs font-bold uppercase tracking-wider text-primary">
+              Official University LMS
+            </p>
+            <h1 className="mt-4 max-w-4xl text-5xl font-black leading-[0.98] text-[#16477f] sm:text-6xl lg:text-7xl">
+              AI Smart Learning Management System
+            </h1>
+            <p className="mt-6 max-w-2xl text-base leading-7 text-muted sm:text-lg">
+              A secure academic management platform for teaching, learning materials,
+              assessments, reporting, and role-based institutional administration.
+            </p>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Link to="/login">
+                <Button>
+                  Get Started
+                  <FiArrowRight className="size-4" />
+                </Button>
+              </Link>
+              <Link to="/login">
+                <Button variant="secondary">Login</Button>
+              </Link>
             </div>
+          </motion.div>
+          <div
+            className="pointer-events-none absolute bottom-8 right-4 h-48 w-80 rounded-[2rem] bg-cover bg-center bg-no-repeat shadow-soft sm:h-60 sm:w-[28rem] lg:hidden"
+            style={{ backgroundImage: `url(${landingBackground})` }}
+            aria-hidden="true"
+          />
           </div>
-        </motion.div>
       </section>
 
       <section id="features" className="border-y border-line bg-white py-20">

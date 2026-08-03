@@ -173,7 +173,16 @@ function getSortClause(sort = 'createdDate', direction = 'desc') {
   return `${column} ${normalizedDirection}, c.id ${normalizedDirection}`;
 }
 
-export async function listCurriculums({ search = '', status = '', page = 1, limit = 10, sort = 'createdDate', direction = 'desc', createdBy = '' } = {}) {
+export async function listCurriculums({
+  search = '',
+  status = '',
+  page = 1,
+  limit = 10,
+  sort = 'createdDate',
+  direction = 'desc',
+  createdBy = '',
+  assignedTeacherUserId = '',
+} = {}) {
   await ensureCurriculumManagementSchema();
   await ensureStudentCurriculumSchema();
   const safePage = Math.max(Number(page) || 1, 1);
@@ -197,6 +206,17 @@ export async function listCurriculums({ search = '', status = '', page = 1, limi
   if (createdBy) {
     filters.push('c.created_by = ?');
     params.push(Number(createdBy));
+  }
+
+  if (assignedTeacherUserId) {
+    filters.push(`EXISTS (
+      SELECT 1
+      FROM curriculum_teachers scoped_ct
+      INNER JOIN teachers scoped_t ON scoped_t.id = scoped_ct.teacher_id
+      WHERE scoped_ct.curriculum_id = c.id
+        AND scoped_t.user_id = ?
+    )`);
+    params.push(Number(assignedTeacherUserId));
   }
 
   const where = filters.length ? `WHERE ${filters.join(' AND ')}` : '';

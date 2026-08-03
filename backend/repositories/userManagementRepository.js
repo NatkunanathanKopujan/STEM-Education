@@ -163,6 +163,21 @@ export async function findTeacherDepartmentsByUserId(userId) {
   return rows;
 }
 
+export async function findTeacherCurriculumsByUserId(userId) {
+  await ensureUserAssignmentSchema();
+  const [rows] = await db.query(
+    `SELECT c.id AS curriculumId, c.title AS curriculum, c.department_id AS departmentId
+     FROM teachers t
+     INNER JOIN curriculum_teachers ct ON ct.teacher_id = t.id
+     INNER JOIN curriculums c ON c.id = ct.curriculum_id
+     WHERE t.user_id = ?
+       AND c.is_active = 1
+     ORDER BY c.title`,
+    [userId],
+  );
+  return rows;
+}
+
 export async function findTeacherAdminOwnerByUserId(userId) {
   await ensureAdminScopeSchema();
   const [rows] = await db.query(

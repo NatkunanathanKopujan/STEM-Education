@@ -12,6 +12,7 @@ import {
   createManagedUser,
   deleteManagedUser,
   findTeacherAdminOwnerByUserId,
+  findTeacherCurriculumsByUserId,
   findTeacherDepartmentsByUserId,
   findManagedUserById,
   listManagedUsers,
@@ -189,6 +190,10 @@ async function resolveStudentDepartments(payload, actor) {
 }
 
 async function resolveStudentCurriculum(payload, actor) {
+  if (isTeacher(actor) && !payload.curriculumId && !payload.curriculum) {
+    throw new AppError('Curriculum is required', 422);
+  }
+
   if (!payload.curriculumId && !payload.curriculum) {
     return { curriculumId: null, curriculum: '' };
   }
@@ -200,14 +205,28 @@ async function resolveStudentCurriculum(payload, actor) {
     throw new AppError('Select a valid active curriculum', 422);
   }
 
+  const selectedDepartmentIds = payload.departmentIds.length
+    ? payload.departmentIds.map(Number)
+    : (payload.departmentId ? [Number(payload.departmentId)] : []);
+  if (curriculum.departmentId && selectedDepartmentIds.length && !selectedDepartmentIds.includes(Number(curriculum.departmentId))) {
+    throw new AppError('Selected curriculum must belong to one of the selected departments', 422);
+  }
+
   if (isAdmin(actor) && Number(curriculum.createdBy) !== Number(actor.id)) {
     throw new AppError('You can only use curriculums under your campus', 403);
   }
 
   if (isTeacher(actor)) {
-    const teacherDepartments = await findTeacherDepartmentsByUserId(actor.id);
-    const allowedIds = teacherDepartments.map((department) => Number(department.departmentId));
-    if (curriculum.departmentId && !allowedIds.includes(Number(curriculum.departmentId))) {
+    const [teacherDepartments, teacherCurriculums] = await Promise.all([
+      findTeacherDepartmentsByUserId(actor.id),
+      findTeacherCurriculumsByUserId(actor.id),
+    ]);
+    const allowedDepartmentIds = teacherDepartments.map((department) => Number(department.departmentId));
+    const allowedCurriculumIds = teacherCurriculums.map((item) => Number(item.curriculumId));
+    if (!allowedCurriculumIds.includes(Number(curriculum.id))) {
+      throw new AppError('You can only use curriculums assigned to you', 403);
+    }
+    if (curriculum.departmentId && !allowedDepartmentIds.includes(Number(curriculum.departmentId))) {
       throw new AppError('You can only use curriculums under your assigned departments', 403);
     }
   }

@@ -61,8 +61,8 @@ export function DashboardLayout() {
         <MobileSidebar open={mobileOpen} role={user?.role} onClose={() => setMobileOpen(false)} />
         <div className="flex min-w-0 flex-1 flex-col">
           <Navbar user={user} onMenuClick={() => setMobileOpen(true)} onLogout={() => logout()} />
-          <main className="flex-1 bg-page px-4 py-7 sm:px-6 lg:px-8">
-            <div className="mb-6">
+          <main className="flex-1 bg-page bg-[radial-gradient(circle_at_top_right,rgb(var(--color-accent-soft)/0.72),transparent_28rem)] px-5 py-8 sm:px-7 lg:px-10">
+            <div className="mb-7">
               <Breadcrumb />
             </div>
             <Outlet />

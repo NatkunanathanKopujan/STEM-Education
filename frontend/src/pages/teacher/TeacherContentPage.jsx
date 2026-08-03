@@ -7,6 +7,7 @@ const pageConfig = {
     description:
       'Upload, preview, download, update, version, and archive learning materials from live database records.',
     initialFilters: {},
+    viewMode: 'materials',
   },
   video: {
     title: 'Videos',
@@ -14,6 +15,7 @@ const pageConfig = {
       'Manage uploaded video lessons with secure previews, downloads, version history, and database-backed access.',
     initialFilters: { fileType: 'videos' },
     lockFileType: true,
+    viewMode: 'videos',
   },
   note: {
     title: 'Teacher Notes',
@@ -21,6 +23,7 @@ const pageConfig = {
       'Manage notes and document resources with secure previews, downloads, version history, and database-backed access.',
     initialFilters: { fileType: 'pdf,documents' },
     lockFileType: true,
+    viewMode: 'notes',
   },
 };
 
@@ -38,6 +41,7 @@ export function TeacherContentPage({ type = 'material' }) {
       description={config.description}
       initialFilters={config.initialFilters}
       lockFileType={config.lockFileType}
+      viewMode={config.viewMode}
     />
   );
 }

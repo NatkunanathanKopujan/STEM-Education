@@ -12,6 +12,7 @@ import {
   updateCurriculumRecord,
 } from '../repositories/curriculumRepository.js';
 import { findActiveDepartmentById, findDepartmentById } from '../repositories/departmentRepository.js';
+import { findTeacherCurriculumsByUserId } from '../repositories/userManagementRepository.js';
 
 const makeCode = (name = '') =>
   name
@@ -80,8 +81,7 @@ function handleDuplicate(error, message = 'Curriculum code already exists') {
 }
 
 function ensureCurriculumAccess(curriculum, user) {
-  if (user?.role !== 'admin') return;
-  if (Number(curriculum?.createdBy) !== Number(user.id)) {
+  if (user?.role === 'admin' && Number(curriculum?.createdBy) !== Number(user.id)) {
     throw new AppError('You can only manage curriculums under your campus', 403);
   }
 }
@@ -91,6 +91,7 @@ export const curriculumService = {
     return listCurriculums({
       ...filters,
       ...(user?.role === 'admin' ? { createdBy: user.id } : {}),
+      ...(user?.role === 'teacher' ? { assignedTeacherUserId: user.id } : {}),
     });
   },
 
@@ -98,6 +99,13 @@ export const curriculumService = {
     const curriculum = await findCurriculumById(id);
     if (!curriculum) throw new AppError('Curriculum was not found', 404);
     ensureCurriculumAccess(curriculum, user);
+    if (user?.role === 'teacher') {
+      const assignedCurriculums = await findTeacherCurriculumsByUserId(user.id);
+      const hasAccess = assignedCurriculums.some((item) => Number(item.curriculumId) === Number(id));
+      if (!hasAccess) {
+        throw new AppError('You can only view curriculums assigned to you', 403);
+      }
+    }
     return curriculum;
   },
 

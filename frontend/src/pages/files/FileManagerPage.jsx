@@ -11,14 +11,22 @@ import {
 } from 'recharts';
 import {
   FiArchive,
+  FiBarChart2,
+  FiBookOpen,
   FiDownload,
   FiEdit3,
   FiEye,
   FiFile,
+  FiFileText,
+  FiImage,
+  FiMusic,
+  FiPackage,
+  FiPlayCircle,
   FiRefreshCw,
   FiSearch,
   FiTrash2,
   FiUploadCloud,
+  FiVideo,
 } from 'react-icons/fi';
 import { PageHeader } from '../../components/super-admin/PageHeader';
 import { Button } from '../../components/ui/Button';
@@ -31,6 +39,7 @@ import { departmentService } from '../../services/departmentService';
 import { fileService } from '../../services/fileService';
 import { notificationService } from '../../services/notificationService';
 import { userManagementService } from '../../services/userManagementService';
+import { getFileIdentity, isVideoFile } from '../../utils/fileTypes';
 
 const acceptedTypes = '.pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx,.zip,.jpg,.jpeg,.png,.webp,.mp4,.mov,.avi,.mp3,.wav';
 const audienceOptions = [
@@ -55,9 +64,113 @@ const fileTypeColors = {
   zip: '#7C3AED',
 };
 const fallbackFileTypeColors = ['#0EA5E9', '#22C55E', '#A855F7', '#F59E0B', '#EF4444', '#14B8A6'];
+const moduleUi = {
+  materials: {
+    accent: 'from-emerald-500/15 via-teal-500/10 to-cyan-500/10',
+    eyebrow: 'Academic Resource Library',
+    searchTitle: 'Find learning resources',
+    searchPlaceholder: 'Search notes, slides, topics, subjects, or week resources',
+    uploadTitle: 'Upload Learning Resource',
+    emptyTitle: 'No learning materials found',
+    emptyDescription: 'Upload department, curriculum, subject, and week-based resources to build the learning library.',
+    stats: ['Resources', 'Storage Used', 'Recent Resources', 'Avg Resource Size'],
+  },
+  videos: {
+    accent: 'from-slate-950 via-slate-900 to-cyan-900',
+    eyebrow: 'Video Learning Studio',
+    searchTitle: 'Search video lessons',
+    searchPlaceholder: 'Search video titles, topics, subjects, teachers, or playlists',
+    uploadTitle: 'Upload Video Lesson',
+    emptyTitle: 'No videos found',
+    emptyDescription: 'Upload video lessons or adjust the filters to see available learning videos.',
+    stats: ['Videos', 'Video Storage', 'Recent Videos', 'Avg Video Size'],
+  },
+  notes: {
+    accent: 'from-amber-500/20 via-orange-100/80 to-yellow-50',
+    eyebrow: 'Teacher Notebook',
+    searchTitle: 'Search teacher notes',
+    searchPlaceholder: 'Search lesson notes, summaries, topics, subjects, or weeks',
+    uploadTitle: 'Upload Teacher Note',
+    emptyTitle: 'No teacher notes found',
+    emptyDescription: 'Upload lesson summaries, PDF notes, or document-based teaching notes.',
+    stats: ['Notes', 'Notes Storage', 'Recent Notes', 'Avg Note Size'],
+  },
+  repository: {
+    accent: 'from-primary/10 via-card to-primary/5',
+    eyebrow: 'Cloud File Repository',
+    searchTitle: 'Search and filter files',
+    searchPlaceholder: 'Search by file name, topic, teacher, curriculum',
+    uploadTitle: 'Upload Files',
+    emptyTitle: 'No files found',
+    emptyDescription: 'Upload a file or adjust filters to see managed resources.',
+    stats: ['Total Files', 'Storage Used', 'Recent Uploads', 'Avg File Size'],
+  },
+};
 
 function getFileTypeColor(fileType = '', index = 0) {
   return fileTypeColors[String(fileType).toLowerCase()] || fallbackFileTypeColors[index % fallbackFileTypeColors.length];
+}
+
+function getFileTypeIcon(file) {
+  const category = getFileIdentity(file).category;
+  if (category === 'video') return FiVideo;
+  if (category === 'image') return FiImage;
+  if (category === 'audio') return FiMusic;
+  if (category === 'archive') return FiPackage;
+  if (category === 'presentation' || category === 'spreadsheet') return FiBarChart2;
+  if (category === 'pdf' || category === 'word' || category === 'text') return FiFileText;
+  return FiFile;
+}
+
+function getFileTypeTone(file) {
+  const category = getFileIdentity(file).category;
+  const tones = {
+    video: {
+      card: 'from-violet-500/12 via-card to-slate-950/5',
+      icon: 'bg-violet-100 text-violet-700',
+      bar: 'from-violet-500 via-indigo-500 to-cyan-500',
+    },
+    pdf: {
+      card: 'from-red-500/10 via-card to-red-50/60',
+      icon: 'bg-red-100 text-red-700',
+      bar: 'from-red-600 via-rose-500 to-orange-500',
+    },
+    word: {
+      card: 'from-blue-500/10 via-card to-blue-50/60',
+      icon: 'bg-blue-100 text-blue-700',
+      bar: 'from-blue-600 via-sky-500 to-cyan-500',
+    },
+    presentation: {
+      card: 'from-orange-500/10 via-card to-amber-50/60',
+      icon: 'bg-orange-100 text-orange-700',
+      bar: 'from-orange-600 via-amber-500 to-yellow-500',
+    },
+    spreadsheet: {
+      card: 'from-green-500/10 via-card to-emerald-50/60',
+      icon: 'bg-green-100 text-green-700',
+      bar: 'from-green-600 via-emerald-500 to-teal-500',
+    },
+    image: {
+      card: 'from-cyan-500/10 via-card to-sky-50/60',
+      icon: 'bg-cyan-100 text-cyan-700',
+      bar: 'from-cyan-600 via-teal-500 to-emerald-500',
+    },
+    audio: {
+      card: 'from-purple-500/10 via-card to-fuchsia-50/60',
+      icon: 'bg-purple-100 text-purple-700',
+      bar: 'from-purple-600 via-fuchsia-500 to-pink-500',
+    },
+    archive: {
+      card: 'from-slate-500/10 via-card to-slate-50/70',
+      icon: 'bg-slate-100 text-slate-700',
+      bar: 'from-slate-600 via-slate-500 to-zinc-500',
+    },
+  };
+  return tones[category] || {
+    card: 'from-primary/10 via-card to-primary/5',
+    icon: 'bg-primary/10 text-primary',
+    bar: 'from-primary via-teal-500 to-emerald-500',
+  };
 }
 
 function formatBytes(value = 0) {
@@ -138,12 +251,14 @@ export function FileManagerPage({
   description = 'Manage LMS files, storage usage, previews, secure downloads, and version history.',
   initialFilters = {},
   lockFileType = false,
+  viewMode = 'repository',
 } = {}) {
   const { role } = useAuth();
   const [files, setFiles] = useState([]);
   const [stats, setStats] = useState(null);
   const [filters, setFilters] = useState(() => buildDefaultFilters(initialFilters));
   const [metadata, setMetadata] = useState(buildDefaultMetadata);
+  const [editModules, setEditModules] = useState([]);
   const [uploadMode, setUploadMode] = useState('files');
   const [queue, setQueue] = useState([]);
   const [versions, setVersions] = useState(null);
@@ -165,6 +280,10 @@ export function FileManagerPage({
   const availableCurriculums = useMemo(
     () => curriculums.filter((curriculum) => !metadata.departmentId || Number(curriculum.departmentId) === Number(metadata.departmentId)),
     [curriculums, metadata.departmentId],
+  );
+  const availableEditCurriculums = useMemo(
+    () => curriculums.filter((curriculum) => !editForm.departmentId || Number(curriculum.departmentId) === Number(editForm.departmentId)),
+    [curriculums, editForm.departmentId],
   );
 
   const loadData = useCallback(async () => {
@@ -244,6 +363,27 @@ export function FileManagerPage({
       active = false;
     };
   }, [metadata.curriculumId]);
+
+  useEffect(() => {
+    if (!editForm.curriculumId) {
+      setEditModules([]);
+      return;
+    }
+
+    let active = true;
+    userManagementService
+      .listModules(editForm.curriculumId)
+      .then((data) => {
+        if (active) setEditModules((data.modules || []).filter((module) => module.status === 'Active'));
+      })
+      .catch(() => {
+        if (active) setEditModules([]);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [editForm.curriculumId]);
 
   const updateMetadataField = (key, value) => {
     setMetadata((current) => {
@@ -428,8 +568,17 @@ export function FileManagerPage({
   };
 
   const startEdit = (file) => {
+    const departmentId = file.targetDepartmentIds?.[0] || '';
+    const matchedCurriculum = curriculums.find(
+      (curriculum) =>
+        Number(curriculum.departmentId) === Number(departmentId) &&
+        String(curriculum.name || '').toLowerCase() === String(file.curriculum || '').toLowerCase(),
+    );
     setEditingFile(file);
     setEditForm({
+      departmentId,
+      curriculumId: matchedCurriculum?.id || '',
+      courseId: file.courseId || '',
       curriculum: file.curriculum || '',
       subject: file.subject || '',
       weekNo: file.weekNo || '',
@@ -439,25 +588,230 @@ export function FileManagerPage({
       status: file.status || 'active',
       audience: file.audience || 'all',
       tags: file.tags || '',
-      departmentId: file.targetDepartmentIds?.[0] || '',
     });
   };
 
   const updateEditField = (key, value) => {
-    setEditForm((current) => ({ ...current, [key]: value }));
+    setEditForm((current) => {
+      if (key === 'departmentId') {
+        return { ...current, departmentId: value, curriculumId: '', courseId: '', curriculum: '', subject: '' };
+      }
+      if (key === 'curriculumId') {
+        const selected = curriculums.find((curriculum) => Number(curriculum.id) === Number(value));
+        return {
+          ...current,
+          curriculumId: value,
+          courseId: '',
+          curriculum: selected?.name || '',
+          subject: '',
+        };
+      }
+      if (key === 'courseId') {
+        const selected = editModules.find((module) => Number(module.id) === Number(value));
+        return { ...current, courseId: value, subject: selected?.title || '' };
+      }
+      return { ...current, [key]: value };
+    });
   };
 
   const saveFileChanges = async () => {
     if (!editingFile) return;
     setError('');
     try {
-      await fileService.update(editingFile.id, editForm);
+      const hasCompleteScope = editForm.departmentId && editForm.curriculumId && editForm.courseId;
+      const payload = hasCompleteScope
+        ? editForm
+        : Object.fromEntries(
+            Object.entries(editForm).filter(
+              ([key]) => !['departmentId', 'curriculumId', 'courseId'].includes(key),
+            ),
+          );
+      await fileService.update(editingFile.id, payload);
       setMessage(`${editingFile.originalFileName} updated.`);
       setEditingFile(null);
       await loadData();
     } catch (apiError) {
       setError(apiErrorMessage(apiError, 'File update failed.'));
     }
+  };
+
+  const baseFileItems = files.files || [];
+  const fileItems = viewMode === 'videos' ? baseFileItems.filter(isVideoFile) : baseFileItems;
+  const ui = moduleUi[viewMode] || moduleUi.repository;
+  const statLabels = ui.stats;
+  const fileActionButtons = (file, compact = false) => (
+    <div className={`flex flex-wrap gap-2 ${compact ? '' : 'justify-end'}`}>
+      <Button variant="ghost" className="min-h-9 px-2" aria-label={`Preview ${file.originalFileName}`} onClick={() => previewFile(file)}><FiEye /></Button>
+      <Button variant="ghost" className="min-h-9 px-2" aria-label={`Edit ${file.originalFileName}`} onClick={() => startEdit(file)}><FiEdit3 /></Button>
+      <Button variant="ghost" className="min-h-9 px-2" aria-label={`Download ${file.originalFileName}`} onClick={() => downloadFile(file)}><FiDownload /></Button>
+      <Button variant="ghost" className="min-h-9 px-2" aria-label={`View version history for ${file.originalFileName}`} onClick={() => loadVersions(file)}><FiRefreshCw /></Button>
+      <Button variant="ghost" className="min-h-9 px-2" aria-label="Upload new version" onClick={() => { setVersionTarget(file); window.scrollTo({ top: 0, behavior: 'smooth' }); }}><FiUploadCloud /></Button>
+      <Button variant="ghost" className="min-h-9 px-2 text-red-600" aria-label={`Delete ${file.originalFileName}`} onClick={() => setArchiveTarget(file)}><FiTrash2 /></Button>
+    </div>
+  );
+
+  const renderSpecializedFiles = () => {
+    if (viewMode === 'videos') {
+      return (
+        <div className="space-y-5">
+          <div className="rounded-3xl border border-slate-700 bg-slate-950 p-5 text-white shadow-xl">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.22em] text-cyan-300">Video playlists</p>
+                <h2 className="mt-2 text-2xl font-black">Learning video library</h2>
+                <p className="mt-2 max-w-2xl text-sm text-slate-300">Preview, update, version, and organize video lessons from the same live file database.</p>
+              </div>
+              <div className="grid grid-cols-3 gap-3 text-center text-xs font-bold text-slate-300">
+                <span className="rounded-2xl bg-white/10 px-4 py-3"><b className="block text-lg text-white">{fileItems.length}</b>Shown</span>
+                <span className="rounded-2xl bg-white/10 px-4 py-3"><b className="block text-lg text-white">{fileItems.reduce((sum, file) => sum + Number(file.viewCount || 0), 0)}</b>Views</span>
+                <span className="rounded-2xl bg-white/10 px-4 py-3"><b className="block text-lg text-white">{fileItems.reduce((sum, file) => sum + Number(file.downloadCount || 0), 0)}</b>Downloads</span>
+              </div>
+            </div>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {fileItems.map((file) => {
+            const identity = getFileIdentity(file);
+            return (
+            <Card key={file.id} className="overflow-hidden border-slate-200 bg-slate-950 text-white shadow-xl">
+              <button
+                type="button"
+                onClick={() => previewFile(file)}
+                className="relative flex h-52 w-full items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(45,212,191,0.35),_transparent_36%),linear-gradient(135deg,_#020617,_#0f172a_50%,_#164e63)]"
+                aria-label={`Preview ${file.originalFileName}`}
+              >
+                <span className="absolute left-4 top-4 rounded-full bg-cyan-400/20 px-3 py-1 text-xs font-bold text-cyan-100">{identity.badge}</span>
+                <span className="grid size-20 place-items-center rounded-full bg-white/15 shadow-2xl ring-1 ring-white/30 backdrop-blur">
+                  <FiPlayCircle className="size-10" />
+                </span>
+                <span className="absolute bottom-4 right-4 rounded-lg bg-black/50 px-3 py-1 text-xs font-bold">{formatBytes(file.fileSize)}</span>
+              </button>
+              <div className="space-y-4 p-5">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wide text-cyan-300">Video Lesson</p>
+                  <h3 className="mt-1 line-clamp-2 text-lg font-bold text-white">{file.originalFileName}</h3>
+                  <p className="mt-2 text-sm text-slate-300">{file.subject || 'No subject'}{file.weekNo ? ` - Week ${file.weekNo}` : ''}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs font-semibold text-slate-300">
+                  <span className="rounded-xl bg-white/10 px-3 py-2">Views: {file.viewCount}</span>
+                  <span className="rounded-xl bg-white/10 px-3 py-2">Downloads: {file.downloadCount}</span>
+                  <span className="rounded-xl bg-white/10 px-3 py-2">Resolution: {file.resolution || '-'}</span>
+                  <span className="rounded-xl bg-white/10 px-3 py-2">Duration: {file.duration || '-'}</span>
+                  <span className="rounded-xl bg-white/10 px-3 py-2">Version {file.version}</span>
+                  <span className="rounded-xl bg-white/10 px-3 py-2 sm:col-span-2">Audience: {audienceLabels[file.audience || 'all'] || file.audience || 'All Users'}</span>
+                </div>
+                {file.description ? <p className="line-clamp-3 text-sm text-slate-300">{file.description}</p> : null}
+                {fileActionButtons(file, true)}
+              </div>
+            </Card>
+          );})}
+          </div>
+        </div>
+      );
+    }
+
+    if (viewMode === 'notes') {
+      return (
+        <Card className="overflow-hidden border-amber-200 bg-[#fffaf0]">
+          <div className="border-b border-amber-200 bg-[linear-gradient(90deg,_rgba(251,191,36,0.22),_rgba(255,255,255,0.65))] px-6 py-5">
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-amber-700">Notebook sections</p>
+            <h2 className="mt-2 text-2xl font-black text-ink">Teacher notes and lesson summaries</h2>
+          </div>
+          <div className="p-5">
+          <div className="space-y-3">
+            {fileItems.map((file) => {
+              const identity = getFileIdentity(file);
+              const Icon = getFileTypeIcon(file);
+              const tone = getFileTypeTone(file);
+              return (
+              <div key={file.id} className="flex flex-col gap-4 rounded-none border-l-4 border-amber-400 bg-white p-5 shadow-sm md:flex-row md:items-center md:justify-between">
+                <div className="flex gap-4">
+                  <span className={`grid size-12 shrink-0 place-items-center rounded-xl ${tone.icon}`}>
+                    <Icon className="size-6" />
+                  </span>
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-amber-700">{identity.label} Note</p>
+                    <h3 className="font-bold text-ink">{file.originalFileName}</h3>
+                    <p className="mt-1 text-sm text-muted">
+                      {file.curriculum || 'No curriculum'} - {file.subject || 'No subject'}{file.weekNo ? ` - Week ${file.weekNo}` : ''}
+                    </p>
+                    {file.description ? <p className="mt-2 max-w-3xl text-sm text-muted">{file.description}</p> : null}
+                    <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-muted">
+                      <span className="rounded-full bg-card px-3 py-1">{formatBytes(file.fileSize)}</span>
+                      <span className="rounded-full bg-card px-3 py-1">Version {file.version}</span>
+                      <span className="rounded-full bg-card px-3 py-1">{audienceLabels[file.audience || 'all'] || file.audience || 'All Users'}</span>
+                    </div>
+                  </div>
+                </div>
+                {fileActionButtons(file)}
+              </div>
+            );})}
+          </div>
+          </div>
+        </Card>
+      );
+    }
+
+    if (viewMode === 'materials') {
+      return (
+        <div className="space-y-5">
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="rounded-3xl border border-line bg-card p-5 shadow-sm">
+              <p className="text-xs font-bold uppercase tracking-wide text-primary">Recently shown</p>
+              <p className="mt-2 text-3xl font-black text-ink">{fileItems.length}</p>
+              <p className="text-sm text-muted">Resources in this result set</p>
+            </div>
+            <div className="rounded-3xl border border-line bg-card p-5 shadow-sm">
+              <p className="text-xs font-bold uppercase tracking-wide text-primary">Learning folders</p>
+              <p className="mt-2 text-3xl font-black text-ink">{new Set(fileItems.map((file) => file.logicalFolder).filter(Boolean)).size}</p>
+              <p className="text-sm text-muted">Department and subject paths</p>
+            </div>
+            <div className="rounded-3xl border border-line bg-card p-5 shadow-sm">
+              <p className="text-xs font-bold uppercase tracking-wide text-primary">Week resources</p>
+              <p className="mt-2 text-3xl font-black text-ink">{new Set(fileItems.map((file) => file.weekNo).filter(Boolean)).size}</p>
+              <p className="text-sm text-muted">Weeks represented</p>
+            </div>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2">
+          {fileItems.map((file) => {
+            const identity = getFileIdentity(file);
+            const Icon = getFileTypeIcon(file);
+            const tone = getFileTypeTone(file);
+            return (
+            <Card key={file.id} className={`group overflow-hidden bg-gradient-to-br ${tone.card} p-0`}>
+              <div className={`h-2 bg-gradient-to-r ${tone.bar}`} />
+              <div className="p-5">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex gap-4">
+                  <span className={`grid size-14 shrink-0 place-items-center rounded-2xl shadow-sm ${tone.icon}`}>
+                    <Icon className="size-7" />
+                  </span>
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-primary">{identity.badge} {identity.label}</p>
+                    <h3 className="mt-1 text-lg font-bold text-ink">{file.originalFileName}</h3>
+                    <p className="mt-2 text-sm text-muted">{file.logicalFolder || 'Unassigned folder'}</p>
+                  </div>
+                </div>
+                <span className="rounded-full bg-page px-3 py-1 text-xs font-bold uppercase text-muted">{file.visibility}</span>
+              </div>
+              {file.description ? <p className="mt-4 text-sm text-muted">{file.description}</p> : null}
+              <div className="mt-4 grid gap-2 text-sm sm:grid-cols-3">
+                <span className="rounded-xl bg-page px-3 py-2 text-muted">Size: <b className="text-ink">{formatBytes(file.fileSize)}</b></span>
+                <span className="rounded-xl bg-page px-3 py-2 text-muted">Week: <b className="text-ink">{file.weekNo || '-'}</b></span>
+                <span className="rounded-xl bg-page px-3 py-2 text-muted">Usage: <b className="text-ink">{file.downloadCount} downloads / {file.viewCount} views</b></span>
+                <span className="rounded-xl bg-page px-3 py-2 text-muted sm:col-span-3">Uploaded: <b className="text-ink">{file.createdAt ? new Date(file.createdAt).toLocaleDateString() : '-'}</b></span>
+              </div>
+              <div className="mt-4 border-t border-line pt-4">
+                {fileActionButtons(file, true)}
+              </div>
+              </div>
+            </Card>
+          );})}
+          </div>
+        </div>
+      );
+    }
+
+    return null;
   };
 
   return (
@@ -467,25 +821,34 @@ export function FileManagerPage({
         title={title}
         description={description}
       />
-      <div className="flex justify-end">
-        <Button variant="secondary" onClick={loadData}>
-          <FiRefreshCw />
-          Refresh
-        </Button>
+      <div className={`overflow-hidden rounded-3xl border border-line bg-gradient-to-r ${ui.accent} p-6 shadow-sm ${viewMode === 'videos' ? 'text-white' : ''}`}>
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className={`text-xs font-bold uppercase tracking-[0.22em] ${viewMode === 'videos' ? 'text-cyan-200' : 'text-primary'}`}>{ui.eyebrow}</p>
+            <h2 className={`mt-2 text-2xl font-black ${viewMode === 'videos' ? 'text-white' : 'text-ink'}`}>{title}</h2>
+            <p className={`mt-2 max-w-3xl text-sm ${viewMode === 'videos' ? 'text-slate-300' : 'text-muted'}`}>{description}</p>
+          </div>
+          <Button variant={viewMode === 'videos' ? 'ghost' : 'secondary'} className={viewMode === 'videos' ? 'bg-white/10 text-white hover:bg-white/20' : ''} onClick={loadData}>
+            <FiRefreshCw />
+            Refresh
+          </Button>
+        </div>
       </div>
       {message ? <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm font-semibold text-green-700">{message}</div> : null}
       {error ? <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">{error}</div> : null}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <DashboardCard title="Total Files" value={Number(stats?.summary?.totalFiles || 0).toLocaleString()} icon={FiFile} />
-        <DashboardCard title="Storage Used" value={formatBytes(stats?.summary?.totalStorageUsed)} icon={FiArchive} />
-        <DashboardCard title="Recent Uploads" value={stats?.recentUploads?.length || 0} icon={FiUploadCloud} />
-        <DashboardCard title="Avg File Size" value={formatBytes(stats?.summary?.averageFileSize)} icon={FiRefreshCw} />
+        <DashboardCard title={statLabels[0]} value={Number(stats?.summary?.totalFiles || 0).toLocaleString()} icon={viewMode === 'videos' ? FiVideo : viewMode === 'notes' ? FiFileText : viewMode === 'materials' ? FiBookOpen : FiFile} />
+        <DashboardCard title={statLabels[1]} value={formatBytes(stats?.summary?.totalStorageUsed)} icon={FiArchive} />
+        <DashboardCard title={statLabels[2]} value={stats?.recentUploads?.length || 0} icon={FiUploadCloud} />
+        <DashboardCard title={statLabels[3]} value={formatBytes(stats?.summary?.averageFileSize)} icon={FiRefreshCw} />
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_24rem]">
+      <div className={`grid gap-6 ${viewMode === 'repository' ? 'xl:grid-cols-[1fr_24rem]' : 'xl:grid-cols-[minmax(18rem,0.75fr)_minmax(24rem,1fr)]'}`}>
         <Card className="p-5">
-          <h2 className="text-lg font-bold text-ink">Storage by File Type</h2>
+          <h2 className="text-lg font-bold text-ink">
+            {viewMode === 'videos' ? 'Video Storage' : viewMode === 'notes' ? 'Notebook Storage' : viewMode === 'materials' ? 'Resource Storage by Type' : 'Storage by File Type'}
+          </h2>
           <div className="mt-4 h-72">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={stats?.byType || []}>
@@ -504,7 +867,7 @@ export function FileManagerPage({
         </Card>
 
         <Card className="p-5">
-          <h2 className="text-lg font-bold text-ink">Upload Files</h2>
+          <h2 className="text-lg font-bold text-ink">{ui.uploadTitle}</h2>
           <div className="mt-4 grid grid-cols-2 rounded-2xl border border-line bg-page p-1 text-sm font-bold">
             {[
               ['files', 'Learning files'],
@@ -660,13 +1023,13 @@ export function FileManagerPage({
       </div>
 
       <Card className="overflow-hidden">
-        <div className="border-b border-line bg-gradient-to-r from-primary/10 via-card to-primary/5 px-6 py-5">
+        <div className={`border-b border-line bg-gradient-to-r ${ui.accent} px-6 py-5 ${viewMode === 'videos' ? 'text-white' : ''}`}>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <p className="text-xs font-bold uppercase tracking-wide text-primary">Material Finder</p>
-              <h2 className="mt-1 text-xl font-bold text-ink">Search and filter learning files</h2>
+              <p className={`text-xs font-bold uppercase tracking-wide ${viewMode === 'videos' ? 'text-cyan-200' : 'text-primary'}`}>{ui.eyebrow}</p>
+              <h2 className={`mt-1 text-xl font-bold ${viewMode === 'videos' ? 'text-white' : 'text-ink'}`}>{ui.searchTitle}</h2>
             </div>
-            <p className="text-sm font-semibold text-muted">{Number(files.total || 0).toLocaleString()} records</p>
+            <p className={`text-sm font-semibold ${viewMode === 'videos' ? 'text-slate-300' : 'text-muted'}`}>{Number(files.total || 0).toLocaleString()} records</p>
           </div>
         </div>
         <div className="p-6">
@@ -675,7 +1038,7 @@ export function FileManagerPage({
             <input
               value={filters.search}
               onChange={(event) => updateFilter('search', event.target.value)}
-              placeholder="Search by file name, topic, teacher, curriculum"
+              placeholder={ui.searchPlaceholder}
               className="min-h-16 w-full rounded-3xl border border-primary/20 bg-card pl-14 pr-5 text-base font-semibold text-ink shadow-[0_18px_45px_rgba(15,23,42,0.08)] outline-none transition placeholder:text-muted focus:border-primary focus:ring-4 focus:ring-primary/10"
             />
           </label>
@@ -786,54 +1149,60 @@ export function FileManagerPage({
       </Card>
 
       {isLoading ? <Loader label="Loading files" /> : null}
-      {!isLoading && !files.files?.length ? <EmptyState title="No files found" description="Upload a file or adjust filters to see managed resources." /> : null}
-      {!isLoading && files.files?.length ? (
-        <Card className="p-4">
-          <div className="overflow-hidden rounded-2xl border border-line bg-card">
-            <div className="overflow-x-auto pt-2">
-            <table className="min-w-full divide-y divide-line text-sm">
-              <thead className="bg-page text-left text-xs uppercase text-muted">
-                <tr>
-                  {['File', 'Folder', 'Type', 'Size', 'Visibility', 'Audience', 'Usage', 'Actions'].map((heading) => (
-                    <th key={heading} className="px-4 py-3">{heading}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line">
-                {files.files.map((file) => (
-                  <tr key={file.id} className="align-top">
-                    <td className="px-4 py-4">
-                      <p className="font-bold text-ink">{file.originalFileName}</p>
-                      <p className="mt-1 text-xs text-muted">{file.owner || 'System'} - Version {file.version}</p>
-                    </td>
-                    <td className="px-4 py-4 text-muted">{file.logicalFolder || '-'}</td>
-                    <td className="px-4 py-4 capitalize">{file.fileType}</td>
-                    <td className="px-4 py-4">{formatBytes(file.fileSize)}</td>
-                    <td className="px-4 py-4 capitalize">{file.visibility}</td>
-                    <td className="px-4 py-4">{audienceLabels[file.audience || 'all'] || file.audience || 'All Users'}</td>
-                    <td className="px-4 py-4 text-muted">{file.downloadCount} downloads / {file.viewCount} views</td>
-                    <td className="px-4 py-4">
-                      <div className="flex flex-wrap gap-2">
-                        <Button variant="ghost" className="min-h-9 px-2" aria-label={`Preview ${file.originalFileName}`} onClick={() => previewFile(file)}><FiEye /></Button>
-                        <Button variant="ghost" className="min-h-9 px-2" aria-label={`Edit ${file.originalFileName}`} onClick={() => startEdit(file)}><FiEdit3 /></Button>
-                        <Button variant="ghost" className="min-h-9 px-2" aria-label={`Download ${file.originalFileName}`} onClick={() => downloadFile(file)}><FiDownload /></Button>
-                        <Button variant="ghost" className="min-h-9 px-2" aria-label={`View version history for ${file.originalFileName}`} onClick={() => loadVersions(file)}><FiRefreshCw /></Button>
-                        <Button variant="ghost" className="min-h-9 px-2" aria-label="Upload new version" onClick={() => { setVersionTarget(file); window.scrollTo({ top: 0, behavior: 'smooth' }); }}><FiUploadCloud /></Button>
-                        <Button variant="ghost" className="min-h-9 px-2 text-red-600" aria-label={`Delete ${file.originalFileName}`} onClick={() => setArchiveTarget(file)}><FiTrash2 /></Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {!isLoading && !fileItems.length ? <EmptyState title={ui.emptyTitle} description={ui.emptyDescription} /> : null}
+      {!isLoading && fileItems.length ? (
+        <>
+          {viewMode === 'repository' ? (
+            <Card className="p-4">
+              <div className="overflow-hidden rounded-2xl border border-line bg-card">
+                <div className="overflow-x-auto pt-2">
+                <table className="min-w-full divide-y divide-line text-sm">
+                  <thead className="bg-page text-left text-xs uppercase text-muted">
+                    <tr>
+                      {['File', 'Folder', 'Type', 'Size', 'Visibility', 'Audience', 'Usage', 'Actions'].map((heading) => (
+                        <th key={heading} className="px-4 py-3">{heading}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-line">
+                    {fileItems.map((file) => {
+                      const identity = getFileIdentity(file);
+                      const Icon = getFileTypeIcon(file);
+                      const tone = getFileTypeTone(file);
+                      return (
+                      <tr key={file.id} className="align-top">
+                        <td className="px-4 py-4">
+                          <p className="font-bold text-ink">{file.originalFileName}</p>
+                          <p className="mt-1 text-xs text-muted">{file.owner || 'System'} - Version {file.version}</p>
+                        </td>
+                        <td className="px-4 py-4 text-muted">{file.logicalFolder || '-'}</td>
+                        <td className="px-4 py-4">
+                          <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-bold ${tone.icon}`}>
+                            <Icon />
+                            {identity.badge}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4">{formatBytes(file.fileSize)}</td>
+                        <td className="px-4 py-4 capitalize">{file.visibility}</td>
+                        <td className="px-4 py-4">{audienceLabels[file.audience || 'all'] || file.audience || 'All Users'}</td>
+                        <td className="px-4 py-4 text-muted">{file.downloadCount} downloads / {file.viewCount} views</td>
+                        <td className="px-4 py-4">{fileActionButtons(file, true)}</td>
+                      </tr>
+                    );})}
+                  </tbody>
+                </table>
+                </div>
+              </div>
+            </Card>
+          ) : renderSpecializedFiles()}
+          <Card className="p-4">
+            <div className="flex items-center justify-end gap-3">
+              <Button variant="secondary" disabled={filters.page <= 1} onClick={() => setFilters((current) => ({ ...current, page: current.page - 1 }))}>Previous</Button>
+              <span className="text-sm font-semibold text-muted">Page {filters.page} of {totalPages}</span>
+              <Button variant="secondary" disabled={filters.page >= totalPages} onClick={() => setFilters((current) => ({ ...current, page: current.page + 1 }))}>Next</Button>
             </div>
-          </div>
-          <div className="flex items-center justify-end gap-3 border-t border-line p-4">
-            <Button variant="secondary" disabled={filters.page <= 1} onClick={() => setFilters((current) => ({ ...current, page: current.page - 1 }))}>Previous</Button>
-            <span className="text-sm font-semibold text-muted">Page {filters.page} of {totalPages}</span>
-            <Button variant="secondary" disabled={filters.page >= totalPages} onClick={() => setFilters((current) => ({ ...current, page: current.page + 1 }))}>Next</Button>
-          </div>
-        </Card>
+          </Card>
+        </>
       ) : null}
 
       {previewUrl ? (
@@ -842,13 +1211,16 @@ export function FileManagerPage({
             <h2 className="font-bold text-ink">Secure Preview</h2>
             <Button variant="secondary" onClick={() => { URL.revokeObjectURL(previewUrl); setPreviewUrl(''); setPreviewFileMeta(null); }}>Close</Button>
           </div>
-          {previewFileMeta?.fileType === 'images' ? (
+          {getFileIdentity(previewFileMeta || {}).category === 'image' ? (
             <img src={previewUrl} alt={previewFileMeta.originalFileName} className="max-h-[32rem] w-full rounded-xl border border-line object-contain" />
           ) : null}
-          {previewFileMeta?.fileType === 'videos' ? (
+          {getFileIdentity(previewFileMeta || {}).category === 'video' ? (
             <video src={previewUrl} controls className="max-h-[32rem] w-full rounded-xl border border-line" />
           ) : null}
-          {!['images', 'videos'].includes(previewFileMeta?.fileType) ? (
+          {getFileIdentity(previewFileMeta || {}).category === 'audio' ? (
+            <audio src={previewUrl} controls className="w-full rounded-xl border border-line p-4" />
+          ) : null}
+          {!['image', 'video', 'audio'].includes(getFileIdentity(previewFileMeta || {}).category) ? (
             <iframe title="File preview" src={previewUrl} className="h-[32rem] w-full rounded-xl border border-line" />
           ) : null}
         </Card>
@@ -886,21 +1258,65 @@ export function FileManagerPage({
         }
       >
         <div className="grid gap-3 sm:grid-cols-2">
-          {[
-            ['curriculum', 'Curriculum'],
-            ['subject', 'Subject'],
-            ['weekNo', 'Week'],
-            ['topic', 'Topic'],
-          ].map(([key, label]) => (
-            <label key={key} className="block">
-              <span className="text-xs font-semibold uppercase text-muted">{label}</span>
-              <input
-                value={editForm[key] || ''}
-                onChange={(event) => updateEditField(key, event.target.value)}
-                className="mt-1 min-h-11 w-full rounded-xl border border-line px-3 text-sm outline-none focus:border-primary"
-              />
-            </label>
-          ))}
+          <label className="block">
+            <span className="text-xs font-semibold uppercase text-muted">Department</span>
+            <select
+              value={editForm.departmentId || ''}
+              onChange={(event) => updateEditField('departmentId', event.target.value)}
+              className="mt-1 min-h-11 w-full rounded-xl border border-line px-3 text-sm outline-none focus:border-primary"
+            >
+              <option value="">Keep current department</option>
+              {departments.map((department) => (
+                <option key={department.id} value={department.id}>{department.name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-xs font-semibold uppercase text-muted">Curriculum</span>
+            <select
+              value={editForm.curriculumId || ''}
+              onChange={(event) => updateEditField('curriculumId', event.target.value)}
+              disabled={!editForm.departmentId}
+              className="mt-1 min-h-11 w-full rounded-xl border border-line px-3 text-sm outline-none focus:border-primary disabled:bg-page disabled:text-muted"
+            >
+              <option value="">Keep current curriculum</option>
+              {availableEditCurriculums.map((curriculum) => (
+                <option key={curriculum.id} value={curriculum.id}>{curriculum.name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-xs font-semibold uppercase text-muted">Subject / Module</span>
+            <select
+              value={editForm.courseId || ''}
+              onChange={(event) => updateEditField('courseId', event.target.value)}
+              disabled={!editForm.curriculumId}
+              className="mt-1 min-h-11 w-full rounded-xl border border-line px-3 text-sm outline-none focus:border-primary disabled:bg-page disabled:text-muted"
+            >
+              <option value="">Keep current subject/module</option>
+              {editModules.map((module) => (
+                <option key={module.id} value={module.id}>{module.title}</option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-xs font-semibold uppercase text-muted">Week</span>
+            <input
+              value={editForm.weekNo || ''}
+              onChange={(event) => updateEditField('weekNo', event.target.value)}
+              type="number"
+              min="1"
+              className="mt-1 min-h-11 w-full rounded-xl border border-line px-3 text-sm outline-none focus:border-primary"
+            />
+          </label>
+          <label className="block sm:col-span-2">
+            <span className="text-xs font-semibold uppercase text-muted">Topic</span>
+            <input
+              value={editForm.topic || ''}
+              onChange={(event) => updateEditField('topic', event.target.value)}
+              className="mt-1 min-h-11 w-full rounded-xl border border-line px-3 text-sm outline-none focus:border-primary"
+            />
+          </label>
           <label className="block">
             <span className="text-xs font-semibold uppercase text-muted">Visibility</span>
             <select

@@ -115,7 +115,7 @@ export function StudentMaterialsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow="Student" title="Learning Materials" description="View, preview, search, sort, and download PDFs, PPTs, DOCs, ZIP files, and images." />
+      <PageHeader eyebrow="Student" title="Learning Materials" description="View, preview, search, and sort permitted PDFs, PPTs, DOCs, ZIP files, and images." />
       <Card className="p-5">
         <div className="grid gap-3 lg:grid-cols-[1fr_220px_220px_auto]">
           <SearchBar value={query} onChange={updateQuery} placeholder="Search materials, topics, teachers, subjects" />

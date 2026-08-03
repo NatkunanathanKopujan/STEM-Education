@@ -1,12 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  FiBarChart2,
   FiBookOpen,
   FiChevronDown,
   FiDownload,
   FiFile,
   FiFileText,
   FiFolder,
+  FiImage,
   FiLayers,
+  FiMusic,
+  FiPackage,
   FiMonitor,
   FiVideo,
 } from 'react-icons/fi';
@@ -25,6 +29,7 @@ import { Pagination } from '../../components/ui/Pagination';
 import { useEntityManagement } from '../../hooks/useEntityManagement';
 import { fileService } from '../../services/fileService';
 import { userManagementService } from '../../services/userManagementService';
+import { getFileIdentity } from '../../utils/fileTypes';
 
 const emptyModuleForm = {
   title: '',
@@ -53,24 +58,26 @@ function formatWeekLabel(value) {
   return `Week ${String(value).padStart(2, '0')}`;
 }
 
-function getFileIcon(fileType = '') {
-  const normalized = String(fileType).toLowerCase();
-  if (normalized.includes('pdf') || normalized.includes('document')) return FiFileText;
-  if (normalized.includes('ppt') || normalized.includes('presentation')) return FiLayers;
-  if (normalized.includes('video')) return FiVideo;
-  if (normalized.includes('assignment')) return FiBookOpen;
+function getFileIcon(file = {}) {
+  const category = getFileIdentity(file).category;
+  if (category === 'video') return FiVideo;
+  if (category === 'image') return FiImage;
+  if (category === 'audio') return FiMusic;
+  if (category === 'archive') return FiPackage;
+  if (category === 'presentation') return FiLayers;
+  if (category === 'spreadsheet') return FiBarChart2;
+  if (category === 'pdf' || category === 'word' || category === 'text') return FiFileText;
   return FiFile;
 }
 
 function getFileTypeLabel(file = {}) {
-  const source = file.fileType || file.mimeType || file.originalFileName || '';
-  const normalized = String(source).toLowerCase();
-  if (normalized.includes('pdf')) return 'PDF Notes';
-  if (normalized.includes('ppt') || normalized.includes('presentation')) return 'PowerPoint';
-  if (normalized.includes('video') || normalized.match(/\.(mp4|mov|webm)$/)) return 'Video';
-  if (normalized.includes('assignment')) return 'Assignment';
-  if (normalized.includes('image') || normalized.match(/\.(png|jpg|jpeg|webp)$/)) return 'Image';
-  return file.fileType || 'Other Material';
+  const identity = getFileIdentity(file);
+  if (identity.category === 'pdf') return 'PDF Notes';
+  if (identity.category === 'presentation') return 'PowerPoint';
+  if (identity.category === 'word') return 'Word Document';
+  if (identity.category === 'spreadsheet') return 'Spreadsheet';
+  if (identity.category === 'archive') return 'Archive';
+  return identity.label || 'Other Material';
 }
 
 function normalizeWeeks(module = {}) {
@@ -313,13 +320,16 @@ export function CurriculumManagementPage() {
         <h2 className="font-bold text-ink">Material Preview: {previewFile?.originalFileName}</h2>
         <Button variant="secondary" onClick={() => { URL.revokeObjectURL(previewUrl); setPreviewUrl(''); setPreviewFile(null); }}>Close</Button>
       </div>
-      {previewFile?.fileType === 'images' ? (
+      {getFileIdentity(previewFile || {}).category === 'image' ? (
         <img src={previewUrl} alt={previewFile.originalFileName} className="max-h-[32rem] w-full rounded-xl border border-line object-contain" />
       ) : null}
-      {previewFile?.fileType === 'videos' ? (
+      {getFileIdentity(previewFile || {}).category === 'video' ? (
         <video src={previewUrl} controls className="max-h-[32rem] w-full rounded-xl border border-line" />
       ) : null}
-      {!['images', 'videos'].includes(previewFile?.fileType) ? (
+      {getFileIdentity(previewFile || {}).category === 'audio' ? (
+        <audio src={previewUrl} controls className="w-full rounded-xl border border-line p-4" />
+      ) : null}
+      {!['image', 'video', 'audio'].includes(getFileIdentity(previewFile || {}).category) ? (
         <iframe title="Material preview" src={previewUrl} className="h-[32rem] w-full rounded-xl border border-line" />
       ) : null}
     </Card>
@@ -414,7 +424,7 @@ export function CurriculumManagementPage() {
                       {files.length ? (
                         <div className="divide-y divide-line rounded-2xl border border-line bg-page">
                           {files.map((file) => {
-                            const FileIcon = getFileIcon(file.fileType || file.originalFileName);
+                            const FileIcon = getFileIcon(file);
                             return (
                               <div key={file.id} className="flex flex-col gap-4 p-4 md:flex-row md:items-center md:justify-between">
                                 <div className="flex min-w-0 items-start gap-3">

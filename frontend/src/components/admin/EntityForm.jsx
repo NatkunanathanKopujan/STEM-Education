@@ -345,14 +345,18 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
   const selectedDepartmentIds = (watch('departmentIds') || []).map(Number).filter(Boolean);
   const selectedCurriculumId = watch('curriculumId');
   const selectedCurriculumIds = (watch('curriculumIds') || []).map(Number).filter(Boolean);
-  const selectedCurriculum = curriculumOptions.find((curriculum) => String(curriculum.id) === String(selectedCurriculumId));
+  const selectedDepartmentIdSet = new Set(selectedDepartmentIds.map(Number));
+  const studentCurriculumOptions = isStudent && selectedDepartmentIds.length
+    ? curriculumOptions.filter((curriculum) => selectedDepartmentIdSet.has(Number(curriculum.departmentId)))
+    : curriculumOptions;
+  const selectedCurriculum = studentCurriculumOptions.find((curriculum) => String(curriculum.id) === String(selectedCurriculumId));
   const selectedCurriculums = curriculumOptions.filter((curriculum) => selectedCurriculumIds.includes(Number(curriculum.id)));
   const selectedDepartments = departmentOptions.filter((department) => selectedDepartmentIds.includes(Number(department.id)));
   const searchedDepartments = departmentOptions.filter((department) =>
     department.name.toLowerCase().includes(departmentSearch.trim().toLowerCase()),
   );
   const visibleDepartmentOptions = departmentSearch.trim() ? searchedDepartments : departmentOptions;
-  const visibleCurriculumOptions = curriculumOptions.filter((curriculum) =>
+  const visibleCurriculumOptions = (isStudent ? studentCurriculumOptions : curriculumOptions).filter((curriculum) =>
     `${curriculum.name} ${curriculum.code || ''} ${curriculum.departmentName || ''}`
       .toLowerCase()
       .includes(curriculumSearch.trim().toLowerCase()),
@@ -363,6 +367,14 @@ export function EntityForm({ type, item, onSubmit, onCancel, generateUsername })
     setValue('departmentIds', ids, { shouldDirty: true, shouldValidate: true });
     setValue('departmentId', ids[0] || '', { shouldDirty: true, shouldValidate: true });
     setValue('department', departments.map((department) => department.name).join(', '), { shouldDirty: true, shouldValidate: true });
+    if (isStudent && selectedCurriculumId) {
+      const selected = curriculumOptions.find((curriculum) => String(curriculum.id) === String(selectedCurriculumId));
+      const stillAllowed = selected && ids.map(Number).includes(Number(selected.departmentId));
+      if (!stillAllowed) {
+        setValue('curriculumId', '', { shouldDirty: true, shouldValidate: true });
+        setValue('curriculum', '', { shouldDirty: true, shouldValidate: true });
+      }
+    }
   };
 
   const removeDepartment = (departmentId) => {

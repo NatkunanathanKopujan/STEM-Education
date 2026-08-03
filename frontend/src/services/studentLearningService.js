@@ -36,6 +36,8 @@ function normalizeFile(file) {
         : file.targetDepartmentNames || '-',
     type: fileTypeLabels[file.fileType] || String(file.fileType || 'FILE').toUpperCase(),
     fileType: file.fileType,
+    mimeType: file.mimeType || file.contentType,
+    originalFileName: file.originalFileName || file.fileName || 'Untitled file',
     fileSize: file.fileSize || file.size || 0,
     size: file.fileSize || file.size || 0,
     createdAt: file.createdAt,

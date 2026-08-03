@@ -257,7 +257,7 @@ export async function listFiles(user, filters = {}) {
   await ensureFileAudienceSchema();
   await ensureFileDepartmentSchema();
   await ensureFileCourseSchema();
-  if (user.role === ROLES.STUDENT) {
+  if ([ROLES.TEACHER, ROLES.STUDENT].includes(user.role)) {
     await ensureUserAssignmentSchema();
   }
   const limit = Math.min(Number(filters.limit || 20), 100);
@@ -635,6 +635,9 @@ export async function getStorageStatistics(user, providerName = 'local') {
   await ensureFileAudienceSchema();
   await ensureFileDepartmentSchema();
   await ensureFileCourseSchema();
+  if ([ROLES.TEACHER, ROLES.STUDENT].includes(user.role)) {
+    await ensureUserAssignmentSchema();
+  }
   const where = [];
   const values = [];
   applyRoleScope(user, where, values);

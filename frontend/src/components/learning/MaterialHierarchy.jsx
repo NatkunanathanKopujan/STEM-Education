@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import {
   FiArrowLeft,
   FiBell,
+  FiBarChart2,
   FiBookOpen,
   FiChevronDown,
   FiChevronRight,
@@ -9,11 +10,15 @@ import {
   FiEye,
   FiFileText,
   FiFolder,
+  FiImage,
   FiLayers,
+  FiMusic,
+  FiPackage,
   FiVideo,
 } from 'react-icons/fi';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
+import { getFileIdentity } from '../../utils/fileTypes';
 
 function toAnnouncementItem(announcement) {
   return {
@@ -55,10 +60,30 @@ function formatFileSize(value) {
 }
 
 function getFileIcon(item) {
-  const type = String(item.fileType || item.type || '').toLowerCase();
+  const identity = getFileIdentity(item);
   if (item.kind === 'announcement') return FiBell;
-  if (type.includes('video')) return FiVideo;
+  if (identity.category === 'video') return FiVideo;
+  if (identity.category === 'image') return FiImage;
+  if (identity.category === 'audio') return FiMusic;
+  if (identity.category === 'archive') return FiPackage;
+  if (identity.category === 'spreadsheet' || identity.category === 'presentation') return FiBarChart2;
   return FiFileText;
+}
+
+function getFileTone(item) {
+  const category = getFileIdentity(item).category;
+  const tones = {
+    video: 'bg-violet-100 text-violet-700',
+    pdf: 'bg-red-100 text-red-700',
+    word: 'bg-blue-100 text-blue-700',
+    presentation: 'bg-orange-100 text-orange-700',
+    spreadsheet: 'bg-green-100 text-green-700',
+    image: 'bg-cyan-100 text-cyan-700',
+    audio: 'bg-purple-100 text-purple-700',
+    archive: 'bg-slate-100 text-slate-700',
+    text: 'bg-amber-100 text-amber-700',
+  };
+  return tones[category] || 'bg-primary/10 text-primary';
 }
 
 function sortWeeks(a, b) {
@@ -353,17 +378,18 @@ export function MaterialHierarchy({
                       {!week.files.length ? <p className="py-4 text-sm text-muted">No learning materials uploaded for this week.</p> : null}
                       {week.files.map((file) => {
                         const Icon = getFileIcon(file);
+                        const identity = getFileIdentity(file);
                         return (
                           <div key={file.id} className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
                             <div>
                               <p className="flex items-center gap-3 font-semibold text-ink">
-                                <span className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                <span className={`flex size-10 items-center justify-center rounded-lg ${getFileTone(file)}`}>
                                   <Icon />
                                 </span>
                                 {file.title}
                               </p>
                               <p className="ml-13 mt-1 text-sm text-muted">
-                                {file.topic || '-'} - {file.teacher || '-'} - {file.type || 'FILE'} - {formatFileSize(file.size || file.fileSize)}
+                                {file.topic || '-'} - {file.teacher || '-'} - {identity.label} - {formatFileSize(file.size || file.fileSize)}
                               </p>
                               <p className="ml-13 mt-1 text-xs text-muted">{formatDate(file.createdAt || file.uploadedAt || file.uploadDate)}</p>
                               {file.kind === 'announcement' ? <AttachmentLinks attachments={file.attachments} /> : null}

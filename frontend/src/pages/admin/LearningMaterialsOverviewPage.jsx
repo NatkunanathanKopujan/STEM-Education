@@ -6,6 +6,7 @@ export function LearningMaterialsOverviewPage() {
       eyebrow="Admin"
       title="Learning Materials"
       description="Upload, preview, download, edit, archive, search, filter, and manage learning materials from real database records."
+      viewMode="materials"
     />
   );
 }

@@ -41,6 +41,7 @@ backend/uploads/**
 
 # Local/generated documentation evidence
 docs/testing-procedures/
+/image/
 
 # OS/editor files
 .DS_Store

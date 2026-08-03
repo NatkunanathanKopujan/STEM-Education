@@ -96,11 +96,11 @@ export function Sidebar({ role, collapsed, onToggle, onNavigate, className = '' 
 
   return (
     <aside
-      className={`flex h-full flex-col border-r border-line bg-white/95 shadow-soft backdrop-blur transition-all duration-300 ${
+      className={`flex h-full flex-col border-r border-line bg-white/95 shadow-[10px_0_34px_rgba(18,87,70,0.10)] backdrop-blur transition-all duration-300 ${
         collapsed ? 'w-20' : 'w-72'
       } ${className}`}
     >
-      <div className="flex h-20 items-center justify-between border-b border-line bg-white/90 px-4">
+      <div className="flex h-20 items-center justify-between border-b border-line bg-white/95 px-4 shadow-sm">
         {!collapsed ? <BrandLogo /> : <BrandLogo compact />}
         <button
           type="button"
@@ -111,7 +111,7 @@ export function Sidebar({ role, collapsed, onToggle, onNavigate, className = '' 
           {collapsed ? <FiChevronRight className="size-5" /> : <FiChevronLeft className="size-5" />}
         </button>
       </div>
-      <nav className="flex-1 space-y-1.5 overflow-y-auto px-3 py-4">
+      <nav className="flex-1 space-y-2 overflow-y-auto px-3 py-5">
         {items.map((item) => (
           <SidebarItem key={`${item.path}:${item.label}`} item={item} collapsed={collapsed} onNavigate={onNavigate} />
         ))}

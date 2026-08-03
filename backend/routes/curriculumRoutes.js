@@ -12,7 +12,7 @@ const readAccess = checkPermissions(PERMISSIONS.CURRICULUM_READ);
 const writeAccess = checkPermissions(PERMISSIONS.CURRICULUM_WRITE);
 
 router.use(authenticate);
-router.use(authorize(ROLES.SUPER_ADMIN, ROLES.ADMIN));
+router.use(authorize(ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.TEACHER));
 
 router.get('/', paginationValidator, validateRequest, readAccess, curriculumController.index);
 router.post('/', emptyBodyValidator, validateRequest, writeAccess, curriculumController.create);

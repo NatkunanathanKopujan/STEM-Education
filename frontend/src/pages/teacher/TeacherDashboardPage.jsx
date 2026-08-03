@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   FiArrowLeft,
+  FiBarChart2,
   FiBell,
   FiBookOpen,
   FiChevronDown,
@@ -9,7 +10,10 @@ import {
   FiEye,
   FiFileText,
   FiFolder,
+  FiImage,
   FiLayers,
+  FiMusic,
+  FiPackage,
   FiVideo,
 } from 'react-icons/fi';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -22,6 +26,7 @@ import { Modal } from '../../components/ui/Modal';
 import { fileService } from '../../services/fileService';
 import { teacherLearningService } from '../../services/teacherLearningService';
 import { countAxisDomain, getChartColor } from '../../utils/chartTheme';
+import { getFileIdentity } from '../../utils/fileTypes';
 
 function formatActivityDate(value) {
   if (!value) return 'Recently';
@@ -44,10 +49,16 @@ function formatWeek(weekNo) {
   return `Week ${String(value).padStart(2, '0')}`;
 }
 
-function getFileIcon(type) {
-  const lowered = String(type || '').toLowerCase();
-  if (lowered.includes('video')) return FiVideo;
-  if (lowered.includes('announcement')) return FiBell;
+function getFileIcon(file) {
+  const identity = getFileIdentity(file);
+  if (file?.kind === 'announcement' || String(file?.fileType || '').toLowerCase().includes('announcement')) return FiBell;
+  if (identity.category === 'video') return FiVideo;
+  if (identity.category === 'image') return FiImage;
+  if (identity.category === 'audio') return FiMusic;
+  if (identity.category === 'archive') return FiPackage;
+  if (identity.category === 'presentation') return FiLayers;
+  if (identity.category === 'spreadsheet') return FiBarChart2;
+  if (identity.category === 'pdf' || identity.category === 'word' || identity.category === 'text') return FiFileText;
   return FiFileText;
 }
 
@@ -351,7 +362,8 @@ export function TeacherDashboardPage() {
                           </div>
                         ))}
                         {week.files.map((file) => {
-                          const Icon = getFileIcon(file.fileType);
+                          const Icon = getFileIcon(file);
+                          const identity = getFileIdentity(file);
                           return (
                             <div key={file.id} className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
                               <div>
@@ -362,7 +374,7 @@ export function TeacherDashboardPage() {
                                   {file.title}
                                 </p>
                                 <p className="ml-13 mt-1 text-sm text-muted">
-                                  {file.topic || file.description || 'Learning material'} - {file.fileType || 'file'} - {formatFileSize(file.size)} - Version {file.version}
+                                  {file.topic || file.description || 'Learning material'} - {identity.label} - {formatFileSize(file.size || file.fileSize)} - Version {file.version}
                                 </p>
                                 <p className="ml-13 mt-1 text-xs text-muted">{formatActivityDate(file.uploadedAt)}</p>
                               </div>

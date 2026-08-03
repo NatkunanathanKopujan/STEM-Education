@@ -6,7 +6,7 @@ export function Input({ label, error, id, className = '', ...props }) {
       {label ? <span className="mb-2 block">{label}</span> : null}
       <input
         id={inputId}
-        className={`focus-ring w-full rounded-xl border border-line bg-white px-4 py-2.5 text-sm text-ink shadow-sm placeholder:text-muted transition duration-200 hover:border-primary/45 focus:border-primary focus:bg-white focus:shadow-md ${className}`}
+        className={`focus-ring w-full rounded-xl border border-line bg-white px-4 py-3 text-sm font-medium text-ink shadow-sm placeholder:font-normal placeholder:text-muted transition duration-200 hover:border-primary/45 hover:shadow-md focus:border-primary focus:bg-white focus:shadow-md ${className}`}
         {...props}
       />
       {error ? <span className="mt-1 block text-xs text-red-600">{error}</span> : null}

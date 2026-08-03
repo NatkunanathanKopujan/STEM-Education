@@ -49,8 +49,8 @@ export function Navbar({ user, onMenuClick, onLogout }) {
   };
 
   return (
-    <header className="sticky top-0 z-30 border-b border-line bg-white/90 shadow-soft backdrop-blur">
-      <div className="flex h-[72px] min-h-16 items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
+    <header className="sticky top-0 z-30 border-b border-line bg-white/95 shadow-[0_10px_32px_rgba(18,87,70,0.10)] backdrop-blur">
+      <div className="flex h-[76px] min-h-16 items-center justify-between gap-4 px-5 sm:px-7 lg:px-10">
         <div className="flex min-w-0 items-center gap-3">
           <button
             type="button"
