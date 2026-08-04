@@ -4,7 +4,7 @@ const unwrap = (response) => response.data?.data ?? response.data;
 
 export const authService = {
   login: async (payload) => {
-    const response = await apiClient.post('/auth/login', payload);
+    const response = await apiClient.post('/auth/login', payload, { skipAuth: true });
     return unwrap(response);
   },
   logout: async () => {

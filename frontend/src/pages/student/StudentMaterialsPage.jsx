@@ -96,21 +96,18 @@ export function StudentMaterialsPage() {
   const previewFile = async (id) => {
     const url = await studentLearningService.preview(id);
     window.open(url, '_blank', 'noopener,noreferrer');
-  };
-
-  const downloadFile = async (item) => {
-    const blob = await studentLearningService.download(item.id);
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = item.title;
-    link.click();
-    URL.revokeObjectURL(url);
+    window.setTimeout(() => URL.revokeObjectURL(url), 10000);
   };
 
   const viewAnnouncement = async (id) => {
     const details = await notificationService.getAnnouncement(id);
     setSelectedAnnouncement(details);
+  };
+
+  const previewAnnouncementAttachment = async (announcementId, attachment) => {
+    const url = await notificationService.previewAnnouncementAttachment(announcementId, attachment.id);
+    window.open(url, '_blank', 'noopener,noreferrer');
+    window.setTimeout(() => URL.revokeObjectURL(url), 10000);
   };
 
   return (
@@ -132,8 +129,8 @@ export function StudentMaterialsPage() {
           announcements={announcements}
           emptyMessage="No learning materials found in the database."
           onPreview={previewFile}
-          onDownload={downloadFile}
           onViewAnnouncement={viewAnnouncement}
+          onPreviewAttachment={previewAnnouncementAttachment}
           allowDownload={false}
         />
       ) : null}
@@ -150,15 +147,14 @@ export function StudentMaterialsPage() {
             {selectedAnnouncement.attachments?.length ? (
               <div className="flex flex-wrap gap-2">
                 {selectedAnnouncement.attachments.map((attachment) => (
-                  <a
+                  <button
                     key={attachment.id || attachment.filePath}
-                    href={attachment.filePath}
-                    target="_blank"
-                    rel="noreferrer"
+                    type="button"
+                    onClick={() => previewAnnouncementAttachment(selectedAnnouncement.id, attachment)}
                     className="rounded-full border border-line px-3 py-1 text-xs font-semibold text-primary"
                   >
                     {attachment.fileName}
-                  </a>
+                  </button>
                 ))}
               </div>
             ) : null}

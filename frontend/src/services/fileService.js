@@ -12,8 +12,8 @@ export const fileService = {
     return data.data;
   },
 
-  async statistics() {
-    const { data } = await apiClient.get('/files/storage/statistics');
+  async statistics(params = {}) {
+    const { data } = await apiClient.get('/files/storage/statistics', { params: compactValues(params) });
     return data.data;
   },
 

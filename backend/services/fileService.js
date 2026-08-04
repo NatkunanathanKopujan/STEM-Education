@@ -19,13 +19,16 @@ import {
   findFileById,
   getStorageStatistics,
   listFiles,
+  listFileStoragePaths,
   listFileVersions,
+  listUsersForFileNotification,
   recordDownload,
   recordPreview,
   restoreVersion,
   syncFileDepartments,
   updateFileRecord,
 } from '../repositories/fileRepository.js';
+import { createNotification } from '../repositories/notificationRepository.js';
 import { getStorageProvider } from './storageProviderService.js';
 import { performanceMetricsService } from './performanceMetricsService.js';
 import { auditAction } from './securityService.js';
@@ -220,6 +223,65 @@ function ensureManageAllowed(user, file) {
   }
 }
 
+async function notifyMaterialAudience(user, fileRecord, { curriculumId, departmentIds = [], isVersion = false } = {}) {
+  if (!fileRecord || fileRecord.visibility !== 'public' || fileRecord.status !== 'active') {
+    return { delivered: 0 };
+  }
+
+  const recipients = await listUsersForFileNotification({
+    audience: fileRecord.audience || 'all',
+    departmentIds,
+    curriculumId,
+    uploadedBy: getUserId(user),
+  });
+  const title = isVersion ? 'Learning material updated' : 'New learning material uploaded';
+  const scope = [
+    fileRecord.curriculum,
+    fileRecord.subject,
+    fileRecord.weekNo ? `Week ${fileRecord.weekNo}` : null,
+  ].filter(Boolean).join(' - ');
+  const message = `${fileRecord.originalFileName || 'A learning material'}${scope ? ` was uploaded for ${scope}` : ' was uploaded'}.`;
+  const actionUrlByRole = {
+    [ROLES.SUPER_ADMIN]: '/super-admin/file-manager',
+    [ROLES.ADMIN]: '/admin/materials',
+    [ROLES.TEACHER]: '/teacher/materials',
+    [ROLES.STUDENT]: '/student/materials',
+  };
+  const notificationIds = await Promise.all(
+    recipients.map((recipient) =>
+      createNotification({
+        userId: recipient.id,
+        role: recipient.role,
+        title,
+        message,
+        notificationType: 'material',
+        priority: 'normal',
+        sourceModule: 'learning-materials',
+        actionUrl: actionUrlByRole[recipient.role] || '/notifications',
+        metadata: {
+          fileId: fileRecord.id,
+          uploadedBy: getUserId(user),
+          curriculumId: curriculumId || null,
+          courseId: fileRecord.courseId || null,
+          weekNo: fileRecord.weekNo || null,
+          departmentIds,
+        },
+      }),
+    ),
+  );
+
+  return { delivered: notificationIds.filter(Boolean).length };
+}
+
+async function deleteStoredFiles(filePaths = []) {
+  const provider = getStorageProvider();
+  const uniquePaths = [...new Set(filePaths.filter(Boolean))];
+
+  for (const filePath of uniquePaths) {
+    await provider.delete(filePath);
+  }
+}
+
 export async function uploadManagedFile(user, file, body = {}) {
   const startedAt = Date.now();
   ensureUploadAllowed(user);
@@ -250,6 +312,11 @@ export async function uploadManagedFile(user, file, body = {}) {
       module: 'files',
       description: `New version uploaded for ${parentRecord.originalFileName || parentRecord.id}`,
       metadata: { fileId: parentRecord.id, versionId },
+    });
+    await notifyMaterialAudience(user, parentRecord, {
+      curriculumId: scopedBody.curriculumId,
+      departmentIds: targetDepartmentIds,
+      isVersion: true,
     });
 
     return {
@@ -284,6 +351,10 @@ export async function uploadManagedFile(user, file, body = {}) {
     module: 'files',
     description: `File ${fileRecord.originalFileName || fileRecord.id} uploaded`,
     metadata: { fileId: fileRecord.id, versionId },
+  });
+  await notifyMaterialAudience(user, fileRecord, {
+    curriculumId: scopedBody.curriculumId,
+    departmentIds: targetDepartmentIds,
   });
 
   return {
@@ -351,12 +422,14 @@ export async function updateFile(user, id, payload) {
 export async function removeFile(user, id) {
   const file = await getFile(user, id);
   ensureManageAllowed(user, file);
+  const storagePaths = await listFileStoragePaths(file.id);
+  await deleteStoredFiles(storagePaths);
   await deleteFileRecord(file.id);
   await auditAction({
     user,
-    action: 'file_archived',
+    action: 'file_deleted',
     module: 'files',
-    description: `File ${file.originalFileName || file.id} archived`,
+    description: `File ${file.originalFileName || file.id} deleted`,
     metadata: { fileId: file.id },
   });
   return { deleted: true };
@@ -394,7 +467,7 @@ export async function getDownloadStream(user, id, requestMeta) {
 
 export async function getPreviewStream(user, id, requestMeta) {
   const file = await getFile(user, id);
-  const previewableTypes = ['pdf', 'images', 'videos', 'documents'];
+  const previewableTypes = ['pdf', 'images', 'videos', 'documents', 'audio'];
   if (!previewableTypes.includes(file.fileType)) {
     throw new AppError('Preview is not available for this file type yet', 400);
   }
@@ -438,10 +511,10 @@ export async function restoreFileVersion(user, versionId) {
   return restored;
 }
 
-export async function getFileStatistics(user) {
+export async function getFileStatistics(user, filters = {}) {
   if (![ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.TEACHER].includes(user.role)) {
     throw new AppError('You do not have permission to view storage statistics', 403);
   }
 
-  return getStorageStatistics(user, getStorageProvider().name);
+  return getStorageStatistics(user, getStorageProvider().name, filters);
 }

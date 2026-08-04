@@ -74,6 +74,6 @@ export const fileController = {
   },
 
   async statistics(req, res) {
-    return sendSuccess(res, await getFileStatistics(req.user), 'Storage statistics fetched');
+    return sendSuccess(res, await getFileStatistics(req.user, req.query), 'Storage statistics fetched');
   },
 };

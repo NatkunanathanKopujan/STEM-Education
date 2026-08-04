@@ -41,7 +41,37 @@ import { notificationService } from '../../services/notificationService';
 import { userManagementService } from '../../services/userManagementService';
 import { getFileIdentity, isVideoFile } from '../../utils/fileTypes';
 
-const acceptedTypes = '.pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx,.zip,.jpg,.jpeg,.png,.webp,.mp4,.mov,.avi,.mp3,.wav';
+const acceptedTypes = [
+  '.pdf',
+  '.ppt',
+  '.pptx',
+  '.doc',
+  '.docx',
+  '.txt',
+  '.md',
+  '.xls',
+  '.xlsx',
+  '.zip',
+  '.jpg',
+  '.jpeg',
+  '.jfif',
+  '.png',
+  '.webp',
+  '.gif',
+  '.bmp',
+  '.ico',
+  '.avif',
+  '.mp4',
+  '.mov',
+  '.avi',
+  '.mp3',
+  '.wav',
+  '.m4a',
+  '.aac',
+  '.ogg',
+].join(',');
+const videoAcceptedTypes = ['.mp4', '.mov', '.avi'].join(',');
+const noteAcceptedTypes = ['.pdf', '.doc', '.docx', '.txt', '.md'].join(',');
 const audienceOptions = [
   { label: 'All Users', value: 'all' },
   { label: 'Students Only', value: 'student' },
@@ -173,6 +203,10 @@ function getFileTypeTone(file) {
   };
 }
 
+function isTeacherNoteFile(file = {}) {
+  return ['pdf', 'word', 'text'].includes(getFileIdentity(file).category);
+}
+
 function formatBytes(value = 0) {
   if (!value) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -253,7 +287,7 @@ export function FileManagerPage({
   lockFileType = false,
   viewMode = 'repository',
 } = {}) {
-  const { role } = useAuth();
+  const { role, user } = useAuth();
   const [files, setFiles] = useState([]);
   const [stats, setStats] = useState(null);
   const [filters, setFilters] = useState(() => buildDefaultFilters(initialFilters));
@@ -285,6 +319,22 @@ export function FileManagerPage({
     () => curriculums.filter((curriculum) => !editForm.departmentId || Number(curriculum.departmentId) === Number(editForm.departmentId)),
     [curriculums, editForm.departmentId],
   );
+  const currentUserId = Number(user?.id || user?.userId || 0);
+  const acceptedUploadTypes = uploadMode === 'announcement'
+    ? acceptedTypes
+    : viewMode === 'videos'
+      ? videoAcceptedTypes
+      : viewMode === 'notes'
+        ? noteAcceptedTypes
+        : acceptedTypes;
+  const uploadHint = uploadMode === 'announcement'
+    ? 'Optional announcement attachments: PDF, Office files, ZIP, images, videos, and audio.'
+    : viewMode === 'videos'
+      ? 'Video files only: MP4, MOV, or AVI.'
+      : viewMode === 'notes'
+        ? 'Teacher notes only: PDF, DOC, DOCX, TXT, or MD.'
+        : 'PDF, Office files, ZIP, images, videos, and audio-ready formats.';
+  const canManageFile = (file) => role === 'super-admin' || Number(file.uploadedBy) === currentUserId;
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -292,7 +342,7 @@ export function FileManagerPage({
     try {
       const [fileData, statData] = await Promise.all([
         fileService.list({ ...filters, limit: 20 }),
-        fileService.statistics().catch(() => null),
+        fileService.statistics(filters).catch(() => null),
       ]);
       setFiles(fileData);
       setStats(statData);
@@ -306,6 +356,10 @@ export function FileManagerPage({
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+  }, [previewUrl]);
 
   useEffect(() => {
     if (role === 'student') return;
@@ -427,6 +481,21 @@ export function FileManagerPage({
     return '';
   };
 
+  const validateFileUpload = () => {
+    if (!versionTarget && !metadata.departmentId) return 'Department is required for learning files.';
+    if (!versionTarget && !metadata.curriculumId) return 'Curriculum is required for learning files.';
+    if (!versionTarget && !metadata.courseId) return 'Subject/Module is required for learning files.';
+    if (!versionTarget && (!metadata.weekNo || Number(metadata.weekNo) < 1)) return 'Week number is required for learning files.';
+    if (!queue.length) return 'Select at least one file to upload.';
+    if (viewMode === 'videos' && queue.some((entry) => !isVideoFile(entry.file))) {
+      return 'Videos module accepts only MP4, MOV, or AVI files.';
+    }
+    if (viewMode === 'notes' && queue.some((entry) => !isTeacherNoteFile(entry.file))) {
+      return 'Teacher Notes accepts only PDF, DOC, DOCX, TXT, or MD files.';
+    }
+    return '';
+  };
+
   const uploadQueue = async (onlyFailed = false) => {
     if (uploadMode === 'announcement') {
       const validationError = validateAnnouncementUpload();
@@ -455,7 +524,11 @@ export function FileManagerPage({
       return;
     }
 
-    if (!queue.length) return;
+    const validationError = validateFileUpload();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
     setIsUploading(true);
     const uploaded = [];
 
@@ -538,11 +611,11 @@ export function FileManagerPage({
     setError('');
     try {
       await fileService.remove(archiveTarget.id);
-      setMessage(`${archiveTarget.originalFileName} archived.`);
+      setMessage(`${archiveTarget.originalFileName} deleted.`);
       setArchiveTarget(null);
       await loadData();
     } catch (apiError) {
-      setError(apiErrorMessage(apiError, 'Archive failed.'));
+      setError(apiErrorMessage(apiError, 'Delete failed.'));
     }
   };
 
@@ -636,17 +709,21 @@ export function FileManagerPage({
   };
 
   const baseFileItems = files.files || [];
-  const fileItems = viewMode === 'videos' ? baseFileItems.filter(isVideoFile) : baseFileItems;
+  const fileItems = viewMode === 'videos'
+    ? baseFileItems.filter(isVideoFile)
+    : viewMode === 'notes'
+      ? baseFileItems.filter(isTeacherNoteFile)
+      : baseFileItems;
   const ui = moduleUi[viewMode] || moduleUi.repository;
   const statLabels = ui.stats;
   const fileActionButtons = (file, compact = false) => (
     <div className={`flex flex-wrap gap-2 ${compact ? '' : 'justify-end'}`}>
       <Button variant="ghost" className="min-h-9 px-2" aria-label={`Preview ${file.originalFileName}`} onClick={() => previewFile(file)}><FiEye /></Button>
-      <Button variant="ghost" className="min-h-9 px-2" aria-label={`Edit ${file.originalFileName}`} onClick={() => startEdit(file)}><FiEdit3 /></Button>
-      <Button variant="ghost" className="min-h-9 px-2" aria-label={`Download ${file.originalFileName}`} onClick={() => downloadFile(file)}><FiDownload /></Button>
+      {canManageFile(file) ? <Button variant="ghost" className="min-h-9 px-2" aria-label={`Edit ${file.originalFileName}`} onClick={() => startEdit(file)}><FiEdit3 /></Button> : null}
+      {role !== 'student' ? <Button variant="ghost" className="min-h-9 px-2" aria-label={`Download ${file.originalFileName}`} onClick={() => downloadFile(file)}><FiDownload /></Button> : null}
       <Button variant="ghost" className="min-h-9 px-2" aria-label={`View version history for ${file.originalFileName}`} onClick={() => loadVersions(file)}><FiRefreshCw /></Button>
-      <Button variant="ghost" className="min-h-9 px-2" aria-label="Upload new version" onClick={() => { setVersionTarget(file); window.scrollTo({ top: 0, behavior: 'smooth' }); }}><FiUploadCloud /></Button>
-      <Button variant="ghost" className="min-h-9 px-2 text-red-600" aria-label={`Delete ${file.originalFileName}`} onClick={() => setArchiveTarget(file)}><FiTrash2 /></Button>
+      {canManageFile(file) ? <Button variant="ghost" className="min-h-9 px-2" aria-label="Upload new version" onClick={() => { setVersionTarget(file); window.scrollTo({ top: 0, behavior: 'smooth' }); }}><FiUploadCloud /></Button> : null}
+      {canManageFile(file) ? <Button variant="ghost" className="min-h-9 px-2 text-red-600" aria-label={`Delete ${file.originalFileName}`} onClick={() => setArchiveTarget(file)}><FiTrash2 /></Button> : null}
     </div>
   );
 
@@ -901,14 +978,10 @@ export function FileManagerPage({
               enqueueFiles(event.dataTransfer.files);
             }}
           >
-            <input type="file" className="sr-only" multiple accept={acceptedTypes} onChange={selectedFiles} />
+            <input type="file" className="sr-only" multiple accept={acceptedUploadTypes} onChange={selectedFiles} />
             <FiUploadCloud className="mx-auto size-8 text-primary" />
             <span className="mt-3 block text-sm font-bold text-ink">Drag, drop, or browse files</span>
-            <span className="mt-1 block text-xs text-muted">
-              {uploadMode === 'announcement'
-                ? 'Optional announcement attachments: PDF, Office files, ZIP, images, videos, and audio.'
-                : 'PDF, Office files, ZIP, images, videos, and audio-ready formats.'}
-            </span>
+            <span className="mt-1 block text-xs text-muted">{uploadHint}</span>
           </label>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <select
@@ -1372,9 +1445,9 @@ export function FileManagerPage({
       </Modal>
       <ConfirmationDialog
         open={Boolean(archiveTarget)}
-        title="Archive file"
-        message={`Archive ${archiveTarget?.originalFileName}? The file will be removed from active file lists.`}
-        confirmLabel="Archive"
+        title="Delete file"
+        message={`Delete ${archiveTarget?.originalFileName}? The database record and stored file will be removed.`}
+        confirmLabel="Delete"
         isDanger
         onClose={() => setArchiveTarget(null)}
         onConfirm={removeFile}

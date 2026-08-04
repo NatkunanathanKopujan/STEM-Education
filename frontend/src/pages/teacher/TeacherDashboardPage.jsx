@@ -24,6 +24,7 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Modal } from '../../components/ui/Modal';
 import { fileService } from '../../services/fileService';
+import { notificationService } from '../../services/notificationService';
 import { teacherLearningService } from '../../services/teacherLearningService';
 import { countAxisDomain, getChartColor } from '../../utils/chartTheme';
 import { getFileIdentity } from '../../utils/fileTypes';
@@ -191,6 +192,16 @@ export function TeacherDashboardPage() {
       URL.revokeObjectURL(url);
     } catch (downloadError) {
       setContentError(downloadError?.response?.data?.message || downloadError?.message || 'Unable to download file.');
+    }
+  };
+
+  const handleAnnouncementAttachmentPreview = async (announcementId, attachment) => {
+    try {
+      const url = await notificationService.previewAnnouncementAttachment(announcementId, attachment.id);
+      window.open(url, '_blank', 'noopener,noreferrer');
+      window.setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (previewError) {
+      setContentError(previewError?.response?.data?.message || previewError?.message || 'Unable to open announcement attachment.');
     }
   };
 
@@ -436,16 +447,15 @@ export function TeacherDashboardPage() {
             <div className="space-y-2">
               <p className="text-sm font-bold text-ink">Attachments</p>
               {selectedAnnouncement.attachments.map((attachment) => (
-                <a
+                <button
                   key={attachment.id || attachment.filePath}
-                  href={attachment.filePath}
-                  target="_blank"
-                  rel="noreferrer"
+                  type="button"
+                  onClick={() => handleAnnouncementAttachmentPreview(selectedAnnouncement.rawId || selectedAnnouncement.id, attachment)}
                   className="flex items-center justify-between rounded-xl border border-line px-3 py-2 text-sm font-semibold text-primary hover:border-primary"
                 >
                   <span>{attachment.fileName || 'Attachment'}</span>
-                  <FiDownload />
-                </a>
+                  <FiEye />
+                </button>
               ))}
             </div>
           ) : null}

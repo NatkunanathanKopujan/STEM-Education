@@ -21,10 +21,17 @@ export const notificationService = {
   getNotifications: async (params) => unwrap(await apiClient.get('/notifications', { params: compactValues(params) })),
   getUnread: async () => unwrap(await apiClient.get('/notifications/unread')),
   markRead: async (ids) => unwrap(await apiClient.post('/notifications/read', { ids })),
+  markUnread: async (ids) => unwrap(await apiClient.post('/notifications/unread', { ids })),
   markAllRead: async () => unwrap(await apiClient.post('/notifications/read-all')),
   deleteNotification: async (id) => unwrap(await apiClient.delete(`/notifications/${id}`)),
   getAnnouncements: async (params) => unwrap(await apiClient.get('/announcements', { params: compactValues(params) })),
   getAnnouncement: async (id) => unwrap(await apiClient.get(`/announcements/${id}`)),
+  previewAnnouncementAttachment: async (announcementId, attachmentId) => {
+    const response = await apiClient.get(`/announcements/${announcementId}/attachments/${attachmentId}/preview`, {
+      responseType: 'blob',
+    });
+    return URL.createObjectURL(response.data);
+  },
   createAnnouncement: async (payload, files = []) => {
     if (files.length) {
       return unwrap(await apiClient.post('/announcements', buildAnnouncementFormData(payload, files), {

@@ -40,6 +40,12 @@ app.use(express.urlencoded({ extended: true }));
 app.use(performanceMonitor);
 app.use(cacheHeaders);
 app.use(requestLogger);
+app.use('/uploads/:folder(files|announcements)', (_req, res) => {
+  res.status(403).json({
+    success: false,
+    message: 'Use the authenticated preview endpoint to access this file.',
+  });
+});
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api', apiRateLimiter);
 

@@ -22,6 +22,11 @@ export function AuthProvider({ children }) {
     setIsLoading(true);
 
     try {
+      storage.clearAuth();
+      setToken(null);
+      setUser(null);
+      setIsSessionExpired(false);
+
       const response = await authService.login(credentials);
       const remember = Boolean(credentials.rememberMe);
       storage.setRemember(remember);
@@ -48,6 +53,7 @@ export function AuthProvider({ children }) {
     storage.clearAuth();
     setToken(null);
     setUser(null);
+    setIsSessionExpired(false);
   }, []);
 
   const updateCurrentUser = useCallback((updates) => {
@@ -75,7 +81,7 @@ export function AuthProvider({ children }) {
 
     try {
       const response = await authService.verify();
-      storage.setUser(response.user);
+      storage.setUser(response.user, storage.getRemember());
       setUser(response.user);
       setToken(storedToken);
     } catch {
@@ -91,6 +97,21 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     verifySession();
   }, [verifySession]);
+
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      setToken(null);
+      setUser(null);
+      setIsSessionExpired(true);
+      setIsInitializing(false);
+    };
+
+    window.addEventListener('auth:session-expired', handleSessionExpired);
+
+    return () => {
+      window.removeEventListener('auth:session-expired', handleSessionExpired);
+    };
+  }, []);
 
   useEffect(() => {
     if (!token) {

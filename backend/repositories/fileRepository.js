@@ -153,6 +153,16 @@ function applyRoleScope(user, where, values) {
                     AND scoped_fd.department_id = scoped_sd.department_id
                 )
               )
+              AND (
+                f.course_id IS NULL
+                OR scoped_student.curriculum_id IS NULL
+                OR EXISTS (
+                  SELECT 1
+                  FROM courses scoped_course
+                  WHERE scoped_course.id = f.course_id
+                    AND scoped_course.curriculum_id = scoped_student.curriculum_id
+                )
+              )
           )
         )
       )
@@ -402,8 +412,18 @@ export async function canAccessFileRecord(user, file, action = 'read') {
               AND scoped_fd.department_id = scoped_sd.department_id
           )
         )
+        AND (
+          ? IS NULL
+          OR scoped_student.curriculum_id IS NULL
+          OR EXISTS (
+            SELECT 1
+            FROM courses scoped_course
+            WHERE scoped_course.id = ?
+              AND scoped_course.curriculum_id = scoped_student.curriculum_id
+          )
+        )
        LIMIT 1`,
-      [getUserId(user), file.id, file.id],
+      [getUserId(user), file.id, file.id, file.courseId || null, file.courseId || null],
     );
     return rows.length > 0;
   }
@@ -486,6 +506,96 @@ export async function findTeacherAssignableFileDepartments(userId) {
   return findTeacherDepartmentsByUserId(userId);
 }
 
+export async function listUsersForFileNotification({
+  audience = 'all',
+  departmentIds = [],
+  curriculumId = null,
+  uploadedBy = null,
+}) {
+  await ensureFileDepartmentSchema();
+  await ensureFileCourseSchema();
+  await ensureUserAssignmentSchema();
+
+  const requestedRoles = audience === 'all'
+    ? [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.TEACHER, ROLES.STUDENT]
+    : [audience];
+  const values = [...requestedRoles];
+  const where = [
+    'u.status = ?',
+    `u.role IN (${requestedRoles.map(() => '?').join(', ')})`,
+  ];
+  values.unshift('active');
+
+  if (uploadedBy) {
+    where.push('u.id <> ?');
+    values.push(uploadedBy);
+  }
+
+  const scopedDepartmentIds = [...new Set((departmentIds || []).map(Number).filter(Boolean))];
+  if (scopedDepartmentIds.length) {
+    const placeholders = scopedDepartmentIds.map(() => '?').join(', ');
+    where.push(`(
+      u.role IN (?, ?)
+      OR (
+        u.role = ?
+        AND EXISTS (
+          SELECT 1
+          FROM teachers scoped_teacher
+          INNER JOIN teacher_departments scoped_td ON scoped_td.teacher_id = scoped_teacher.id
+          WHERE scoped_teacher.user_id = u.id
+            AND scoped_td.department_id IN (${placeholders})
+        )
+      )
+      OR (
+        u.role = ?
+        AND EXISTS (
+          SELECT 1
+          FROM students scoped_student
+          INNER JOIN student_departments scoped_sd ON scoped_sd.student_id = scoped_student.id
+          WHERE scoped_student.user_id = u.id
+            AND scoped_sd.department_id IN (${placeholders})
+        )
+      )
+    )`);
+    values.push(ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.TEACHER, ...scopedDepartmentIds, ROLES.STUDENT, ...scopedDepartmentIds);
+  }
+
+  if (curriculumId) {
+    where.push(`(
+      u.role IN (?, ?)
+      OR (
+        u.role = ?
+        AND EXISTS (
+          SELECT 1
+          FROM teachers scoped_teacher
+          INNER JOIN curriculum_teachers scoped_ct ON scoped_ct.teacher_id = scoped_teacher.id
+          WHERE scoped_teacher.user_id = u.id
+            AND scoped_ct.curriculum_id = ?
+        )
+      )
+      OR (
+        u.role = ?
+        AND EXISTS (
+          SELECT 1
+          FROM students scoped_student
+          WHERE scoped_student.user_id = u.id
+            AND (scoped_student.curriculum_id IS NULL OR scoped_student.curriculum_id = ?)
+        )
+      )
+    )`);
+    values.push(ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.TEACHER, Number(curriculumId), ROLES.STUDENT, Number(curriculumId));
+  }
+
+  const [rows] = await db.execute(
+    `SELECT DISTINCT u.id, u.role, u.full_name AS fullName
+     FROM users u
+     WHERE ${where.join(' AND ')}`,
+    values,
+  );
+
+  return rows;
+}
+
 export async function createFileVersion(fileId, payload) {
   const [currentRows] = await db.execute('SELECT COALESCE(MAX(version), 0) + 1 AS nextVersion FROM file_versions WHERE file_id = ?', [
     fileId,
@@ -563,14 +673,29 @@ export async function updateFileRecord(id, payload) {
 }
 
 export async function deleteFileRecord(id) {
-  const [result] = await db.execute("UPDATE files SET status = 'deleted', updated_at = NOW() WHERE id = ?", [id]);
+  const [result] = await db.execute('DELETE FROM files WHERE id = ?', [id]);
   return result.affectedRows;
+}
+
+export async function listFileStoragePaths(fileId) {
+  const [rows] = await db.execute(
+    `SELECT file_path AS filePath
+     FROM files
+     WHERE id = ?
+     UNION
+     SELECT file_path AS filePath
+     FROM file_versions
+     WHERE file_id = ?`,
+    [fileId, fileId],
+  );
+
+  return rows.map((row) => row.filePath).filter(Boolean);
 }
 
 export async function listFileVersions(fileId) {
   const [rows] = await db.execute(
     `SELECT id, file_id AS fileId, version, file_name AS fileName, original_file_name AS originalFileName,
-      file_type AS fileType, mime_type AS mimeType, file_size AS fileSize, storage_provider AS storageProvider,
+      file_type AS fileType, mime_type AS mimeType, file_size AS fileSize, file_path AS filePath, storage_provider AS storageProvider,
       uploaded_by AS uploadedBy, description, version_note AS versionNote, is_current AS isCurrent, created_at AS createdAt
      FROM file_versions
      WHERE file_id = ?
@@ -631,7 +756,7 @@ export async function recordPreview({ fileId, userId, ipAddress, deviceInfo }) {
   await db.execute('UPDATE files SET view_count = view_count + 1 WHERE id = ?', [fileId]);
 }
 
-export async function getStorageStatistics(user, providerName = 'local') {
+export async function getStorageStatistics(user, providerName = 'local', filters = {}) {
   await ensureFileAudienceSchema();
   await ensureFileDepartmentSchema();
   await ensureFileCourseSchema();
@@ -641,7 +766,11 @@ export async function getStorageStatistics(user, providerName = 'local') {
   const where = [];
   const values = [];
   applyRoleScope(user, where, values);
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')} AND f.status <> 'deleted'` : "WHERE f.status <> 'deleted'";
+  applyFilters(filters, where, values);
+  if (!filters.status) {
+    where.push("f.status <> 'deleted'");
+  }
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
   const [summary] = await db.execute(
     `SELECT COUNT(*) AS totalFiles, COALESCE(SUM(file_size), 0) AS totalStorageUsed,
       COALESCE(AVG(file_size), 0) AS averageFileSize

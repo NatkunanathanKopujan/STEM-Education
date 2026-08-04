@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   deleteNotificationController,
+  markUnreadNotificationsController,
   notificationsController,
   readAllNotificationsController,
   readNotificationsController,
@@ -21,6 +22,7 @@ router.use(authenticate);
 router.get('/', notificationQueryValidator, validateRequest, notificationsController);
 router.get('/unread', unreadNotificationsController);
 router.post('/read', readNotificationsValidator, validateRequest, readNotificationsController);
+router.post('/unread', readNotificationsValidator, validateRequest, markUnreadNotificationsController);
 router.post('/read-all', readAllNotificationsController);
 router.delete('/:id', notificationIdValidator, validateRequest, deleteNotificationController);
 

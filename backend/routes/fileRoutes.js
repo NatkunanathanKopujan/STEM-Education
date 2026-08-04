@@ -26,7 +26,7 @@ router.post(
   validateRequest,
   fileController.uploadMultiple,
 );
-router.get('/storage/statistics', fileController.statistics);
+router.get('/storage/statistics', fileListValidator, validateRequest, fileController.statistics);
 router.get('/', fileListValidator, validateRequest, fileController.index);
 router.get('/download/:id', fileIdValidator, validateRequest, fileController.download);
 router.get('/preview/:id', fileIdValidator, validateRequest, fileController.preview);

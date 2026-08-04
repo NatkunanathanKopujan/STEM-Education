@@ -193,6 +193,30 @@ export async function countUnreadNotifications(userId) {
   return rows[0]?.unread || 0;
 }
 
+export async function countNotificationSummary(userId) {
+  const [rows] = await db.execute(
+    `SELECT
+      COUNT(*) AS total,
+      SUM(CASE WHEN is_read = 0 THEN 1 ELSE 0 END) AS unread,
+      SUM(CASE WHEN is_read = 1 THEN 1 ELSE 0 END) AS readCount,
+      SUM(CASE WHEN DATE(created_at) = CURRENT_DATE() THEN 1 ELSE 0 END) AS todayCount,
+      SUM(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS weeklyCount,
+      SUM(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS monthlyCount
+     FROM notifications
+     WHERE user_id = ? AND status = 'active'`,
+    [userId],
+  );
+
+  return {
+    total: Number(rows[0]?.total || 0),
+    unread: Number(rows[0]?.unread || 0),
+    readCount: Number(rows[0]?.readCount || 0),
+    todayCount: Number(rows[0]?.todayCount || 0),
+    weeklyCount: Number(rows[0]?.weeklyCount || 0),
+    monthlyCount: Number(rows[0]?.monthlyCount || 0),
+  };
+}
+
 export async function createNotification(payload) {
   const notificationType = payload.notificationType || 'system';
 
@@ -250,6 +274,34 @@ export async function markNotificationsRead({ userId, ids }) {
   await Promise.all(
     targetRows.map((row) =>
       recordNotificationHistory({ notificationId: row.id, userId, eventType: 'read' }),
+    ),
+  );
+
+  return result.affectedRows;
+}
+
+export async function markNotificationsUnread({ userId, ids }) {
+  const safeIds = (ids || []).map(Number).filter(Boolean);
+  if (!safeIds.length) {
+    return 0;
+  }
+
+  const placeholders = safeIds.map(() => '?').join(', ');
+  const values = [userId, ...safeIds];
+  const [targetRows] = await db.execute(
+    `SELECT id FROM notifications
+     WHERE user_id = ? AND status = 'active' AND id IN (${placeholders}) AND is_read = 1`,
+    values,
+  );
+  const [result] = await db.execute(
+    `UPDATE notifications SET is_read = 0, read_at = NULL, updated_at = NOW()
+     WHERE user_id = ? AND status = 'active' AND id IN (${placeholders})`,
+    values,
+  );
+
+  await Promise.all(
+    targetRows.map((row) =>
+      recordNotificationHistory({ notificationId: row.id, userId, eventType: 'unread' }),
     ),
   );
 
@@ -597,6 +649,14 @@ function appendAnnouncementStatusFilter({ where, values, status, canManage }) {
   }
 }
 
+function getVisiblePublishedSql() {
+  return [
+    "a.status = 'published'",
+    '(a.publish_at IS NULL OR a.publish_at <= NOW())',
+    '(a.expiry_at IS NULL OR a.expiry_at > NOW())',
+  ].join(' AND ');
+}
+
 export async function listAnnouncements({
   user,
   search,
@@ -612,8 +672,14 @@ export async function listAnnouncements({
   await ensureUserAssignmentSchema();
   const safeLimit = Math.min(Math.max(Number(limit) || 30, 1), 100);
   const safeOffset = Math.max(Number(offset) || 0, 0);
-  const canManage = !visibleOnly && ['super-admin', 'admin', 'teacher'].includes(user.role);
-  const { targetSql, targetValues } = getAnnouncementVisibilitySql(user, canManage);
+  const canModerateAll = !visibleOnly && ['super-admin', 'admin'].includes(user.role);
+  const canManageOwn = !visibleOnly && user.role === 'teacher';
+  const canManage = canModerateAll || canManageOwn;
+  const { targetSql, targetValues } = getAnnouncementVisibilitySql(user, canModerateAll);
+  const ownershipAwareTargetSql = canManageOwn
+    ? `((${targetSql}) AND ${getVisiblePublishedSql()} OR a.created_by = ?)`
+    : targetSql;
+  const ownershipAwareTargetValues = canManageOwn ? [...targetValues, user.id] : targetValues;
   const where = [];
   const values = [];
 
@@ -645,11 +711,11 @@ export async function listAnnouncements({
      LEFT JOIN courses course ON course.id = a.course_id
      LEFT JOIN teachers t ON t.user_id = ?
      LEFT JOIN students s ON s.user_id = ?
-     WHERE ${targetSql}
+     WHERE ${ownershipAwareTargetSql}
        ${whereSql}
      ORDER BY ${orderBy}
      LIMIT ? OFFSET ?`,
-    [...targetValues, ...values, safeLimit, safeOffset],
+    [...ownershipAwareTargetValues, ...values, safeLimit, safeOffset],
   );
   const [countRows] = await db.query(
     `SELECT COUNT(DISTINCT a.id) AS total
@@ -660,9 +726,9 @@ export async function listAnnouncements({
      LEFT JOIN courses course ON course.id = a.course_id
      LEFT JOIN teachers t ON t.user_id = ?
      LEFT JOIN students s ON s.user_id = ?
-     WHERE ${targetSql}
+     WHERE ${ownershipAwareTargetSql}
        ${whereSql}`,
-    [...targetValues, ...values],
+    [...ownershipAwareTargetValues, ...values],
   );
 
   const announcements = await Promise.all(
@@ -685,12 +751,17 @@ export async function findAnnouncementById({ user, id }) {
   await ensureAnnouncementTargetSchema();
   await ensureAnnouncementScopeSchema();
   await ensureUserAssignmentSchema();
-  const canManage = ['super-admin', 'admin', 'teacher'].includes(user.role);
-  const { targetSql, targetValues } = getAnnouncementVisibilitySql(user, canManage);
+  const canModerateAll = ['super-admin', 'admin'].includes(user.role);
+  const canManageOwn = user.role === 'teacher';
+  const { targetSql, targetValues } = getAnnouncementVisibilitySql(user, canModerateAll);
+  const ownershipAwareTargetSql = canManageOwn
+    ? `((${targetSql}) AND ${getVisiblePublishedSql()} OR a.created_by = ?)`
+    : targetSql;
+  const ownershipAwareTargetValues = canManageOwn ? [...targetValues, user.id] : targetValues;
   const where = ['a.id = ?'];
   const values = [id];
 
-  if (!canManage) {
+  if (!canModerateAll && !canManageOwn) {
     where.push("a.status = 'published'");
     where.push('(a.publish_at IS NULL OR a.publish_at <= NOW())');
     where.push('(a.expiry_at IS NULL OR a.expiry_at > NOW())');
@@ -710,10 +781,10 @@ export async function findAnnouncementById({ user, id }) {
      LEFT JOIN courses course ON course.id = a.course_id
      LEFT JOIN teachers t ON t.user_id = ?
      LEFT JOIN students s ON s.user_id = ?
-     WHERE ${targetSql}
+     WHERE ${ownershipAwareTargetSql}
        AND ${where.join(' AND ')}
      LIMIT 1`,
-    [...targetValues, ...values],
+    [...ownershipAwareTargetValues, ...values],
   );
 
   const announcement = rows[0];

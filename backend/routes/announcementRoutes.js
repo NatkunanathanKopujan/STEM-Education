@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import {
+  announcementAttachmentPreviewController,
   announcementDetailsController,
   announcementsController,
   createAnnouncementController,
@@ -33,6 +34,7 @@ function parseMultipartJsonFields(req, _res, next) {
 }
 
 router.get('/', announcementQueryValidator, validateRequest, announcementsController);
+router.get('/:id/attachments/:attachmentId/preview', announcementIdValidator, validateRequest, announcementAttachmentPreviewController);
 router.get('/:id', announcementIdValidator, validateRequest, announcementDetailsController);
 router.post(
   '/',

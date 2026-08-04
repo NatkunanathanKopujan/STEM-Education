@@ -40,6 +40,13 @@ export function NotificationCenterPage() {
         .map((notification) => notification.id),
     [data.notifications, selectedIds],
   );
+  const selectedReadIds = useMemo(
+    () =>
+      data.notifications
+        .filter((notification) => selectedIds.includes(notification.id) && notification.isRead)
+        .map((notification) => notification.id),
+    [data.notifications, selectedIds],
+  );
 
   const currentPage = Math.floor((data.offset || 0) / (data.limit || pageSize)) + 1;
   const totalPages = Math.max(Math.ceil((data.total || 0) / (data.limit || pageSize)), 1);
@@ -84,6 +91,16 @@ export function NotificationCenterPage() {
     loadNotifications(initialFilters);
   }, [loadNotifications]);
 
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        loadNotifications(filters, { clampPage: true });
+      }
+    }, 30000);
+
+    return () => window.clearInterval(intervalId);
+  }, [filters, loadNotifications]);
+
   const updateFilter = (key, value) => {
     setFilters((current) => ({ ...current, [key]: value, offset: 0 }));
   };
@@ -114,21 +131,31 @@ export function NotificationCenterPage() {
     );
   };
 
-  const handleRead = async (ids) => {
+  const handleRead = async (ids, nextReadState = true) => {
     setError('');
     setMessage('');
     try {
-      await notificationService.markRead(ids);
-      setMessage('Notification marked as read.');
+      if (nextReadState) {
+        await notificationService.markRead(ids);
+        setMessage(ids.length === 1 ? 'Notification marked as read.' : 'Notifications marked as read.');
+      } else {
+        await notificationService.markUnread(ids);
+        setMessage(ids.length === 1 ? 'Notification marked as unread.' : 'Notifications marked as unread.');
+      }
       await loadNotifications(filters, { clampPage: true });
     } catch (apiError) {
-      setError(apiError.response?.data?.message || 'Unable to mark notification as read.');
+      setError(apiError.response?.data?.message || 'Unable to update notification status.');
     }
   };
 
   const handleBulkRead = async () => {
     if (!selectedUnreadIds.length) return;
     await handleRead(selectedUnreadIds);
+  };
+
+  const handleBulkUnread = async () => {
+    if (!selectedReadIds.length) return;
+    await handleRead(selectedReadIds, false);
   };
 
   const handleDelete = async () => {
@@ -206,14 +233,22 @@ export function NotificationCenterPage() {
         description="Review account notifications, unread status, priority alerts, and role-based updates."
       />
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-5">
         <Card className="p-5">
           <p className="text-2xl font-bold text-ink">{data.unreadCount}</p>
           <p className="text-sm text-muted">Unread Notifications</p>
         </Card>
         <Card className="p-5">
+          <p className="text-2xl font-bold text-ink">{data.readCount || 0}</p>
+          <p className="text-sm text-muted">Read Notifications</p>
+        </Card>
+        <Card className="p-5">
           <p className="text-2xl font-bold text-ink">{data.total || 0}</p>
           <p className="text-sm text-muted">Matching Notifications</p>
+        </Card>
+        <Card className="p-5">
+          <p className="text-2xl font-bold text-ink">{data.todayCount || 0}</p>
+          <p className="text-sm text-muted">Today</p>
         </Card>
         <Card className="p-5">
           <p className="text-2xl font-bold text-ink">{selectedIds.length}</p>
@@ -281,6 +316,9 @@ export function NotificationCenterPage() {
             </label>
             <Button variant="secondary" disabled={!selectedUnreadIds.length} onClick={handleBulkRead}>
               Mark Selected Read
+            </Button>
+            <Button variant="secondary" disabled={!selectedReadIds.length} onClick={handleBulkUnread}>
+              Mark Selected Unread
             </Button>
             <Button variant="secondary" disabled={!selectedIds.length} onClick={() => setBulkDeleteOpen(true)}>
               Delete Selected

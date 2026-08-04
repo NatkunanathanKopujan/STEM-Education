@@ -65,7 +65,9 @@ export function DashboardLayout() {
             <div className="mb-7">
               <Breadcrumb />
             </div>
-            <Outlet />
+            <div key={`${user?.id || 'anonymous'}-${user?.role || 'none'}`}>
+              <Outlet />
+            </div>
             <SupportCalendarPanel />
           </main>
           <Footer />

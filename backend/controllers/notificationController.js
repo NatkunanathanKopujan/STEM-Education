@@ -4,6 +4,7 @@ import {
   getAnnouncements,
   getNotifications,
   getPreferences,
+  getAnnouncementAttachmentPreview,
   getUnreadNotifications,
   publishAnnouncement,
   readAllNotifications,
@@ -12,6 +13,7 @@ import {
   removeNotification,
   resetPreferences,
   savePreferences,
+  unreadNotifications,
 } from '../services/notificationService.js';
 import { sendSuccess } from '../utils/apiResponse.js';
 import path from 'path';
@@ -53,6 +55,14 @@ export async function readNotificationsController(req, res, next) {
   }
 }
 
+export async function markUnreadNotificationsController(req, res, next) {
+  try {
+    return sendSuccess(res, await unreadNotifications(req.user, req.body.ids || []), 'Notifications marked as unread');
+  } catch (error) {
+    return next(error);
+  }
+}
+
 export async function readAllNotificationsController(req, res, next) {
   try {
     return sendSuccess(res, await readAllNotifications(req.user), 'All notifications marked as read');
@@ -84,6 +94,22 @@ export async function announcementDetailsController(req, res, next) {
       await getAnnouncement(req.user, Number(req.params.id)),
       'Announcement fetched',
     );
+  } catch (error) {
+    return next(error);
+  }
+}
+
+export async function announcementAttachmentPreviewController(req, res, next) {
+  try {
+    const { attachment, stream } = await getAnnouncementAttachmentPreview(
+      req.user,
+      Number(req.params.id),
+      Number(req.params.attachmentId),
+    );
+
+    res.setHeader('Content-Type', attachment.mimeType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(attachment.fileName || 'attachment')}"`);
+    return stream.pipe(res);
   } catch (error) {
     return next(error);
   }

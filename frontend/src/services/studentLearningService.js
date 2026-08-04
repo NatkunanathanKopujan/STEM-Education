@@ -72,11 +72,10 @@ export const studentLearningService = {
   listVideosResult: (params = {}) => listFileResult({ fileType: 'videos', ...params }),
   listNotesResult: (params = {}) => listFileResult({ fileType: 'pdf,documents', ...params }),
   preview: (id) => fileService.previewBlob(id),
-  download: (id) => fileService.downloadBlob(id),
 
   async getDashboard() {
     const [materials, videos, notes, quizHistory] = await Promise.all([
-      listFiles({ limit: 5 }),
+      listFiles({ limit: 100 }),
       listFiles({ fileType: 'videos', limit: 5 }),
       listFiles({ fileType: 'documents', limit: 5 }),
       studentQuizService.getHistory().catch(() => ({ attempts: [] })),

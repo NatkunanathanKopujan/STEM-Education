@@ -27,6 +27,16 @@ export function StudentAnnouncementsPage() {
     loadAnnouncements();
   }, [loadAnnouncements]);
 
+  const previewAttachment = async (announcementId, attachment) => {
+    try {
+      const url = await notificationService.previewAnnouncementAttachment(announcementId, attachment.id);
+      window.open(url, '_blank', 'noopener,noreferrer');
+      window.setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (apiError) {
+      setError(apiError.response?.data?.message || 'Unable to open announcement attachment.');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -72,15 +82,14 @@ export function StudentAnnouncementsPage() {
             {item.attachments?.length ? (
               <div className="mt-4 flex flex-wrap gap-2">
                 {item.attachments.map((attachment) => (
-                  <a
+                  <button
                     key={attachment.id || attachment.filePath}
-                    href={attachment.filePath}
-                    target="_blank"
-                    rel="noreferrer"
+                    type="button"
+                    onClick={() => previewAttachment(item.id, attachment)}
                     className="rounded-full border border-line px-3 py-2 text-xs font-semibold text-primary hover:border-primary"
                   >
                     View {attachment.fileName || 'attachment'}
-                  </a>
+                  </button>
                 ))}
               </div>
             ) : null}

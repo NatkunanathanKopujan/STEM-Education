@@ -1,8 +1,12 @@
 import { ROLES } from '../config/roles.js';
 import { AppError } from '../utils/appError.js';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { findDepartmentById } from '../repositories/departmentRepository.js';
 import { findCurriculumById, findCurriculumModuleById } from '../repositories/curriculumRepository.js';
 import {
+  countNotificationSummary,
   countUnreadNotifications,
   createAnnouncement,
   createNotification,
@@ -15,6 +19,7 @@ import {
   listNotifications,
   listUsersForAnnouncement,
   markNotificationsRead,
+  markNotificationsUnread,
   replaceAnnouncementTargets,
   resetNotificationPreferences,
   updateAnnouncement,
@@ -24,9 +29,13 @@ import { findTeacherDepartmentsByUserId } from '../repositories/userManagementRe
 import { auditAction } from './securityService.js';
 
 const announcementPublishRoles = [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.TEACHER];
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const backendRoot = path.resolve(__dirname, '..');
+const announcementUploadRoot = path.resolve(backendRoot, 'uploads', 'announcements');
 
 export async function getNotifications(user, filters = {}) {
-  const [result, unreadCount] = await Promise.all([
+  const [result, summary] = await Promise.all([
     listNotifications({
       userId: user.id,
       search: filters.search,
@@ -36,11 +45,15 @@ export async function getNotifications(user, filters = {}) {
       limit: Number(filters.limit) || 30,
       offset: Number(filters.offset) || 0,
     }),
-    countUnreadNotifications(user.id),
+    countNotificationSummary(user.id),
   ]);
 
   return {
-    unreadCount,
+    unreadCount: summary.unread,
+    readCount: summary.readCount,
+    todayCount: summary.todayCount,
+    weeklyCount: summary.weeklyCount,
+    monthlyCount: summary.monthlyCount,
     notifications: result.notifications,
     total: result.total,
     limit: result.limit,
@@ -70,6 +83,20 @@ export async function readNotifications(user, ids = []) {
       action: 'notifications_marked_read',
       module: 'notifications',
       description: `${affected} notification${affected === 1 ? '' : 's'} marked as read`,
+      metadata: { ids },
+    });
+  }
+  return { affected };
+}
+
+export async function unreadNotifications(user, ids = []) {
+  const affected = await markNotificationsUnread({ userId: user.id, ids });
+  if (affected) {
+    await auditAction({
+      user,
+      action: 'notifications_marked_unread',
+      module: 'notifications',
+      description: `${affected} notification${affected === 1 ? '' : 's'} marked as unread`,
       metadata: { ids },
     });
   }
@@ -171,12 +198,37 @@ export async function getAnnouncement(user, id) {
   return announcement;
 }
 
+export async function getAnnouncementAttachmentPreview(user, announcementId, attachmentId) {
+  const announcement = await getAnnouncement(user, Number(announcementId));
+  const attachment = announcement.attachments?.find((item) => Number(item.id) === Number(attachmentId));
+
+  if (!attachment) {
+    throw new AppError('Announcement attachment not found', 404);
+  }
+
+  const relativePath = String(attachment.filePath || '').replace(/^[/\\]+/, '');
+  const absolutePath = path.resolve(backendRoot, relativePath);
+
+  if (!absolutePath.startsWith(announcementUploadRoot) || !fs.existsSync(absolutePath)) {
+    throw new AppError('Announcement attachment file is unavailable', 404);
+  }
+
+  return {
+    attachment,
+    stream: fs.createReadStream(absolutePath),
+  };
+}
+
 function getUserId(user) {
   return user?.id || user?.userId;
 }
 
 async function resolveAnnouncementScope(user, payload = {}) {
   const targetRole = payload.audienceRole;
+  if (user.role === ROLES.TEACHER && !['student', 'teacher'].includes(targetRole)) {
+    throw new AppError('Teachers can publish announcements only to assigned students or teachers', 403);
+  }
+
   if (!['student', 'teacher'].includes(targetRole)) {
     return {
       departmentId: null,
@@ -310,6 +362,10 @@ export async function editAnnouncement(user, id, payload) {
     throw new AppError('Announcement not found', 404);
   }
 
+  if (user.role === ROLES.TEACHER && Number(existing.createdBy) !== Number(getUserId(user))) {
+    throw new AppError('You can only update announcements you created', 403);
+  }
+
   const nextPayload = {
     ...existing,
     ...payload,
@@ -355,6 +411,15 @@ export async function editAnnouncement(user, id, payload) {
 export async function removeAnnouncement(user, id) {
   if (!announcementPublishRoles.includes(user.role)) {
     throw new AppError('You do not have permission to delete announcements', 403);
+  }
+
+  const existing = await findAnnouncementRawById(Number(id));
+  if (!existing) {
+    throw new AppError('Announcement not found', 404);
+  }
+
+  if (user.role === ROLES.TEACHER && Number(existing.createdBy) !== Number(getUserId(user))) {
+    throw new AppError('You can only delete announcements you created', 403);
   }
 
   const deleted = await deleteAnnouncement(id);

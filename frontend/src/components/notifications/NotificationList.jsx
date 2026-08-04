@@ -1,4 +1,4 @@
-import { FiArrowRight, FiCheck, FiTrash2 } from 'react-icons/fi';
+import { FiArrowRight, FiCheck, FiMail, FiTrash2 } from 'react-icons/fi';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../ui/Button';
 
@@ -77,11 +77,25 @@ export function NotificationList({
                 </Button>
               ) : null}
               {!notification.isRead ? (
-                <Button variant="secondary" className="min-h-9 px-3" onClick={() => onRead?.([notification.id])}>
+                <Button
+                  variant="secondary"
+                  className="min-h-9 px-3"
+                  title="Mark as read"
+                  onClick={() => onRead?.([notification.id])}
+                >
                   <FiCheck />
                 </Button>
-              ) : null}
-              <Button variant="ghost" className="min-h-9 px-3" onClick={() => onDelete?.(notification.id)}>
+              ) : (
+                <Button
+                  variant="secondary"
+                  className="min-h-9 px-3"
+                  title="Mark as unread"
+                  onClick={() => onRead?.([notification.id], false)}
+                >
+                  <FiMail />
+                </Button>
+              )}
+              <Button variant="ghost" className="min-h-9 px-3" title="Delete notification" onClick={() => onDelete?.(notification.id)}>
                 <FiTrash2 />
               </Button>
             </div>

@@ -8,11 +8,23 @@ export const apiClient = axios.create({
   },
 });
 
+const getBearerToken = (authorizationHeader) => {
+  if (!authorizationHeader || typeof authorizationHeader !== 'string') {
+    return null;
+  }
+
+  return authorizationHeader.startsWith('Bearer ')
+    ? authorizationHeader.slice(7)
+    : null;
+};
+
 apiClient.interceptors.request.use((config) => {
-  const token = storage.getToken();
+  const token = config.skipAuth ? null : storage.getToken();
 
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+  } else if (config.headers?.Authorization) {
+    delete config.headers.Authorization;
   }
 
   return config;
@@ -21,10 +33,22 @@ apiClient.interceptors.request.use((config) => {
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
+    if (error.config?.skipAuth) {
+      return Promise.reject(error);
+    }
+
     if (error.response?.status === 401) {
-      storage.clearAuth();
-      if (!window.location.pathname.includes('/login')) {
-        window.location.assign('/login');
+      const requestToken = getBearerToken(error.config?.headers?.Authorization);
+      const currentToken = storage.getToken();
+      const belongsToCurrentSession = !requestToken || !currentToken || requestToken === currentToken;
+
+      if (belongsToCurrentSession) {
+        storage.clearAuth();
+        window.dispatchEvent(new CustomEvent('auth:session-expired'));
+
+        if (!window.location.pathname.includes('/login')) {
+          window.location.assign('/login');
+        }
       }
     }
 

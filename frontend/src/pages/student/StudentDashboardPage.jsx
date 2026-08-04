@@ -2,9 +2,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { StudentStatCard } from '../../components/student/StudentStatCard';
 import { ProgressBar } from '../../components/student/ProgressBar';
+import { MaterialHierarchy } from '../../components/learning/MaterialHierarchy';
 import { PageHeader } from '../../components/super-admin/PageHeader';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { Modal } from '../../components/ui/Modal';
 import { useAuth } from '../../hooks/useAuth';
 import { notificationService } from '../../services/notificationService';
 import { studentLearningService } from '../../services/studentLearningService';
@@ -12,6 +14,8 @@ import { studentLearningService } from '../../services/studentLearningService';
 export function StudentDashboardPage() {
   const { user } = useAuth();
   const [recentAnnouncements, setRecentAnnouncements] = useState([]);
+  const [selectedAnnouncement, setSelectedAnnouncement] = useState(null);
+  const [contentError, setContentError] = useState('');
   const [dashboard, setDashboard] = useState({
     materials: [],
     stats: [],
@@ -22,7 +26,7 @@ export function StudentDashboardPage() {
 
   const loadRecentAnnouncements = useCallback(async () => {
     try {
-      const data = await notificationService.getAnnouncements({ limit: 2 });
+      const data = await notificationService.getAnnouncements({ visibleOnly: true, status: 'published', limit: 20 });
       setRecentAnnouncements(data.announcements || []);
     } catch {
       setRecentAnnouncements([]);
@@ -31,9 +35,11 @@ export function StudentDashboardPage() {
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
+    setContentError('');
     try {
       setDashboard(await studentLearningService.getDashboard());
-    } catch {
+    } catch (apiError) {
+      setContentError(apiError.response?.data?.message || 'Unable to load student dashboard.');
       setDashboard({
         materials: [],
         stats: [],
@@ -50,6 +56,34 @@ export function StudentDashboardPage() {
     loadDashboard();
   }, [loadDashboard, loadRecentAnnouncements]);
 
+  const previewFile = async (id) => {
+    try {
+      const url = await studentLearningService.preview(id);
+      window.open(url, '_blank', 'noopener,noreferrer');
+      window.setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (apiError) {
+      setContentError(apiError.response?.data?.message || 'Unable to open learning material.');
+    }
+  };
+
+  const viewAnnouncement = async (id) => {
+    try {
+      setSelectedAnnouncement(await notificationService.getAnnouncement(id));
+    } catch (apiError) {
+      setContentError(apiError.response?.data?.message || 'Unable to open announcement.');
+    }
+  };
+
+  const previewAnnouncementAttachment = async (announcementId, attachment) => {
+    try {
+      const url = await notificationService.previewAnnouncementAttachment(announcementId, attachment.id);
+      window.open(url, '_blank', 'noopener,noreferrer');
+      window.setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (apiError) {
+      setContentError(apiError.response?.data?.message || 'Unable to open announcement attachment.');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <Card className="border-primary/20 bg-primary p-6 text-white">
@@ -63,6 +97,7 @@ export function StudentDashboardPage() {
         </div>
       </Card>
       <PageHeader eyebrow="Student" title="Dashboard" description="Track learning progress, recent content, announcements, quiz results, and upcoming activities." />
+      {contentError ? <Card className="p-5 text-sm font-semibold text-red-600">{contentError}</Card> : null}
       {loading ? <Card className="p-5 text-sm text-muted">Loading dashboard...</Card> : null}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{dashboard.stats.map((stat) => <StudentStatCard key={stat.title} {...stat} />)}</div>
       <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
@@ -70,10 +105,48 @@ export function StudentDashboardPage() {
         <Card className="p-5"><h2 className="text-lg font-bold text-ink">Latest Quiz Result</h2><p className="mt-5 text-5xl font-bold text-primary">{dashboard.latestQuizResult}</p><p className="mt-2 text-sm text-muted">Latest AI quiz assessment result</p></Card>
       </div>
       <div className="grid gap-6 xl:grid-cols-3">
-        <Card className="p-5"><h2 className="text-lg font-bold text-ink">Recent Announcements</h2><div className="mt-4 space-y-3">{recentAnnouncements.map((item) => <p key={item.id} className="rounded-xl bg-orange-50 p-3 text-sm font-semibold text-primary">{item.title}</p>)}{!recentAnnouncements.length ? <p className="rounded-xl bg-page p-3 text-sm text-muted">No announcements published yet.</p> : null}</div></Card>
+        <Card className="p-5"><h2 className="text-lg font-bold text-ink">Recent Announcements</h2><div className="mt-4 space-y-3">{recentAnnouncements.slice(0, 2).map((item) => <p key={item.id} className="rounded-xl bg-orange-50 p-3 text-sm font-semibold text-primary">{item.title}</p>)}{!recentAnnouncements.length ? <p className="rounded-xl bg-page p-3 text-sm text-muted">No announcements published yet.</p> : null}</div></Card>
         <Card className="p-5"><h2 className="text-lg font-bold text-ink">Recent Learning Materials</h2><div className="mt-4 space-y-3">{dashboard.materials.slice(0, 2).map((item) => <p key={item.id} className="rounded-xl bg-page p-3 text-sm text-muted">{item.title}</p>)}{!dashboard.materials.length ? <p className="rounded-xl bg-page p-3 text-sm text-muted">No public materials uploaded yet.</p> : null}</div></Card>
         <Card className="p-5"><h2 className="text-lg font-bold text-ink">Upcoming Activities</h2><div className="mt-4 space-y-3"><p className="rounded-xl bg-page p-3 text-sm text-muted">No scheduled activities found.</p></div></Card>
       </div>
+      {!loading ? (
+        <MaterialHierarchy
+          items={dashboard.materials}
+          announcements={recentAnnouncements}
+          emptyMessage="No assigned learning content found in the database."
+          onPreview={previewFile}
+          onViewAnnouncement={viewAnnouncement}
+          onPreviewAttachment={previewAnnouncementAttachment}
+          allowDownload={false}
+        />
+      ) : null}
+      <Modal
+        open={Boolean(selectedAnnouncement)}
+        title={selectedAnnouncement?.title || 'Announcement'}
+        onClose={() => setSelectedAnnouncement(null)}
+      >
+        {selectedAnnouncement ? (
+          <div className="space-y-3 text-sm">
+            <p className="leading-6 text-muted">
+              {selectedAnnouncement.content || selectedAnnouncement.description || 'No announcement details provided.'}
+            </p>
+            {selectedAnnouncement.attachments?.length ? (
+              <div className="flex flex-wrap gap-2">
+                {selectedAnnouncement.attachments.map((attachment) => (
+                  <button
+                    key={attachment.id || attachment.filePath}
+                    type="button"
+                    onClick={() => previewAnnouncementAttachment(selectedAnnouncement.id, attachment)}
+                    className="rounded-full border border-line px-3 py-1 text-xs font-semibold text-primary"
+                  >
+                    {attachment.fileName}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </Modal>
     </div>
   );
 }

@@ -134,22 +134,35 @@ function groupMaterials(items = [], announcements = []) {
   }));
 }
 
-function AttachmentLinks({ attachments = [] }) {
+function AttachmentLinks({ attachments = [], announcementId, onPreviewAttachment }) {
   if (!attachments.length) return null;
 
   return (
     <div className="mt-2 flex flex-wrap gap-2">
-      {attachments.map((attachment) => (
-        <a
-          key={attachment.id || attachment.filePath}
-          href={attachment.filePath}
-          target="_blank"
-          rel="noreferrer"
-          className="rounded-full border border-line px-3 py-1 text-xs font-semibold text-primary hover:border-primary"
-        >
-          {attachment.fileName}
-        </a>
-      ))}
+      {attachments.map((attachment) => {
+        const key = attachment.id || attachment.filePath;
+        if (onPreviewAttachment && announcementId && attachment.id) {
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => onPreviewAttachment(announcementId, attachment)}
+              className="rounded-full border border-line bg-card px-3 py-1 text-xs font-semibold text-primary hover:border-primary"
+            >
+              {attachment.fileName}
+            </button>
+          );
+        }
+
+        return (
+          <span
+            key={key}
+            className="rounded-full border border-line px-3 py-1 text-xs font-semibold text-muted"
+          >
+            {attachment.fileName}
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -209,6 +222,7 @@ export function MaterialHierarchy({
   onPreview,
   onDownload,
   onViewAnnouncement,
+  onPreviewAttachment,
   allowDownload = true,
 }) {
   const [selectedDepartment, setSelectedDepartment] = useState('');
@@ -342,7 +356,11 @@ export function MaterialHierarchy({
                 <div key={announcement.id} className="rounded-xl border border-primary/20 bg-primary/10 p-4">
                   <p className="flex items-center gap-2 font-bold text-ink"><FiBell className="text-primary" />{announcement.title}</p>
                   <p className="mt-2 line-clamp-2 text-sm text-muted">{announcement.topic || 'Announcement'}</p>
-                  <AttachmentLinks attachments={announcement.attachments} />
+                  <AttachmentLinks
+                    attachments={announcement.attachments}
+                    announcementId={announcement.rawId}
+                    onPreviewAttachment={onPreviewAttachment}
+                  />
                   <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
                     <span className="text-xs text-muted">{formatDate(announcement.createdAt || announcement.publishedAt)}</span>
                     <Button variant="secondary" className="min-h-9 px-3" onClick={() => onViewAnnouncement?.(announcement.rawId)}>
@@ -392,7 +410,13 @@ export function MaterialHierarchy({
                                 {file.topic || '-'} - {file.teacher || '-'} - {identity.label} - {formatFileSize(file.size || file.fileSize)}
                               </p>
                               <p className="ml-13 mt-1 text-xs text-muted">{formatDate(file.createdAt || file.uploadedAt || file.uploadDate)}</p>
-                              {file.kind === 'announcement' ? <AttachmentLinks attachments={file.attachments} /> : null}
+                              {file.kind === 'announcement' ? (
+                                <AttachmentLinks
+                                  attachments={file.attachments}
+                                  announcementId={file.rawId}
+                                  onPreviewAttachment={onPreviewAttachment}
+                                />
+                              ) : null}
                             </div>
                             <div className="flex flex-wrap gap-2">
                               {file.kind === 'announcement' ? (

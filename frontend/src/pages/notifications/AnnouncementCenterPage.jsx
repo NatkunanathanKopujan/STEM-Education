@@ -11,6 +11,7 @@ import { ConfirmationDialog, Modal } from '../../components/ui/Modal';
 import { USER_ROLES } from '../../utils/constants';
 import { departmentService } from '../../services/departmentService';
 import { notificationService } from '../../services/notificationService';
+import { teacherDashboardService } from '../../services/teacherDashboardService';
 import { userManagementService } from '../../services/userManagementService';
 
 const publisherRoles = [USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN, USER_ROLES.TEACHER];
@@ -88,7 +89,7 @@ function buildPayload(form) {
   };
 }
 
-function validateForm(form) {
+function validateForm(form, role) {
   if (form.title.trim().length < 3) {
     return 'Title must be at least 3 characters.';
   }
@@ -101,10 +102,15 @@ function validateForm(form) {
     return 'Audience is required.';
   }
 
+  if (role === USER_ROLES.TEACHER && !['student', 'teacher'].includes(form.audience)) {
+    return 'Teachers can publish announcements only to assigned students or teachers.';
+  }
+
   if (['student', 'teacher'].includes(form.audience)) {
     if (!form.departmentId) return 'Department is required for Students or Teachers audience.';
     if (!form.curriculumId) return 'Curriculum is required for Students or Teachers audience.';
     if (!form.courseId) return 'Subject/Module is required for Students or Teachers audience.';
+    if (role === USER_ROLES.TEACHER && !form.weekNo) return 'Week number is required for teacher announcements.';
   }
 
   if (form.publishDate && form.expiryDate && new Date(form.expiryDate) <= new Date(form.publishDate)) {
@@ -206,8 +212,9 @@ function getAudienceLabel(announcement) {
 }
 
 export function AnnouncementCenterPage() {
-  const { role } = useAuth();
+  const { role, user } = useAuth();
   const canPublish = publisherRoles.includes(role);
+  const currentUserId = Number(user?.id || user?.userId || 0);
   const [announcements, setAnnouncements] = useState([]);
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -223,6 +230,8 @@ export function AnnouncementCenterPage() {
   const [curriculums, setCurriculums] = useState([]);
   const [modules, setModules] = useState([]);
   const [departmentsLoading, setDepartmentsLoading] = useState(false);
+  const [assignedHierarchy, setAssignedHierarchy] = useState([]);
+  const [attachments, setAttachments] = useState([]);
 
   const currentPage = Math.floor((filters.offset || 0) / pageSize) + 1;
   const totalPages = Math.max(Math.ceil(total / pageSize), 1);
@@ -236,6 +245,18 @@ export function AnnouncementCenterPage() {
     () => curriculums.filter((curriculum) => !form.departmentId || Number(curriculum.departmentId) === Number(form.departmentId)),
     [curriculums, form.departmentId],
   );
+  const audienceOptions = role === USER_ROLES.TEACHER
+    ? [
+        ['student', 'Students'],
+        ['teacher', 'Teachers'],
+      ]
+    : [
+        ['all_users', 'All Users'],
+        ['student', 'Students'],
+        ['teacher', 'Teachers'],
+        ['admin', 'Admins'],
+        ['super-admin', 'Super Admins'],
+      ];
   const departmentAudienceLabel = form.audience === 'teacher' ? 'teacher' : 'student';
 
   const loadAnnouncements = useCallback(async (nextFilters) => {
@@ -261,13 +282,33 @@ export function AnnouncementCenterPage() {
 
     let active = true;
     setDepartmentsLoading(true);
-    departmentService
-      .list({ status: 'active', limit: 100 })
-      .then((data) => {
-        if (active) setDepartments(data.departments || data.items || []);
-      })
+    const loadDepartmentOptions = role === USER_ROLES.TEACHER
+      ? teacherDashboardService.getLearningHierarchy().then((data) => {
+          const teacherDepartments = data.departments || [];
+          if (!active) return;
+          setAssignedHierarchy(teacherDepartments);
+          setDepartments(teacherDepartments.map((department) => ({
+            id: department.id,
+            name: department.name,
+          })));
+          setCurriculums(teacherDepartments.flatMap((department) =>
+            (department.curriculums || []).map((curriculum) => ({
+              ...curriculum,
+              title: curriculum.name,
+              departmentId: department.id,
+            })),
+          ));
+        })
+      : departmentService.list({ status: 'active', limit: 100 }).then((data) => {
+          if (active) setDepartments(data.departments || data.items || []);
+        });
+
+    loadDepartmentOptions
       .catch(() => {
-        if (active) setDepartments([]);
+        if (active) {
+          setDepartments([]);
+          setAssignedHierarchy([]);
+        }
       })
       .finally(() => {
         if (active) setDepartmentsLoading(false);
@@ -276,10 +317,16 @@ export function AnnouncementCenterPage() {
     return () => {
       active = false;
     };
-  }, [canPublish]);
+  }, [canPublish, role]);
 
   useEffect(() => {
-    if (!canPublish) return;
+    if (role === USER_ROLES.TEACHER && !['student', 'teacher'].includes(form.audience)) {
+      setForm((current) => ({ ...current, audience: 'student' }));
+    }
+  }, [form.audience, role]);
+
+  useEffect(() => {
+    if (!canPublish || role === USER_ROLES.TEACHER) return;
 
     let active = true;
     userManagementService
@@ -294,11 +341,18 @@ export function AnnouncementCenterPage() {
     return () => {
       active = false;
     };
-  }, [canPublish]);
+  }, [canPublish, role]);
 
   useEffect(() => {
     if (!form.curriculumId) {
       setModules([]);
+      return;
+    }
+
+    if (role === USER_ROLES.TEACHER) {
+      const selectedDepartment = assignedHierarchy.find((department) => Number(department.id) === Number(form.departmentId));
+      const selectedCurriculum = selectedDepartment?.curriculums?.find((curriculum) => Number(curriculum.id) === Number(form.curriculumId));
+      setModules((selectedCurriculum?.subjects || []).filter((module) => module.isActive !== false));
       return;
     }
 
@@ -315,7 +369,7 @@ export function AnnouncementCenterPage() {
     return () => {
       active = false;
     };
-  }, [form.curriculumId]);
+  }, [assignedHierarchy, form.curriculumId, form.departmentId, role]);
 
   const updateFilter = (key, value) => {
     setFilters((current) => ({ ...current, [key]: value, offset: 0 }));
@@ -338,7 +392,8 @@ export function AnnouncementCenterPage() {
   };
 
   const resetForm = () => {
-    setForm(initialForm);
+    setForm(role === USER_ROLES.TEACHER ? { ...initialForm, audience: 'student' } : initialForm);
+    setAttachments([]);
     setEditingId(null);
   };
 
@@ -368,7 +423,7 @@ export function AnnouncementCenterPage() {
     setError('');
     setMessage('');
 
-    const validationError = validateForm(form);
+    const validationError = validateForm(form, role);
     if (validationError) {
       setError(validationError);
       return;
@@ -379,7 +434,7 @@ export function AnnouncementCenterPage() {
         await notificationService.updateAnnouncement(editingId, buildPayload(form));
         setMessage('Announcement updated.');
       } else {
-        await notificationService.createAnnouncement(buildPayload(form));
+        await notificationService.createAnnouncement(buildPayload(form), attachments);
         setMessage(form.status === 'draft' ? 'Announcement draft saved.' : 'Announcement published.');
       }
       resetForm();
@@ -392,6 +447,7 @@ export function AnnouncementCenterPage() {
   const startEdit = (announcement) => {
     setEditingId(announcement.id);
     setForm(mapAnnouncementToForm(announcement));
+    setAttachments([]);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -421,6 +477,21 @@ export function AnnouncementCenterPage() {
       setIsViewing(false);
     }
   };
+
+  const previewAttachment = async (announcementId, attachment) => {
+    setError('');
+    try {
+      const url = await notificationService.previewAnnouncementAttachment(announcementId, attachment.id);
+      window.open(url, '_blank', 'noopener,noreferrer');
+      window.setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (apiError) {
+      setError(getApiErrorMessage(apiError, 'Unable to open announcement attachment.'));
+    }
+  };
+
+  const canManageAnnouncement = (announcement) =>
+    [USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN].includes(role) ||
+    Number(announcement.createdBy) === currentUserId;
 
   return (
     <div className="space-y-6">
@@ -469,11 +540,9 @@ export function AnnouncementCenterPage() {
               onChange={(event) => updateAudience(event.target.value)}
               className="min-h-11 rounded-xl border border-line px-4 text-sm outline-none focus:border-primary"
             >
-              <option value="all_users">All Users</option>
-              <option value="student">Students</option>
-              <option value="teacher">Teachers</option>
-              <option value="admin">Admins</option>
-              <option value="super-admin">Super Admins</option>
+              {audienceOptions.map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
             </select>
             <select
               value={form.status}
@@ -496,12 +565,21 @@ export function AnnouncementCenterPage() {
               type="datetime-local"
               className="min-h-11 rounded-xl border border-line px-4 text-sm outline-none focus:border-primary"
             />
-            <input
-              value={form.attachmentPath}
-              onChange={(event) => setForm((value) => ({ ...value, attachmentPath: event.target.value }))}
-              placeholder="Optional attachment path"
-              className="min-h-11 rounded-xl border border-line px-4 text-sm outline-none focus:border-primary"
-            />
+            {!editingId ? (
+              <label className="flex min-h-11 cursor-pointer items-center rounded-xl border border-dashed border-line bg-card px-4 text-sm font-semibold text-muted transition hover:border-primary hover:text-primary">
+                <input
+                  type="file"
+                  multiple
+                  className="sr-only"
+                  onChange={(event) => setAttachments(Array.from(event.target.files || []))}
+                />
+                {attachments.length ? `${attachments.length} attachment${attachments.length === 1 ? '' : 's'} selected` : 'Choose announcement attachments'}
+              </label>
+            ) : (
+              <div className="flex min-h-11 items-center rounded-xl border border-line bg-page px-4 text-sm text-muted">
+                Existing attachments remain unchanged while editing.
+              </div>
+            )}
             <textarea
               value={form.description}
               onChange={(event) => setForm((value) => ({ ...value, description: event.target.value }))}
@@ -531,7 +609,7 @@ export function AnnouncementCenterPage() {
                   >
                     <option value="">Select curriculum</option>
                     {availableCurriculums.map((curriculum) => (
-                      <option key={curriculum.id} value={curriculum.id}>{curriculum.name}</option>
+                      <option key={curriculum.id} value={curriculum.id}>{curriculum.name || curriculum.title}</option>
                     ))}
                   </select>
                   <select
@@ -542,7 +620,7 @@ export function AnnouncementCenterPage() {
                   >
                     <option value="">Select subject/module</option>
                     {modules.map((module) => (
-                      <option key={module.id} value={module.id}>{module.title}</option>
+                      <option key={module.id} value={module.id}>{module.title || module.name}</option>
                     ))}
                   </select>
                   <input
@@ -565,6 +643,15 @@ export function AnnouncementCenterPage() {
                 ) : null}
                 {form.curriculumId && !modules.length ? (
                   <p className="mt-2 text-xs font-semibold text-red-600">No active subjects/modules found under this curriculum.</p>
+                ) : null}
+                {attachments.length ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {attachments.map((file) => (
+                      <span key={`${file.name}-${file.size}`} className="rounded-full border border-line bg-card px-3 py-1 text-xs font-semibold text-muted">
+                        {file.name}
+                      </span>
+                    ))}
+                  </div>
                 ) : null}
               </div>
             ) : null}
@@ -671,7 +758,7 @@ export function AnnouncementCenterPage() {
                 <FiEye />
                 View
               </Button>
-              {canPublish ? (
+              {canPublish && canManageAnnouncement(announcement) ? (
                 <>
                 <Button variant="secondary" className="min-h-9 px-3" onClick={() => startEdit(announcement)}>
                   <FiEdit3 />
@@ -731,8 +818,20 @@ export function AnnouncementCenterPage() {
             </div>
             {selectedAnnouncement.attachments?.length ? (
               <div>
-                <p className="text-xs font-semibold uppercase text-muted">Attachment</p>
-                <p className="mt-1 text-primary">{selectedAnnouncement.attachments[0].fileName}</p>
+                <p className="text-xs font-semibold uppercase text-muted">Attachments</p>
+                <div className="mt-2 space-y-2">
+                  {selectedAnnouncement.attachments.map((attachment) => (
+                    <button
+                      key={attachment.id}
+                      type="button"
+                      onClick={() => previewAttachment(selectedAnnouncement.id, attachment)}
+                      className="flex w-full items-center justify-between rounded-xl border border-line px-3 py-2 text-left text-sm font-semibold text-primary transition hover:border-primary"
+                    >
+                      <span>{attachment.fileName || 'Attachment'}</span>
+                      <FiEye />
+                    </button>
+                  ))}
+                </div>
               </div>
             ) : null}
           </div>
