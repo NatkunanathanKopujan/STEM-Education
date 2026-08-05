@@ -7,10 +7,9 @@ import { dashboardController } from '../controllers/dashboardController.js';
 const router = Router();
 
 router.use(authenticate);
-router.use(checkPermissions(PERMISSIONS.USERS_READ));
 
 router.get('/summary', dashboardController.summary);
-router.get('/users', dashboardController.users);
+router.get('/users', checkPermissions(PERMISSIONS.USERS_READ), dashboardController.users);
 router.get('/curriculums', checkPermissions(PERMISSIONS.CURRICULUM_READ), dashboardController.curriculums);
 
 export default router;

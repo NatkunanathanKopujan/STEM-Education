@@ -18,6 +18,29 @@ const preferenceByType = {
 
 let announcementTargetSchemaReady = false;
 let announcementScopeSchemaReady = false;
+let notificationHistorySchemaReady = false;
+
+async function ensureNotificationHistorySchema() {
+  if (notificationHistorySchemaReady) return;
+
+  const [columns] = await db.query(
+    `SELECT COLUMN_TYPE
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'notification_history'
+      AND COLUMN_NAME = 'event_type'
+     LIMIT 1`,
+  );
+
+  if (columns[0]?.COLUMN_TYPE && !String(columns[0].COLUMN_TYPE).includes("'unread'")) {
+    await db.query(
+      `ALTER TABLE notification_history
+       MODIFY event_type ENUM('created', 'read', 'unread', 'deleted', 'archived') NOT NULL`,
+    );
+  }
+
+  notificationHistorySchemaReady = true;
+}
 
 async function ensureAnnouncementTargetSchema() {
   if (announcementTargetSchemaReady) return;
@@ -132,6 +155,7 @@ export async function listNotifications({
   readStatus,
   priority,
   status = 'active',
+  sort = 'unreadFirst',
   limit = 30,
   offset = 0,
 }) {
@@ -163,11 +187,18 @@ export async function listNotifications({
     values.push(`%${search}%`, `%${search}%`, `%${search}%`);
   }
 
+  const orderBy = {
+    newest: 'created_at DESC',
+    oldest: 'created_at ASC',
+    unreadFirst: 'is_read ASC, created_at DESC',
+    priority: `FIELD(priority, 'urgent', 'important', 'normal'), created_at DESC`,
+  }[sort] || 'is_read ASC, created_at DESC';
+
   const whereSql = where.join(' AND ');
   const [rows] = await db.query(
     `${notificationSelect}
      WHERE ${whereSql}
-     ORDER BY is_read ASC, created_at DESC
+     ORDER BY ${orderBy}
      LIMIT ? OFFSET ?`,
     [...values, safeLimit, safeOffset],
   );
@@ -375,6 +406,7 @@ export async function resetNotificationPreferences(userId) {
 }
 
 export async function recordNotificationHistory({ notificationId, userId, eventType, metadata }) {
+  await ensureNotificationHistorySchema();
   await db.execute(
     `INSERT INTO notification_history (notification_id, user_id, event_type, metadata)
      VALUES (?, ?, ?, ?)`,
@@ -590,7 +622,21 @@ function getAnnouncementVisibilitySql(user, canManage = false) {
       )
     )`
     : user.role === 'student'
-      ? `AND (a.curriculum_id IS NULL OR s.curriculum_id = a.curriculum_id)`
+      ? `AND (
+        a.curriculum_id IS NULL
+        OR s.curriculum_id = a.curriculum_id
+        OR (
+          s.curriculum_id IS NULL
+          AND EXISTS (
+            SELECT 1
+            FROM curriculums scope_curriculum
+            INNER JOIN student_departments scope_curriculum_sd
+              ON scope_curriculum_sd.student_id = s.id
+              AND scope_curriculum_sd.department_id = scope_curriculum.department_id
+            WHERE scope_curriculum.id = a.curriculum_id
+          )
+        )
+      )`
       : '';
   const targetSql = `
     (a.audience_role IS NULL OR a.audience_role = ?)
@@ -612,10 +658,25 @@ function getAnnouncementVisibilitySql(user, canManage = false) {
         WHERE visible_sd.student_id = s.id
           AND visible_sd.department_id = at.target_id
       ))
-      OR (at.target_type = 'curriculum' AND EXISTS (
-        SELECT 1 FROM curriculum_teachers visible_ct
+      OR (at.target_type = 'curriculum' AND at.target_role = 'teacher' AND EXISTS (
+        SELECT 1
+        FROM curriculum_teachers visible_ct
         WHERE visible_ct.curriculum_id = at.target_id
           AND visible_ct.teacher_id = t.id
+      ))
+      OR (at.target_type = 'curriculum' AND at.target_role = 'student' AND (
+        s.curriculum_id = at.target_id
+        OR (
+          s.curriculum_id IS NULL
+          AND EXISTS (
+            SELECT 1
+            FROM curriculums visible_curriculum
+            INNER JOIN student_departments visible_curriculum_sd
+              ON visible_curriculum_sd.student_id = s.id
+              AND visible_curriculum_sd.department_id = visible_curriculum.department_id
+            WHERE visible_curriculum.id = at.target_id
+          )
+        )
       ))
     )
     ${departmentScopeSql}
@@ -865,12 +926,41 @@ async function listUsersByTarget(target, scope = {}) {
   }
 
   if (target.targetType === 'curriculum') {
+    if (target.targetRole === 'student') {
+      await ensureUserAssignmentSchema();
+      const [rows] = await db.execute(
+        `SELECT DISTINCT u.id, u.role, u.full_name AS fullName
+         FROM users u
+         INNER JOIN students s ON s.user_id = u.id
+         WHERE u.status = 'active'
+          AND u.role = 'student'
+          AND (
+            s.curriculum_id = ?
+            OR (
+              s.curriculum_id IS NULL
+              AND EXISTS (
+                SELECT 1
+                FROM curriculums scoped_curriculum
+                INNER JOIN student_departments scoped_sd
+                  ON scoped_sd.student_id = s.id
+                  AND scoped_sd.department_id = scoped_curriculum.department_id
+                WHERE scoped_curriculum.id = ?
+              )
+            )
+          )`,
+        [target.targetId, target.targetId],
+      );
+      return rows;
+    }
+
     const [rows] = await db.execute(
       `SELECT DISTINCT u.id, u.role, u.full_name AS fullName
        FROM users u
        INNER JOIN teachers t ON t.user_id = u.id
-       INNER JOIN courses c ON c.teacher_id = t.id
-       WHERE u.status = 'active' AND c.curriculum_id = ?`,
+       INNER JOIN curriculum_teachers ct ON ct.teacher_id = t.id
+       WHERE u.status = 'active'
+        AND u.role = 'teacher'
+        AND ct.curriculum_id = ?`,
       [target.targetId],
     );
     return rows;
@@ -900,7 +990,20 @@ async function listUsersByTarget(target, scope = {}) {
     }
 
     if (target.targetRole === 'student') {
-      const curriculumFilter = scope.curriculumId ? 'AND s.curriculum_id = ?' : '';
+      const curriculumFilter = scope.curriculumId
+        ? `AND (
+          s.curriculum_id = ?
+          OR (
+            s.curriculum_id IS NULL
+            AND EXISTS (
+              SELECT 1
+              FROM curriculums scoped_curriculum
+              WHERE scoped_curriculum.id = ?
+                AND scoped_curriculum.department_id = sd.department_id
+            )
+          )
+        )`
+        : '';
       const [rows] = await db.execute(
         `SELECT DISTINCT u.id, u.role, u.full_name AS fullName
          FROM users u
@@ -912,7 +1015,9 @@ async function listUsersByTarget(target, scope = {}) {
           AND d.status = 'active'
           AND sd.department_id = ?
           ${curriculumFilter}`,
-        scope.curriculumId ? [target.targetId, scope.curriculumId] : [target.targetId],
+        scope.curriculumId
+          ? [target.targetId, scope.curriculumId, scope.curriculumId]
+          : [target.targetId],
       );
       return rows;
     }

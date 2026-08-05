@@ -155,7 +155,19 @@ function applyRoleScope(user, where, values) {
               )
               AND (
                 f.course_id IS NULL
-                OR scoped_student.curriculum_id IS NULL
+                OR (
+                  scoped_student.curriculum_id IS NULL
+                  AND EXISTS (
+                    SELECT 1
+                    FROM courses scoped_course_department
+                    INNER JOIN curriculums scoped_course_curriculum
+                      ON scoped_course_curriculum.id = scoped_course_department.curriculum_id
+                    INNER JOIN student_departments scoped_course_sd
+                      ON scoped_course_sd.student_id = scoped_student.id
+                      AND scoped_course_sd.department_id = scoped_course_curriculum.department_id
+                    WHERE scoped_course_department.id = f.course_id
+                  )
+                )
                 OR EXISTS (
                   SELECT 1
                   FROM courses scoped_course
@@ -414,16 +426,28 @@ export async function canAccessFileRecord(user, file, action = 'read') {
         )
         AND (
           ? IS NULL
-          OR scoped_student.curriculum_id IS NULL
+          OR (
+            scoped_student.curriculum_id IS NULL
+            AND EXISTS (
+              SELECT 1
+              FROM courses scoped_course_department
+              INNER JOIN curriculums scoped_course_curriculum
+                ON scoped_course_curriculum.id = scoped_course_department.curriculum_id
+              INNER JOIN student_departments scoped_course_sd
+                ON scoped_course_sd.student_id = scoped_student.id
+                AND scoped_course_sd.department_id = scoped_course_curriculum.department_id
+              WHERE scoped_course_department.id = ?
+            )
+          )
           OR EXISTS (
             SELECT 1
             FROM courses scoped_course
             WHERE scoped_course.id = ?
               AND scoped_course.curriculum_id = scoped_student.curriculum_id
           )
-        )
+       )
        LIMIT 1`,
-      [getUserId(user), file.id, file.id, file.courseId || null, file.courseId || null],
+      [getUserId(user), file.id, file.id, file.courseId || null, file.courseId || null, file.courseId || null],
     );
     return rows.length > 0;
   }
@@ -579,11 +603,32 @@ export async function listUsersForFileNotification({
           SELECT 1
           FROM students scoped_student
           WHERE scoped_student.user_id = u.id
-            AND (scoped_student.curriculum_id IS NULL OR scoped_student.curriculum_id = ?)
+            AND (
+              scoped_student.curriculum_id = ?
+              OR (
+                scoped_student.curriculum_id IS NULL
+                AND EXISTS (
+                  SELECT 1
+                  FROM curriculums scoped_curriculum
+                  INNER JOIN student_departments scoped_sd
+                    ON scoped_sd.student_id = scoped_student.id
+                    AND scoped_sd.department_id = scoped_curriculum.department_id
+                  WHERE scoped_curriculum.id = ?
+                )
+              )
+            )
         )
       )
     )`);
-    values.push(ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.TEACHER, Number(curriculumId), ROLES.STUDENT, Number(curriculumId));
+    values.push(
+      ROLES.SUPER_ADMIN,
+      ROLES.ADMIN,
+      ROLES.TEACHER,
+      Number(curriculumId),
+      ROLES.STUDENT,
+      Number(curriculumId),
+      Number(curriculumId),
+    );
   }
 
   const [rows] = await db.execute(

@@ -32,6 +32,7 @@ export const notificationQueryValidator = [
     .isIn(['system', 'academic', 'quiz', 'material', 'announcement', 'security', 'reminder']),
   query('readStatus').optional(optionalField).isIn(['read', 'unread']),
   query('priority').optional(optionalField).isIn(['normal', 'important', 'urgent']),
+  query('sort').optional(optionalField).isIn(['newest', 'oldest', 'unreadFirst', 'priority']),
   query('limit').optional(optionalField).isInt({ min: 1, max: 100 }),
   query('offset').optional(optionalField).isInt({ min: 0 }),
 ];

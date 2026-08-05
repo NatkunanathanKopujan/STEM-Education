@@ -288,25 +288,37 @@ export async function listSessions(userId) {
 }
 
 export async function closeSession({ userId, sessionId }) {
-  const [result] = await db.execute(
-    'UPDATE user_sessions SET logout_time = COALESCE(logout_time, NOW()) WHERE id = ? AND user_id = ? AND logout_time IS NULL',
-    [sessionId, userId],
-  );
+  const connection = await db.getConnection();
 
-  if (result.affectedRows > 0) {
-    const [activeResult] = await db.execute(
-      'UPDATE active_sessions SET revoked_at = COALESCE(revoked_at, NOW()) WHERE user_id = ? AND session_id = ? AND revoked_at IS NULL',
+  try {
+    await connection.beginTransaction();
+    const [result] = await connection.execute(
+      'UPDATE user_sessions SET logout_time = COALESCE(logout_time, NOW()) WHERE id = ? AND user_id = ? AND logout_time IS NULL',
+      [sessionId, userId],
+    );
+
+    if (result.affectedRows > 0) {
+      const [activeResult] = await connection.execute(
+        'UPDATE active_sessions SET revoked_at = COALESCE(revoked_at, NOW()) WHERE user_id = ? AND session_id = ? AND revoked_at IS NULL',
+        [userId, sessionId],
+      );
+      await connection.commit();
+      return activeResult.affectedRows > 0 || result.affectedRows > 0;
+    }
+
+    const [activeResult] = await connection.execute(
+      'UPDATE active_sessions SET revoked_at = COALESCE(revoked_at, NOW()) WHERE user_id = ? AND id = ? AND session_id IS NULL AND revoked_at IS NULL',
       [userId, sessionId],
     );
+
+    await connection.commit();
     return activeResult.affectedRows > 0 || result.affectedRows > 0;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
   }
-
-  const [activeResult] = await db.execute(
-    'UPDATE active_sessions SET revoked_at = COALESCE(revoked_at, NOW()) WHERE user_id = ? AND id = ? AND session_id IS NULL AND revoked_at IS NULL',
-    [userId, sessionId],
-  );
-
-  return activeResult.affectedRows > 0 || result.affectedRows > 0;
 }
 
 export async function closeAllSessions(userId, exceptSessionId = null) {
@@ -318,17 +330,28 @@ export async function closeAllSessions(userId, exceptSessionId = null) {
     values.push(exceptSessionId);
   }
 
-  const [result] = await db.execute(
-    `UPDATE user_sessions SET logout_time = COALESCE(logout_time, NOW())
-     WHERE user_id = ? AND logout_time IS NULL ${exception}`,
-    values,
-  );
-  const [activeResult] = await db.execute(
-    `UPDATE active_sessions SET revoked_at = COALESCE(revoked_at, NOW())
-     WHERE user_id = ? AND revoked_at IS NULL ${exceptSessionId ? 'AND (session_id IS NULL OR session_id <> ?)' : ''}`,
-    values,
-  );
-  return result.affectedRows + activeResult.affectedRows;
+  const connection = await db.getConnection();
+
+  try {
+    await connection.beginTransaction();
+    const [result] = await connection.execute(
+      `UPDATE user_sessions SET logout_time = COALESCE(logout_time, NOW())
+       WHERE user_id = ? AND logout_time IS NULL ${exception}`,
+      values,
+    );
+    const [activeResult] = await connection.execute(
+      `UPDATE active_sessions SET revoked_at = COALESCE(revoked_at, NOW())
+       WHERE user_id = ? AND revoked_at IS NULL ${exceptSessionId ? 'AND (session_id IS NULL OR session_id <> ?)' : ''}`,
+      values,
+    );
+    await connection.commit();
+    return result.affectedRows + activeResult.affectedRows;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 }
 
 export async function getUserPreferences(userId) {

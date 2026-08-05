@@ -2,19 +2,31 @@ import { db } from '../config/database.js';
 
 export async function createUserSession({ userId, ipAddress, userAgent, deviceInfo = null }) {
   const serializedDeviceInfo = deviceInfo ? JSON.stringify(deviceInfo) : null;
-  const [result] = await db.execute(
-    `INSERT INTO user_sessions (user_id, ip_address, user_agent, device_info)
-     VALUES (?, ?, ?, ?)`,
-    [userId, ipAddress || null, userAgent || null, serializedDeviceInfo],
-  );
+  const connection = await db.getConnection();
 
-  await db.execute(
-    `INSERT INTO active_sessions (user_id, session_id, ip_address, user_agent, device_info)
-     VALUES (?, ?, ?, ?, ?)`,
-    [userId, result.insertId, ipAddress || null, userAgent || null, serializedDeviceInfo],
-  );
+  try {
+    await connection.beginTransaction();
 
-  return result.insertId;
+    const [result] = await connection.execute(
+      `INSERT INTO user_sessions (user_id, ip_address, user_agent, device_info)
+       VALUES (?, ?, ?, ?)`,
+      [userId, ipAddress || null, userAgent || null, serializedDeviceInfo],
+    );
+
+    await connection.execute(
+      `INSERT INTO active_sessions (user_id, session_id, ip_address, user_agent, device_info)
+       VALUES (?, ?, ?, ?, ?)`,
+      [userId, result.insertId, ipAddress || null, userAgent || null, serializedDeviceInfo],
+    );
+
+    await connection.commit();
+    return result.insertId;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 }
 
 export async function closeUserSession(sessionId) {
@@ -22,9 +34,26 @@ export async function closeUserSession(sessionId) {
     return false;
   }
 
-  await db.execute('UPDATE user_sessions SET logout_time = NOW() WHERE id = ?', [sessionId]);
-  await db.execute('UPDATE active_sessions SET revoked_at = COALESCE(revoked_at, NOW()) WHERE session_id = ?', [sessionId]);
-  return true;
+  const connection = await db.getConnection();
+
+  try {
+    await connection.beginTransaction();
+    const [sessionResult] = await connection.execute(
+      'UPDATE user_sessions SET logout_time = COALESCE(logout_time, NOW()) WHERE id = ?',
+      [sessionId],
+    );
+    const [activeResult] = await connection.execute(
+      'UPDATE active_sessions SET revoked_at = COALESCE(revoked_at, NOW()) WHERE session_id = ?',
+      [sessionId],
+    );
+    await connection.commit();
+    return sessionResult.affectedRows > 0 || activeResult.affectedRows > 0;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 }
 
 export async function touchUserSession({ sessionId, userId }) {
@@ -48,22 +77,16 @@ export async function isUserSessionActive({ sessionId, userId }) {
   }
 
   const [rows] = await db.execute(
-    `SELECT id FROM user_sessions
-     WHERE id = ? AND user_id = ? AND logout_time IS NULL
+    `SELECT s.id
+     FROM user_sessions s
+     INNER JOIN active_sessions a
+      ON a.session_id = s.id
+      AND a.user_id = s.user_id
+      AND a.revoked_at IS NULL
+     WHERE s.id = ? AND s.user_id = ? AND s.logout_time IS NULL
      LIMIT 1`,
     [sessionId, userId],
   );
 
-  if (!rows.length) {
-    return false;
-  }
-
-  const [activeRows] = await db.execute(
-    `SELECT id FROM active_sessions
-     WHERE session_id = ? AND user_id = ? AND revoked_at IS NOT NULL
-     LIMIT 1`,
-    [sessionId, userId],
-  );
-
-  return activeRows.length === 0;
+  return rows.length > 0;
 }

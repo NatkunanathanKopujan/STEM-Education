@@ -3,14 +3,18 @@ import { useNavigate } from 'react-router-dom';
 import { NotificationList } from './NotificationList';
 import { Button } from '../ui/Button';
 import { notificationService } from '../../services/notificationService';
+import { useAuth } from '../../hooks/useAuth';
 
 export function NotificationPanel({ open, onClose }) {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [data, setData] = useState({ unreadCount: 0, notifications: [] });
   const [error, setError] = useState('');
 
   useEffect(() => {
     if (!open) {
+      setData({ unreadCount: 0, notifications: [] });
+      setError('');
       return undefined;
     }
 
@@ -36,7 +40,7 @@ export function NotificationPanel({ open, onClose }) {
     return () => {
       isMounted = false;
     };
-  }, [open]);
+  }, [open, user?.id]);
 
   const refresh = async () => {
     try {

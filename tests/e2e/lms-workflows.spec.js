@@ -19,7 +19,7 @@ test.describe('AI Smart LMS core workflows', () => {
     await expect(page.getByText(/login as/i)).toBeVisible();
 
     await page.getByLabel(/username or email/i).fill(process.env.E2E_SUPER_ADMIN_USER || 'superadmin@example.com');
-    await page.getByLabel(/password/i).fill(process.env.E2E_SUPER_ADMIN_PASSWORD || 'ChangeMe123');
+    await page.getByRole('textbox', { name: 'Password' }).fill(process.env.E2E_SUPER_ADMIN_PASSWORD || 'ChangeMe123');
     await page.getByRole('button', { name: /sign in/i }).click();
 
     await expect(page).toHaveURL(/\/super-admin\/dashboard|\/login/);

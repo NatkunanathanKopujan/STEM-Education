@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS notification_history (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   notification_id BIGINT UNSIGNED NOT NULL,
   user_id BIGINT UNSIGNED NOT NULL,
-  event_type ENUM('created', 'read', 'deleted', 'archived') NOT NULL,
+  event_type ENUM('created', 'read', 'unread', 'deleted', 'archived') NOT NULL,
   event_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   metadata JSON NULL,
   CONSTRAINT fk_notification_history_notification FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE CASCADE,

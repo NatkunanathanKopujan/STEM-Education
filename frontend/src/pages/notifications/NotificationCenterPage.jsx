@@ -8,6 +8,7 @@ import { Loader } from '../../components/ui/Loader';
 import { ConfirmationDialog } from '../../components/ui/Modal';
 import { NotificationList } from '../../components/notifications/NotificationList';
 import { notificationService } from '../../services/notificationService';
+import { useAuth } from '../../hooks/useAuth';
 
 const pageSize = 20;
 
@@ -16,6 +17,7 @@ const initialFilters = {
   type: '',
   readStatus: '',
   priority: '',
+  sort: 'unreadFirst',
   offset: 0,
 };
 
@@ -24,7 +26,17 @@ function isNotFoundError(apiError) {
 }
 
 export function NotificationCenterPage() {
-  const [data, setData] = useState({ unreadCount: 0, notifications: [], total: 0, limit: pageSize, offset: 0 });
+  const { user } = useAuth();
+  const [data, setData] = useState({
+    unreadCount: 0,
+    readCount: 0,
+    totalCount: 0,
+    todayCount: 0,
+    notifications: [],
+    total: 0,
+    limit: pageSize,
+    offset: 0,
+  });
   const [filters, setFilters] = useState(initialFilters);
   const [selectedIds, setSelectedIds] = useState([]);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -88,8 +100,11 @@ export function NotificationCenterPage() {
   }, []);
 
   useEffect(() => {
+    setFilters(initialFilters);
+    setSelectedIds([]);
+    setMessage('');
     loadNotifications(initialFilters);
-  }, [loadNotifications]);
+  }, [loadNotifications, user?.id]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -233,7 +248,7 @@ export function NotificationCenterPage() {
         description="Review account notifications, unread status, priority alerts, and role-based updates."
       />
 
-      <div className="grid gap-4 md:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-6">
         <Card className="p-5">
           <p className="text-2xl font-bold text-ink">{data.unreadCount}</p>
           <p className="text-sm text-muted">Unread Notifications</p>
@@ -241,6 +256,10 @@ export function NotificationCenterPage() {
         <Card className="p-5">
           <p className="text-2xl font-bold text-ink">{data.readCount || 0}</p>
           <p className="text-sm text-muted">Read Notifications</p>
+        </Card>
+        <Card className="p-5">
+          <p className="text-2xl font-bold text-ink">{data.totalCount || 0}</p>
+          <p className="text-sm text-muted">Total Notifications</p>
         </Card>
         <Card className="p-5">
           <p className="text-2xl font-bold text-ink">{data.total || 0}</p>
@@ -257,7 +276,7 @@ export function NotificationCenterPage() {
       </div>
 
       <Card className="p-5">
-        <div className="grid gap-3 xl:grid-cols-[1fr_repeat(3,12rem)_auto_auto]">
+        <div className="grid gap-3 xl:grid-cols-[1fr_repeat(4,12rem)_auto_auto]">
           <input
             value={filters.search}
             onChange={(event) => updateFilter('search', event.target.value)}
@@ -296,6 +315,16 @@ export function NotificationCenterPage() {
             <option value="urgent">Urgent</option>
             <option value="important">Important</option>
             <option value="normal">Normal</option>
+          </select>
+          <select
+            value={filters.sort}
+            onChange={(event) => updateFilter('sort', event.target.value)}
+            className="min-h-11 rounded-xl border border-line px-4 text-sm outline-none focus:border-primary"
+          >
+            <option value="unreadFirst">Unread First</option>
+            <option value="newest">Newest First</option>
+            <option value="oldest">Oldest First</option>
+            <option value="priority">Priority First</option>
           </select>
           <Button onClick={applyFilters}>Filter</Button>
           <Button variant="secondary" onClick={resetFilters}>Reset</Button>

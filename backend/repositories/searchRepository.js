@@ -1,6 +1,13 @@
 import { db } from '../config/database.js';
 import { ROLES } from '../config/roles.js';
-import { ensureFileAudienceSchema } from './fileRepository.js';
+import {
+  ensureFileAudienceSchema,
+  ensureFileCourseSchema,
+  ensureFileDepartmentSchema,
+  listFiles,
+} from './fileRepository.js';
+import { listAnnouncements } from './notificationRepository.js';
+import { ensureUserAssignmentSchema } from './userManagementRepository.js';
 import { generateId } from '../utils/idGenerator.js';
 
 const like = (term) => `%${term}%`;
@@ -41,7 +48,7 @@ function canSearch(user, category) {
     admins: [ROLES.SUPER_ADMIN],
     teachers: [ROLES.SUPER_ADMIN, ROLES.ADMIN],
     students: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.TEACHER],
-    curriculums: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.TEACHER],
+    curriculums: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.TEACHER, ROLES.STUDENT],
     subjects: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.TEACHER, ROLES.STUDENT],
     lessons: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.TEACHER, ROLES.STUDENT],
     materials: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.TEACHER, ROLES.STUDENT],
@@ -114,6 +121,7 @@ export async function runRoleSearch(user, filters) {
   const selectedCategory = filters.category === 'all' ? '' : filters.category;
   const results = [];
   const studentId = user.role === ROLES.STUDENT ? await findStudentId(user.id) : null;
+  await ensureUserAssignmentSchema();
 
   if (categoryMatches(selectedCategory, 'users') && canSearch(user, 'users')) {
     const where = [];
@@ -176,6 +184,7 @@ export async function runRoleSearch(user, filters) {
      WHERE (u.full_name LIKE ? OR u.username LIKE ? OR u.email LIKE ? OR t.department LIKE ? OR t.specialization LIKE ?)
        AND (? = '' OR t.department LIKE ?)
        AND (? = '' OR u.status = ?)
+       AND (? <> 'admin' OR t.managed_by_admin_id = ?)
      LIMIT ?`,
     [
       term,
@@ -189,6 +198,8 @@ export async function runRoleSearch(user, filters) {
       like(filters.department || ''),
       filters.status || '',
       filters.status || '',
+      user.role,
+      user.id,
       Math.min(Number(filters.limit) || 50, 100),
     ],
     results,
@@ -206,11 +217,34 @@ export async function runRoleSearch(user, filters) {
      WHERE (u.full_name LIKE ? OR u.username LIKE ? OR u.email LIKE ? OR s.student_no LIKE ? OR s.program LIKE ?)
        AND (? = '' OR s.program LIKE ?)
        AND (? = '' OR u.status = ?)
+       AND (? <> 'admin' OR s.managed_by_admin_id = ?)
        AND (? <> 'teacher' OR EXISTS (
-         SELECT 1 FROM quiz_attempts qa
-         INNER JOIN quiz_attempt_answers qaa ON qaa.attempt_id = qa.id
-         INNER JOIN question_bank qb ON qb.id = qaa.question_id
-         WHERE qa.student_id = s.id AND qb.created_by = ?
+         SELECT 1
+         FROM teachers scoped_teacher
+         INNER JOIN teacher_departments scoped_td ON scoped_td.teacher_id = scoped_teacher.id
+         INNER JOIN student_departments scoped_sd
+           ON scoped_sd.student_id = s.id
+           AND scoped_sd.department_id = scoped_td.department_id
+         WHERE scoped_teacher.user_id = ?
+       ) OR EXISTS (
+         SELECT 1
+         FROM teachers scoped_teacher
+         INNER JOIN curriculum_teachers scoped_ct ON scoped_ct.teacher_id = scoped_teacher.id
+         WHERE scoped_teacher.user_id = ?
+           AND (
+            s.curriculum_id = scoped_ct.curriculum_id
+            OR (
+              s.curriculum_id IS NULL
+              AND EXISTS (
+                SELECT 1
+                FROM curriculums scoped_curriculum
+                INNER JOIN student_departments scoped_curriculum_sd
+                  ON scoped_curriculum_sd.student_id = s.id
+                  AND scoped_curriculum_sd.department_id = scoped_curriculum.department_id
+                WHERE scoped_curriculum.id = scoped_ct.curriculum_id
+              )
+            )
+           )
        ))
      LIMIT ?`,
     [
@@ -226,6 +260,9 @@ export async function runRoleSearch(user, filters) {
       filters.status || '',
       filters.status || '',
       user.role,
+      user.id,
+      user.role,
+      user.id,
       user.id,
       Math.min(Number(filters.limit) || 50, 100),
     ],
@@ -243,6 +280,33 @@ export async function runRoleSearch(user, filters) {
      WHERE (c.title LIKE ? OR c.code LIKE ? OR c.description LIKE ?)
        AND (? = '' OR c.title LIKE ? OR c.code LIKE ?)
        AND (? = '' OR c.is_active = IF(? IN ('active', 'published'), 1, 0))
+       AND (? <> 'teacher' OR EXISTS (
+         SELECT 1
+         FROM teachers scoped_teacher
+         INNER JOIN curriculum_teachers scoped_ct ON scoped_ct.teacher_id = scoped_teacher.id
+         WHERE scoped_teacher.user_id = ?
+           AND scoped_ct.curriculum_id = c.id
+       ) OR EXISTS (
+         SELECT 1
+         FROM teachers scoped_teacher
+         INNER JOIN teacher_departments scoped_td ON scoped_td.teacher_id = scoped_teacher.id
+         WHERE scoped_teacher.user_id = ?
+           AND scoped_td.department_id = c.department_id
+       ))
+       AND (? <> 'student' OR EXISTS (
+         SELECT 1
+         FROM students scoped_student
+         WHERE scoped_student.user_id = ?
+           AND (
+            scoped_student.curriculum_id = c.id
+            OR EXISTS (
+              SELECT 1
+              FROM student_departments scoped_sd
+              WHERE scoped_sd.student_id = scoped_student.id
+                AND scoped_sd.department_id = c.department_id
+            )
+           )
+       ))
      LIMIT ?`,
     [
       term,
@@ -255,6 +319,11 @@ export async function runRoleSearch(user, filters) {
       like(filters.curriculum || ''),
       filters.status || '',
       filters.status || '',
+      user.role,
+      user.id,
+      user.id,
+      user.role,
+      user.id,
       Math.min(Number(filters.limit) || 50, 100),
     ],
     results,
@@ -275,7 +344,33 @@ export async function runRoleSearch(user, filters) {
      WHERE (co.title LIKE ? OR co.code LIKE ? OR co.description LIKE ? OR cu.title LIKE ?)
        AND (? = '' OR cu.title LIKE ? OR cu.code LIKE ?)
        AND (? = '' OR co.title LIKE ? OR co.code LIKE ?)
-       AND (? <> 'teacher' OR u.id = ?)
+       AND (? <> 'teacher' OR u.id = ? OR EXISTS (
+         SELECT 1
+         FROM teachers scoped_teacher
+         INNER JOIN curriculum_teachers scoped_ct ON scoped_ct.teacher_id = scoped_teacher.id
+         WHERE scoped_teacher.user_id = ?
+           AND scoped_ct.curriculum_id = co.curriculum_id
+       ) OR EXISTS (
+         SELECT 1
+         FROM teachers scoped_teacher
+         INNER JOIN teacher_departments scoped_td ON scoped_td.teacher_id = scoped_teacher.id
+         WHERE scoped_teacher.user_id = ?
+           AND scoped_td.department_id = cu.department_id
+       ))
+       AND (? <> 'student' OR EXISTS (
+         SELECT 1
+         FROM students scoped_student
+         WHERE scoped_student.user_id = ?
+           AND (
+            scoped_student.curriculum_id = co.curriculum_id
+            OR EXISTS (
+              SELECT 1
+              FROM student_departments scoped_sd
+              WHERE scoped_sd.student_id = scoped_student.id
+                AND scoped_sd.department_id = cu.department_id
+            )
+           )
+       ))
      LIMIT ?`,
     [
       term,
@@ -290,6 +385,10 @@ export async function runRoleSearch(user, filters) {
       filters.subject || '',
       like(filters.subject || ''),
       like(filters.subject || ''),
+      user.role,
+      user.id,
+      user.id,
+      user.id,
       user.role,
       user.id,
       Math.min(Number(filters.limit) || 50, 100),
@@ -314,8 +413,38 @@ export async function runRoleSearch(user, filters) {
        AND (? = '' OR wp.week_no = ?)
        AND (? = '' OR wp.topic LIKE ?)
        AND (? = '' OR wp.status = ?)
-       AND (? <> 'teacher' OR u.id = ?)
-       AND (? <> 'student' OR wp.status IN ('published', 'completed'))
+       AND (? <> 'teacher' OR u.id = ? OR EXISTS (
+         SELECT 1
+         FROM teachers scoped_teacher
+         INNER JOIN curriculum_teachers scoped_ct ON scoped_ct.teacher_id = scoped_teacher.id
+         WHERE scoped_teacher.user_id = ?
+           AND scoped_ct.curriculum_id = co.curriculum_id
+       ) OR EXISTS (
+         SELECT 1
+         FROM teachers scoped_teacher
+         INNER JOIN teacher_departments scoped_td ON scoped_td.teacher_id = scoped_teacher.id
+         INNER JOIN curriculums scoped_curriculum ON scoped_curriculum.id = co.curriculum_id
+         WHERE scoped_teacher.user_id = ?
+           AND scoped_td.department_id = scoped_curriculum.department_id
+       ))
+       AND (? <> 'student' OR (
+        wp.status IN ('published', 'completed')
+        AND EXISTS (
+          SELECT 1
+          FROM students scoped_student
+          INNER JOIN curriculums scoped_curriculum ON scoped_curriculum.id = co.curriculum_id
+          WHERE scoped_student.user_id = ?
+            AND (
+              scoped_student.curriculum_id = co.curriculum_id
+              OR EXISTS (
+                SELECT 1
+                FROM student_departments scoped_sd
+                WHERE scoped_sd.student_id = scoped_student.id
+                  AND scoped_sd.department_id = scoped_curriculum.department_id
+              )
+            )
+        )
+       ))
      LIMIT ?`,
     [
       term,
@@ -333,92 +462,76 @@ export async function runRoleSearch(user, filters) {
       filters.status || '',
       user.role,
       user.id,
+      user.id,
+      user.id,
       user.role,
+      user.id,
       Math.min(Number(filters.limit) || 50, 100),
     ],
     results,
   );
 
-  await ensureFileAudienceSchema();
-  const materialTypes = MATERIAL_CATEGORY_TYPES[selectedCategory] || (filters.fileType ? [String(filters.fileType).toLowerCase()] : []);
-  const materialTypePlaceholders = materialTypes.length ? materialTypes.map(() => '?').join(', ') : 'NULL';
-  await executeSearch(
-    'materials',
-    selectedCategory,
-    user,
-    `SELECT f.id, f.original_file_name AS title,
-      CASE
-        WHEN LOWER(f.file_type) = 'pdf' THEN 'pdf_files'
-        WHEN LOWER(f.file_type) IN ('ppt', 'pptx', 'presentation') THEN 'ppt_files'
-        WHEN LOWER(f.file_type) IN ('doc', 'docx', 'document', 'word') THEN 'doc_files'
-        WHEN LOWER(f.file_type) IN ('video', 'mp4', 'mov', 'avi', 'mkv') THEN 'videos'
-        WHEN LOWER(f.file_type) IN ('note', 'notes', 'txt', 'text') THEN 'teacher_notes'
-        ELSE 'learning_materials'
-      END AS category,
-      CONCAT_WS(' - ', f.description, f.curriculum, f.subject, f.topic, CONCAT('Week ', f.week_no)) AS description,
-      u.full_name AS owner, f.created_at AS createdAt, f.updated_at AS updatedAt,
-      CASE
-        WHEN ? = 'super-admin' THEN '/super-admin/file-manager'
-        WHEN ? = 'admin' THEN '/admin/materials'
-        WHEN ? = 'teacher' THEN '/teacher/materials'
-        ELSE '/student/materials'
-      END AS actionUrl,
-      CASE WHEN f.original_file_name = ? THEN 100 ELSE 35 END AS relevance
-     FROM files f
-     LEFT JOIN users u ON u.id = f.uploaded_by
-     WHERE (f.original_file_name LIKE ? OR f.description LIKE ? OR f.file_type LIKE ? OR f.curriculum LIKE ? OR f.subject LIKE ? OR f.topic LIKE ? OR f.tags LIKE ? OR u.full_name LIKE ?)
-       AND (? = 0 OR LOWER(f.file_type) IN (${materialTypePlaceholders}))
-       AND (? = '' OR f.curriculum LIKE ?)
-       AND (? = '' OR f.subject LIKE ?)
-       AND (? = '' OR u.full_name LIKE ?)
-       AND (? = '' OR f.status = ? OR f.visibility = ?)
-       AND (? IS NULL OR DATE(f.created_at) = ?)
-       AND f.status <> 'deleted'
-       AND (
-        ? = 'super-admin'
-        OR (? = 'admin' AND (f.uploaded_by = ? OR (f.uploaded_role <> 'student' AND f.audience IN ('all', 'admin'))))
-        OR (? = 'teacher' AND (f.uploaded_by = ? OR (f.visibility = 'public' AND f.status = 'active' AND f.uploaded_role <> 'student' AND f.audience IN ('all', 'teacher'))))
-        OR (? = 'student' AND (f.uploaded_by = ? OR (f.visibility = 'public' AND f.status = 'active' AND f.uploaded_role <> 'student' AND f.audience IN ('all', 'student'))))
-       )
-     LIMIT ?`,
-    [
-      user.role,
-      user.role,
-      user.role,
-      term,
-      like(term),
-      like(term),
-      like(term),
-      like(term),
-      like(term),
-      like(term),
-      like(term),
-      like(term),
-      materialTypes.length,
-      ...materialTypes,
-      filters.curriculum || '',
-      like(filters.curriculum || ''),
-      filters.subject || '',
-      like(filters.subject || ''),
-      filters.teacher || filters.createdBy || '',
-      like(filters.teacher || filters.createdBy || ''),
-      filters.status || '',
-      filters.status || '',
-      filters.status || '',
-      filters.uploadDate || null,
-      filters.uploadDate || null,
-      user.role,
-      user.role,
-      user.id,
-      user.role,
-      user.id,
-      user.role,
-      user.id,
-      Math.min(Number(filters.limit) || 50, 100),
-    ],
-    results,
-    ['learning_materials', 'pdf_files', 'ppt_files', 'doc_files', 'videos', 'teacher_notes'],
-  );
+  if (
+    categoryMatches(selectedCategory, 'materials', [
+      'learning_materials',
+      'pdf_files',
+      'ppt_files',
+      'doc_files',
+      'videos',
+      'teacher_notes',
+    ]) &&
+    canSearch(user, 'materials')
+  ) {
+    await ensureFileAudienceSchema();
+    await ensureFileDepartmentSchema();
+    await ensureFileCourseSchema();
+    const materialTypes = MATERIAL_CATEGORY_TYPES[selectedCategory] || (filters.fileType ? [String(filters.fileType).toLowerCase()] : []);
+    const fileFilters = {
+      ...filters,
+      search: term,
+      fileType: materialTypes.length ? materialTypes.join(',') : filters.fileType,
+      dateFrom: filters.uploadDate || filters.dateFrom,
+      dateTo: filters.uploadDate || filters.dateTo,
+      limit: Math.min(Number(filters.limit) || 50, 100),
+      sort: filters.sort === 'az' || filters.sort === 'za' || filters.sort === 'oldest' ? filters.sort : 'newest',
+    };
+    const { files } = await listFiles(user, fileFilters);
+    results.push(
+      ...files.map((file) =>
+        result({
+          id: file.id,
+          title: file.originalFileName,
+          category:
+            file.fileType === 'pdf'
+              ? 'pdf_files'
+              : ['ppt', 'pptx', 'presentation'].includes(String(file.fileType).toLowerCase())
+                ? 'ppt_files'
+                : ['doc', 'docx', 'document', 'word'].includes(String(file.fileType).toLowerCase())
+                  ? 'doc_files'
+                  : ['video', 'mp4', 'mov', 'avi', 'mkv'].includes(String(file.fileType).toLowerCase())
+                    ? 'videos'
+                    : ['note', 'notes', 'txt', 'text'].includes(String(file.fileType).toLowerCase())
+                      ? 'teacher_notes'
+                      : 'learning_materials',
+          description: [file.description, file.curriculum, file.subject, file.topic, file.weekNo ? `Week ${file.weekNo}` : '']
+            .filter(Boolean)
+            .join(' - '),
+          owner: file.owner,
+          createdAt: file.createdAt,
+          updatedAt: file.updatedAt,
+          actionUrl:
+            user.role === ROLES.SUPER_ADMIN
+              ? '/super-admin/file-manager'
+              : user.role === ROLES.ADMIN
+                ? '/admin/materials'
+                : user.role === ROLES.TEACHER
+                  ? '/teacher/materials'
+                  : '/student/materials',
+          relevance: file.originalFileName === term ? 100 : 35,
+        }),
+      ),
+    );
+  }
 
   await executeSearch(
     'topics',
@@ -438,8 +551,39 @@ export async function runRoleSearch(user, filters) {
        AND (? = '' OR qt.week_no = ?)
        AND (? = '' OR qt.topic LIKE ?)
        AND (? = '' OR qt.status = ?)
-       AND (? <> 'teacher' OR qt.teacher_id = ?)
-       AND (? <> 'student' OR qt.status = 'completed')
+       AND (? <> 'teacher' OR qt.teacher_id = ? OR EXISTS (
+         SELECT 1
+         FROM teachers scoped_teacher
+         INNER JOIN curriculum_teachers scoped_ct ON scoped_ct.teacher_id = scoped_teacher.id
+         WHERE scoped_teacher.user_id = ?
+           AND scoped_ct.curriculum_id = qt.curriculum_id
+       ) OR EXISTS (
+         SELECT 1
+         FROM teachers scoped_teacher
+         INNER JOIN teacher_departments scoped_td ON scoped_td.teacher_id = scoped_teacher.id
+         INNER JOIN curriculums scoped_curriculum ON scoped_curriculum.id = qt.curriculum_id
+         WHERE scoped_teacher.user_id = ?
+           AND scoped_td.department_id = scoped_curriculum.department_id
+       ))
+       AND (? <> 'student' OR (
+         qt.status = 'completed'
+         AND EXISTS (
+           SELECT 1
+           FROM students scoped_student
+           LEFT JOIN curriculums scoped_curriculum ON scoped_curriculum.id = qt.curriculum_id
+           WHERE scoped_student.user_id = ?
+            AND (
+              qt.curriculum_id IS NULL
+              OR scoped_student.curriculum_id = qt.curriculum_id
+              OR EXISTS (
+                SELECT 1
+                FROM student_departments scoped_sd
+                WHERE scoped_sd.student_id = scoped_student.id
+                  AND scoped_sd.department_id = scoped_curriculum.department_id
+              )
+            )
+         )
+       ))
      LIMIT ?`,
     [
       term,
@@ -460,45 +604,41 @@ export async function runRoleSearch(user, filters) {
       filters.completedTopic === 'true' ? 'completed' : filters.status || '',
       user.role,
       user.id,
+      user.id,
+      user.id,
       user.role,
+      user.id,
       Math.min(Number(filters.limit) || 50, 100),
     ],
     results,
     ['completed_topics'],
   );
 
-  await executeSearch(
-    'announcements',
-    selectedCategory,
-    user,
-    `SELECT a.id, a.title, 'announcements' AS category, a.body AS description,
-      COALESCE(u.full_name, a.audience_role, 'All') AS owner, a.created_at AS createdAt, a.updated_at AS updatedAt,
-      '/announcements' AS actionUrl, CASE WHEN a.title = ? THEN 100 ELSE 25 END AS relevance
-     FROM announcements a
-     LEFT JOIN users u ON u.id = a.created_by
-     WHERE (a.title LIKE ? OR a.body LIKE ? OR a.audience_role LIKE ? OR u.full_name LIKE ?)
-       AND (? = '' OR a.status = ?)
-       AND (? = '' OR u.full_name LIKE ?)
-       AND (a.audience_role IS NULL OR a.audience_role = ? OR ? IN ('super-admin', 'admin'))
-       AND (a.status = 'published' OR ? IN ('super-admin', 'admin', 'teacher'))
-     LIMIT ?`,
-    [
-      term,
-      like(term),
-      like(term),
-      like(term),
-      like(term),
-      filters.status || '',
-      filters.status || '',
-      filters.createdBy || '',
-      like(filters.createdBy || ''),
-      user.role,
-      user.role,
-      user.role,
-      Math.min(Number(filters.limit) || 50, 100),
-    ],
-    results,
-  );
+  if (categoryMatches(selectedCategory, 'announcements') && canSearch(user, 'announcements')) {
+    const { announcements } = await listAnnouncements({
+      user,
+      search: term,
+      status: filters.status,
+      sort: filters.sort === 'oldest' ? 'oldest' : 'newest',
+      limit: Math.min(Number(filters.limit) || 50, 100),
+      offset: 0,
+    });
+    results.push(
+      ...announcements.map((announcement) =>
+        result({
+          id: announcement.id,
+          title: announcement.title,
+          category: 'announcements',
+          description: announcement.description,
+          owner: announcement.audienceRole || announcement.departmentName || announcement.curriculumName || 'All',
+          createdAt: announcement.createdAt,
+          updatedAt: announcement.updatedAt,
+          actionUrl: '/announcements',
+          relevance: announcement.title === term ? 100 : 25,
+        }),
+      ),
+    );
+  }
 
   await executeSearch(
     'quizzes',
@@ -519,9 +659,30 @@ export async function runRoleSearch(user, filters) {
        AND (? = '' OR qa.status = ? OR qa.pass_status = ?)
        AND (? <> 'student' OR qa.student_id = ?)
        AND (? <> 'teacher' OR EXISTS (
-         SELECT 1 FROM quiz_attempt_answers qaa
-         INNER JOIN question_bank qb ON qb.id = qaa.question_id
-         WHERE qaa.attempt_id = qa.id AND qb.created_by = ?
+         SELECT 1
+         FROM teachers scoped_teacher
+         INNER JOIN teacher_departments scoped_td ON scoped_td.teacher_id = scoped_teacher.id
+         INNER JOIN student_departments scoped_sd
+          ON scoped_sd.student_id = qa.student_id
+          AND scoped_sd.department_id = scoped_td.department_id
+         WHERE scoped_teacher.user_id = ?
+       ) OR EXISTS (
+         SELECT 1
+         FROM teachers scoped_teacher
+         INNER JOIN curriculum_teachers scoped_ct ON scoped_ct.teacher_id = scoped_teacher.id
+         WHERE scoped_teacher.user_id = ?
+          AND (
+            qa.curriculum_id = scoped_ct.curriculum_id
+            OR (
+              qa.curriculum_id IS NULL
+              AND EXISTS (
+                SELECT 1
+                FROM students scoped_student
+                WHERE scoped_student.id = qa.student_id
+                  AND scoped_student.curriculum_id = scoped_ct.curriculum_id
+              )
+            )
+          )
        ))
      LIMIT ?`,
     [
@@ -540,6 +701,7 @@ export async function runRoleSearch(user, filters) {
       user.role,
       studentId || 0,
       user.role,
+      user.id,
       user.id,
       Math.min(Number(filters.limit) || 50, 100),
     ],
@@ -602,6 +764,7 @@ export async function runRoleSearch(user, filters) {
      WHERE (r.title LIKE ? OR r.report_type LIKE ? OR u.full_name LIKE ?)
        AND (? = '' OR r.report_type LIKE ?)
        AND (? = '' OR u.full_name LIKE ?)
+       AND (? IN ('super-admin', 'admin') OR r.generated_by = ?)
      LIMIT ?`,
     [
       term,
@@ -612,6 +775,8 @@ export async function runRoleSearch(user, filters) {
       like(filters.status || ''),
       filters.createdBy || '',
       like(filters.createdBy || ''),
+      user.role,
+      user.id,
       Math.min(Number(filters.limit) || 50, 100),
     ],
     results,

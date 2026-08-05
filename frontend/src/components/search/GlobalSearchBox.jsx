@@ -3,14 +3,17 @@ import { useNavigate } from 'react-router-dom';
 import { FiSearch } from 'react-icons/fi';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { searchService } from '../../services/searchService';
+import { useAuth } from '../../hooks/useAuth';
 
 export function GlobalSearchBox() {
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [data, setData] = useState({ suggestions: [], recentSearches: [], popularSearches: [] });
   const debouncedQuery = useDebouncedValue(query, 300);
+  const userKey = user?.id || user?.userId || 'anonymous';
   const options = useMemo(
     () => [
       ...(data.suggestions || []).map((item) => ({
@@ -33,6 +36,13 @@ export function GlobalSearchBox() {
   );
 
   useEffect(() => {
+    setQuery('');
+    setOpen(false);
+    setActiveIndex(-1);
+    setData({ suggestions: [], recentSearches: [], popularSearches: [] });
+  }, [userKey]);
+
+  useEffect(() => {
     let isMounted = true;
 
     async function loadSuggestions() {
@@ -46,7 +56,7 @@ export function GlobalSearchBox() {
     return () => {
       isMounted = false;
     };
-  }, [debouncedQuery, open]);
+  }, [debouncedQuery, open, userKey]);
 
   useEffect(() => {
     setActiveIndex(-1);

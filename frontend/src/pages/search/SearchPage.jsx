@@ -19,6 +19,7 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { Loader } from '../../components/ui/Loader';
 import { searchService } from '../../services/searchService';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
+import { useAuth } from '../../hooks/useAuth';
 
 const categories = [
   ['users', 'Users'],
@@ -111,6 +112,7 @@ function Field({ label, children }) {
 }
 
 export function SearchPage() {
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState(searchParams.get('q') || '');
   const [filters, setFilters] = useState(readInitialFilters(searchParams));
@@ -127,6 +129,7 @@ export function SearchPage() {
   const [error, setError] = useState('');
   const [showFilters, setShowFilters] = useState(true);
   const debouncedQuery = useDebouncedValue(query, 350);
+  const userKey = user?.id || user?.userId || 'anonymous';
 
   const params = useMemo(
     () => ({
@@ -140,6 +143,15 @@ export function SearchPage() {
   const activeFilterCount = Object.entries(filters).filter(
     ([key, value]) => !['page', 'sort'].includes(key) && value,
   ).length;
+
+  useEffect(() => {
+    setResult(null);
+    setHistory([]);
+    setSaved([]);
+    setSuggestions({ suggestions: [], popularSearches: [], recentSearches: [] });
+    setMessage('');
+    setError('');
+  }, [userKey]);
 
   useEffect(() => {
     let isMounted = true;
@@ -165,7 +177,7 @@ export function SearchPage() {
     return () => {
       isMounted = false;
     };
-  }, [debouncedQuery]);
+  }, [debouncedQuery, userKey]);
 
   useEffect(() => {
     let isMounted = true;
@@ -194,7 +206,7 @@ export function SearchPage() {
     return () => {
       isMounted = false;
     };
-  }, [debouncedQuery, params, setSearchParams]);
+  }, [debouncedQuery, params, setSearchParams, userKey]);
 
   const reloadSaved = async () => {
     try {
